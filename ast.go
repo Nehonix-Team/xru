@@ -14,6 +14,7 @@ const (
 	RuleTypeCreate RuleType = "CREATE" // Create a new file
 	RuleTypeSelect RuleType = "SELECT" // Define a target sandbox/directory
 	RuleTypeBreak  RuleType = "BREAK"  // Exit the program
+	RuleTypeLog    RuleType = "LOG"    // Display a message
 	RuleTypeGlobal RuleType = "GLOBAL" // Apply to all matching files
 )
 

@@ -29,6 +29,7 @@ func parseNew(src string) (*RuleFile, error) {
 		lang     string
 		key      string
 		op       PatchOp
+		path     string
 		buf      []string
 	}
 	var pending *pendingAction
@@ -42,7 +43,7 @@ func parseNew(src string) (*RuleFile, error) {
 		if pending.isInject {
 			a = InjectAction{Lang: pending.lang, Key: pending.key, Code: body}
 		} else {
-			a = PatchAction{Op: pending.op, Value: ParseValue(body)}
+			a = PatchAction{Op: pending.op, Path: pending.path, Value: ParseValue(body)}
 		}
 
 		if currentRule != nil {
@@ -161,44 +162,11 @@ func parseNew(src string) (*RuleFile, error) {
 			continue
 		}
 
-		// Patch ops
-		var op PatchOp
-		foundOp := false
-		if strings.HasPrefix(trimmed, "&rm:") {
-			op = PatchRM; foundOp = true
-		} else if strings.HasPrefix(trimmed, "&rp-k:") || strings.HasPrefix(trimmed, "&rp-0:") {
-			op = PatchRPK; foundOp = true
-		} else if strings.HasPrefix(trimmed, "&rp-v:") || strings.HasPrefix(trimmed, "&rp-1:") {
-			op = PatchRPV; foundOp = true
-		} else if strings.HasPrefix(trimmed, "&merge:") || strings.HasPrefix(trimmed, "&add:") {
-			op = PatchMerge; foundOp = true
-		} else if strings.HasPrefix(trimmed, "&append:") {
-			op = PatchAppend; foundOp = true
-		} else if strings.HasPrefix(trimmed, "&regex:") {
-			op = PatchRegex; foundOp = true
-		}
-
-		if foundOp {
+		// Actions (Symbols: ++ -- >> << ~~) or Keywords (MERGE SET REMOVE PUSH)
+		op, path, initial, ok := parseActionLine(trimmed)
+		if ok {
 			commitPending()
-			// Extract initial data if on same line
-			var initial string
-			if op == PatchRM { initial = strings.TrimPrefix(trimmed, "&rm:") }
-			if op == PatchRPK { 
-				initial = strings.TrimPrefix(trimmed, "&rp-k:") 
-				if initial == trimmed { initial = strings.TrimPrefix(trimmed, "&rp-0:") }
-			}
-			if op == PatchRPV { 
-				initial = strings.TrimPrefix(trimmed, "&rp-v:") 
-				if initial == trimmed { initial = strings.TrimPrefix(trimmed, "&rp-1:") }
-			}
-			if op == PatchMerge { 
-				initial = strings.TrimPrefix(trimmed, "&merge:") 
-				if initial == trimmed { initial = strings.TrimPrefix(trimmed, "&add:") }
-			}
-			if op == PatchAppend { initial = strings.TrimPrefix(trimmed, "&append:") }
-			if op == PatchRegex { initial = strings.TrimPrefix(trimmed, "&regex:") }
-			
-			pending = &pendingAction{isInject: false, op: op, buf: []string{initial}}
+			pending = &pendingAction{isInject: false, op: op, path: path, buf: []string{initial}}
 			continue
 		}
 
@@ -221,6 +189,72 @@ func parseNew(src string) (*RuleFile, error) {
 	}
 
 	return rf, nil
+}
+
+func parseActionLine(line string) (PatchOp, string, string, bool) {
+	// Symbols (Direct root actions)
+	if strings.HasPrefix(line, "++") { return PatchMerge, "", strings.TrimSpace(line[2:]), true }
+	if strings.HasPrefix(line, "--") { return PatchRM, "", strings.TrimSpace(line[2:]), true }
+	if strings.HasPrefix(line, ">>") { return PatchRPK, "", strings.TrimSpace(line[2:]), true }
+	if strings.HasPrefix(line, "<<") { return PatchAppend, "", strings.TrimSpace(line[2:]), true }
+	if strings.HasPrefix(line, "~~") { return PatchRegex, "", strings.TrimSpace(line[2:]), true }
+
+	// Legacy & Support
+	if strings.HasPrefix(line, "&") {
+		parts := strings.SplitN(line[1:], ":", 2)
+		opStr := strings.ToLower(parts[0])
+		initial := ""
+		if len(parts) > 1 { initial = parts[1] }
+		var op PatchOp
+		switch opStr {
+		case "rm": op = PatchRM
+		case "merge", "add": op = PatchMerge
+		case "append": op = PatchAppend
+		case "regex": op = PatchRegex
+		case "rpk", "rp-k": op = PatchRPK
+		case "rpv", "rp-v": op = PatchRPV
+		}
+		if op != "" { return op, "", strings.TrimSpace(initial), true }
+	}
+
+	// Keywords (Path-based or explicit)
+	upper := strings.ToUpper(line)
+	keywords := []struct{k string; op PatchOp}{
+		{"MERGE ", PatchMerge},
+		{"SET ", PatchSet},
+		{"REMOVE ", PatchRM},
+		{"PUSH ", PatchPush},
+	}
+
+	for _, kv := range keywords {
+		if strings.HasPrefix(upper, kv.k) {
+			rest := strings.TrimSpace(line[len(kv.k):])
+			// Path is everything until the first structural character or space
+			path := ""
+			initial := rest
+			
+			// Find where the value starts
+			idx := -1
+			for i, r := range rest {
+				if r == '{' || r == '[' || r == '"' || r == '\'' || unicode.IsSpace(r) {
+					idx = i
+					break
+				}
+			}
+			
+			if idx != -1 {
+				path = strings.TrimSpace(rest[:idx])
+				initial = strings.TrimSpace(rest[idx:])
+			} else {
+				// No structural character found, might be just a path (for RM)
+				path = rest
+				initial = ""
+			}
+			return kv.op, path, initial, true
+		}
+	}
+
+	return "", "", "", false
 }
 
 // ParseValue is a simple recursive descent parser for XRU structures.

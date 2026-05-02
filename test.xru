@@ -59,3 +59,9 @@ This is a brand new file in the sandbox.
   "Base": "Enhanced"
 }
 #END
+
+// 2. Test INCLUDE
+#INCLUDE: integration.xru
+#LOG: "✅ Include réussi."
+
+BREAK 1

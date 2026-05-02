@@ -31,6 +31,8 @@ const (
 	PatchMerge PatchOp = "MERGE"  // Structured Deep-merge
 	PatchAppend PatchOp = "APPEND" // Append to array
 	PatchRegex  PatchOp = "REGEX"  // Regex replacement
+	PatchSet    PatchOp = "SET"    // Set value at path
+	PatchPush   PatchOp = "PUSH"   // Push value to array
 )
 
 // Value represents a structured data piece in the XRU language.
@@ -76,6 +78,7 @@ func (InjectAction) IsAction() {}
 // PatchAction applies a structured mutation.
 type PatchAction struct {
 	Op    PatchOp
+	Path  string
 	Value Value
 }
 

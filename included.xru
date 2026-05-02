@@ -1,0 +1,5 @@
+#LOG: "--- Included Rules Starting ---"
+#CREATE: included-file.txt
+Contenu généré par un fichier inclus.
+#END
+#LOG: "--- Included Rules Finished ---"

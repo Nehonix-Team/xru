@@ -215,17 +215,31 @@ func parseTarget(line string) (string, string) {
 	inQuote := false
 	idx := -1
 	for i := 0; i < len(line)-4; i++ {
-		if line[i] == '"' || line[i] == '\'' { inQuote = !inQuote }
+		if line[i] == '"' || line[i] == '\'' {
+			inQuote = !inQuote
+		}
 		if !inQuote && line[i:i+4] == " as " {
 			idx = i
 			break
 		}
 	}
 
+	target := line
+	as := ""
 	if idx != -1 {
-		return strings.TrimSpace(line[:idx]), strings.TrimSpace(line[idx+4:])
+		target = strings.TrimSpace(line[:idx])
+		as = strings.TrimSpace(line[idx+4:])
 	}
-	return line, ""
+
+	// Trim outer quotes from target
+	if len(target) >= 2 {
+		if (target[0] == '"' && target[len(target)-1] == '"') ||
+			(target[0] == '\'' && target[len(target)-1] == '\'') {
+			target = target[1 : len(target)-1]
+		}
+	}
+
+	return target, as
 }
 
 func parseVar(line string) (string, string, bool) {

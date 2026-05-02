@@ -1,0 +1,121 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "XyPriss Rule Unit",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#scoping"
+    },
+    {
+      "include": "#actions"
+    },
+    {
+      "include": "#patch_ops"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#constants"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.xru",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "scoping": {
+      "patterns": [
+        {
+          "name": "keyword.control.scoping.xru",
+          "match": "^#(BEGIN|CREATE):",
+          "captures": {
+            "1": { "name": "keyword.other.unit.xru" }
+          }
+        },
+        {
+          "name": "keyword.control.scoping.end.xru",
+          "match": "^#END(:.*)?$"
+        }
+      ]
+    },
+    "actions": {
+      "patterns": [
+        {
+          "name": "keyword.control.action.inject.xru",
+          "match": "^@[A-Z]*INJECT:",
+          "captures": {
+            "0": { "name": "entity.name.tag.xru" }
+          }
+        },
+        {
+          "name": "keyword.control.action.end.xru",
+          "match": "^@END$",
+          "captures": {
+            "0": { "name": "entity.name.tag.xru" }
+          }
+        }
+      ]
+    },
+    "patch_ops": {
+      "patterns": [
+        {
+          "name": "keyword.operator.patch.xru",
+          "match": "&(merge|add|rm|rp-k|rp-0|rp-v|rp-1|append|regex):"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.xru",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.xru",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.xru",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.xru",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.xru",
+          "match": "\\b\\d+(\\.\\d+)?\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.xru",
+          "match": "\\b(true|false|null)\\b"
+        }
+      ]
+    }
+  ],
+  "scopeName": "source.xru"
+}

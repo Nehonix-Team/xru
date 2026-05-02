@@ -1,0 +1,39 @@
+{
+  "name": "xru-syntax",
+  "displayName": "XyPriss Rule Unit (XRU) Syntax",
+  "description": "Syntax highlighting for XRU (.xru) transformation rules.",
+  "version": "0.1.0",
+  "publisher": "nehonix",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "xru",
+        "aliases": [
+          "XRU",
+          "xru"
+        ],
+        "extensions": [
+          ".xru"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "xru",
+        "scopeName": "source.xru",
+        "path": "./syntaxes/xru.tmLanguage.json"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nehonix-Team/xru"
+  }
+}

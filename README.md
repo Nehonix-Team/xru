@@ -91,7 +91,27 @@ Injects code at a marker (e.g., `// xfpm: key`) in the target file.
 
 ---
 
-## 4. Language Features
+## 4. Variables & Interpolation
+
+XRU allows capturing execution state and reusing it via dynamic variables.
+
+### Capture with `as`
+Append `as NAME` to any directive to store its target or result.
+- `#SELECT: path as VAR` : Stores the resolved absolute path.
+- `#EXEC: command as OUT` : Stores the command string (future: captures stdout).
+- `#CREATE: file as F` : Stores the file path.
+
+### F-String Interpolation `{}`
+Use `{NAME}` to inject variable values into strings, paths, or patch values.
+- `#LOG: "Current path is {VAR}"`
+- `#BEGIN: {VAR}/config.json`
+- `SET version "{VAR}"`
+
+Interpolation is **recursive**: it works inside nested JSON objects during patch operations.
+
+---
+
+## 5. Language Features
 
 - **Comments**: Use `//` for single-line comments anywhere.
 - **Unquoted Keys**: Keys in objects don't require quotes if they are simple strings.
@@ -100,7 +120,7 @@ Injects code at a marker (e.g., `// xfpm: key`) in the target file.
 
 ---
 
-## 5. CLI Usage
+## 6. CLI Usage
 
 ```bash
 xru [options] <rule_file.xru> [target_directory]

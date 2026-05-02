@@ -19,6 +19,7 @@ if ! command -v vsce &> /dev/null; then
 fi
 
 # Package the extension
+cd "$(dirname "$0")"
 vsce package --out $EXT_NAME
 
 echo -e "${GREEN}[SUCCESS]${NC} Extension packaged: $EXT_NAME"

@@ -131,8 +131,8 @@
           "begin": "\"", "end": "\"",
           "patterns": [
             { "name": "constant.character.escape.xru", "match": "\\\\." },
-            { "include": "#interpolation" },
-            { "include": "#log_colors" }
+            { "include": "#log_colors" },
+            { "include": "#interpolation" }
           ]
         },
         {
@@ -140,8 +140,8 @@
           "begin": "'", "end": "'",
           "patterns": [
             { "name": "constant.character.escape.xru", "match": "\\\\." },
-            { "include": "#interpolation" },
-            { "include": "#log_colors" }
+            { "include": "#log_colors" },
+            { "include": "#interpolation" }
           ]
         }
       ]
@@ -149,8 +149,8 @@
     "log_colors": {
       "patterns": [
         {
-          "name": "constant.other.color.xru",
-          "match": "<(red|green|yellow|blue|magenta|cyan|gray|white|/)>"
+          "name": "entity.name.tag.xru",
+          "match": "</?(red|green|yellow|blue|magenta|cyan|gray|white|/)>"
         }
       ]
     },

@@ -4,6 +4,10 @@
   "description": "Syntax highlighting for XRU (.xru) transformation rules.",
   "version": "0.1.0",
   "publisher": "nehonix",
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:xru"
+  ],
   "engines": {
     "vscode": "^1.75.0"
   },

@@ -57,9 +57,16 @@ xru patch.xru .
 
 ---
 
+## CLI Commands
+
+- `xru build <file.xru>`: Transpile an XRU script into standalone `.sh` (Unix) and `.ps1` (Windows) scripts.
+- `xru run <file.xru> [target]`: Execute rules on a target directory.
+
+---
+
 ## VS Code Support
 
-For syntax highlighting, install the XRU extension located in `pkg/ext/vscode`.
+For syntax highlighting, install the XRU extension located in `pkg/ext/vscode`. The XRU engine supports both direct execution and **standalone compilation** into native shell scripts.
 
 ---
 

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Nehonix-Team/xru/internal/compiler"
 	"github.com/Nehonix-Team/xru/internal/engine"
 	"github.com/Nehonix-Team/xru/internal/utils"
 )
@@ -153,6 +154,12 @@ func main() {
 		fmt.Printf("XRU %s (%s/%s)\n", utils.BinVersion, runtime.GOOS, runtime.GOARCH)
 	case "upgrade":
 		handleUpgrade()
+	case "build":
+		if len(args) < 2 {
+			fmt.Printf("%sError: Missing rule file. Usage: xru build <rule_file>%s\n", colorRed, colorReset)
+			os.Exit(1)
+		}
+		runBuild(args[1])
 	case "run":
 		if len(args) < 2 {
 			fmt.Printf("%sError: Missing rule file. Usage: xru run <rule_file> [target]%s\n", colorRed, colorReset)
@@ -507,4 +514,35 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, in
 			}
 		}
 	}
+}
+
+func runBuild(rulePath string) {
+	rf, err := engine.ParseFile(rulePath)
+	if err != nil {
+		fmt.Printf("%sError parsing rule file: %v%s\n", colorRed, err, colorReset)
+		os.Exit(1)
+	}
+
+	shScript, err := compiler.CompileToSH(rf)
+	if err != nil {
+		fmt.Printf("%sError compiling to SH: %v%s\n", colorRed, err, colorReset)
+		os.Exit(1)
+	}
+
+	psScript, err := compiler.CompileToPS1(rf)
+	if err != nil {
+		fmt.Printf("%sError compiling to PS1: %v%s\n", colorRed, err, colorReset)
+		os.Exit(1)
+	}
+
+	base := strings.TrimSuffix(rulePath, filepath.Ext(rulePath))
+	shPath := base + ".sh"
+	psPath := base + ".ps1"
+
+	os.WriteFile(shPath, []byte(shScript), 0755)
+	os.WriteFile(psPath, []byte(psScript), 0644)
+
+	fmt.Printf("%s[BUILD]%s Standalone scripts generated:\n", colorGreen, colorReset)
+	fmt.Printf("  - Unix: %s\n", shPath)
+	fmt.Printf("  - Win:  %s\n", psPath)
 }

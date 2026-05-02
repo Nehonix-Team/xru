@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "build:ext": "bash ./pkg/ext/vscode/build.sh"
+  }
+}

@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2026-05-02
+Add build script for VS Code extension
+
 ## [0.1.1] - 2026-05-02
 update compiled binaries for darwin and linux architectures
 

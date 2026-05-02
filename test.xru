@@ -1,0 +1,19 @@
+
+#BEGIN:package.json
+&merge: {
+  scripts: {
+    "dev:xms": "xfpm run dev --mode xms"
+  }
+}
+#END
+
+#BEGIN:xypriss.config.ts
+@TSINJECT:{{SECURITY_CONFIG}}
+  security: {
+    terminalOnly: {
+      enable: true,
+      allowedTools: ["postman", "curl"]
+    }
+  },
+@END
+#END

@@ -124,7 +124,30 @@ Interpolation is **recursive**: it works inside nested JSON objects during patch
 
 ---
 
-## 5. Language Features
+## 5. Strict Execution Rules
+
+XRU follows strict rules to ensure predictable and cross-platform behavior.
+
+### Quoting Policy
+Directives automatically trim **outer quotes** (single or double) from their targets.
+- `#EXEC: "echo 'hello'"` is executed as `echo 'hello'`.
+- `#LOG: 'Processing...'` is logged as `Processing...`.
+- *Internal quotes* (like in JSON objects or shell arguments) are preserved.
+
+### Undefined Variables
+Accessing a variable that does not exist or is out of scope results in an immediate injection of:
+`[ERROR: UNDEFINED_VAR]`
+This ensures you never accidentally deploy a configuration with missing markers.
+
+### Block-Level Context
+When directives like `#LOG`, `#ASSERT`, or `#EXEC` are used **inside** a `#BEGIN` or `#CREATE` block:
+1. They are executed in the **local scope** of that block.
+2. They have access to local variables (declared with `let`) and the block's alias (captured with `as`).
+3. If they are used outside a block, they operate in the global scope.
+
+---
+
+## 6. Language Features
 
 - **Comments**: Use `//` for single-line comments anywhere.
 - **Unquoted Keys**: Keys in objects don't require quotes if they are simple strings.
@@ -133,7 +156,7 @@ Interpolation is **recursive**: it works inside nested JSON objects during patch
 
 ---
 
-## 6. CLI Usage
+## 7. CLI Usage
 
 ```bash
 xru [options] <rule_file.xru> [target_directory]

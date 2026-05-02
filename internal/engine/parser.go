@@ -108,7 +108,7 @@ func parseNew(src string) (*RuleFile, error) {
 			commitPending()
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#LOG:"))
 			if currentRule != nil {
-				currentRule.Actions = append(currentRule.Actions, LogAction{Message: target})
+				currentRule.Actions = append(currentRule.Actions, LogAction{Message: target, As: as})
 			} else {
 				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeLog, Target: target, As: as})
 			}
@@ -119,7 +119,7 @@ func parseNew(src string) (*RuleFile, error) {
 			commitPending()
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#ASSERT:"))
 			if currentRule != nil {
-				currentRule.Actions = append(currentRule.Actions, AssertAction{Condition: target})
+				currentRule.Actions = append(currentRule.Actions, AssertAction{Condition: target, As: as})
 			} else {
 				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeAssert, Target: target, As: as})
 			}
@@ -137,7 +137,7 @@ func parseNew(src string) (*RuleFile, error) {
 			commitPending()
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#EXEC:"))
 			if currentRule != nil {
-				currentRule.Actions = append(currentRule.Actions, ExecAction{Command: target})
+				currentRule.Actions = append(currentRule.Actions, ExecAction{Command: target, As: as})
 			} else {
 				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeExec, Target: target, As: as})
 			}

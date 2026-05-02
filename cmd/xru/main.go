@@ -54,6 +54,12 @@ func (s *Scope) Set(name, val string) {
 	s.Vars[name] = val
 }
 
+func unescape(s string) string {
+	s = strings.ReplaceAll(s, "\\n", "\n")
+	s = strings.ReplaceAll(s, "\\t", "\t")
+	return s
+}
+
 var rootScope = &Scope{Vars: make(map[string]string)}
 
 func main() {
@@ -169,7 +175,7 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 		}
 
 		if rule.Type == engine.RuleTypeLog {
-			fmt.Printf("%s[LOG]%s %s\n", colorMagenta, colorReset, target)
+			fmt.Printf("%s[LOG]%s %s\n", colorMagenta, colorReset, unescape(target))
 			continue
 		}
 
@@ -211,7 +217,6 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 			if verbose {
 				fmt.Printf("%s[EXEC]%s %s\n", colorCyan, colorReset, cmdStr)
 			}
-			// Use shell to support pipes and redirects
 			var cmd *exec.Cmd
 			if runtime.GOOS == "windows" {
 				cmd = exec.Command("cmd", "/C", cmdStr)
@@ -219,10 +224,18 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 				cmd = exec.Command("sh", "-c", cmdStr)
 			}
 			cmd.Dir = cb
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+			if rule.As != "" {
+				out, err := cmd.Output()
+				if err != nil {
+					fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+				}
+				scope.Set(rule.As, strings.TrimSpace(string(out)))
+			} else {
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				if err := cmd.Run(); err != nil {
+					fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+				}
 			}
 			continue
 		}
@@ -381,7 +394,11 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 		scope.Set(a.Name, val)
 		return content
 	case engine.LogAction:
-		fmt.Printf("%s[LOG]%s %s\n", colorMagenta, colorReset, engine.Interpolate(a.Message, vars))
+		msg := engine.Interpolate(a.Message, vars)
+		fmt.Printf("%s[LOG]%s %s\n", colorMagenta, colorReset, unescape(msg))
+		if a.As != "" {
+			scope.Set(a.As, msg)
+		}
 		return content
 	case engine.AssertAction:
 		cond := engine.Interpolate(a.Condition, vars)
@@ -393,6 +410,9 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 				os.Exit(1)
 			}
 		}
+		if a.As != "" {
+			scope.Set(a.As, cond)
+		}
 		return content
 	case engine.ExecAction:
 		cmdStr := engine.Interpolate(a.Command, vars)
@@ -403,10 +423,18 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 			cmd = exec.Command("sh", "-c", cmdStr)
 		}
 		cmd.Dir = cb
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+		if a.As != "" {
+			out, err := cmd.Output()
+			if err != nil {
+				fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+			}
+			scope.Set(a.As, strings.TrimSpace(string(out)))
+		} else {
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+			}
 		}
 		return content
 	case engine.InjectAction:

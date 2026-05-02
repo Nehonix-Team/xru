@@ -97,6 +97,7 @@ func (VarAction) IsAction() {}
 // LogAction prints a message during block execution.
 type LogAction struct {
 	Message string
+	As      string
 }
 
 func (LogAction) IsAction() {}
@@ -104,6 +105,7 @@ func (LogAction) IsAction() {}
 // AssertAction validates a condition during block execution.
 type AssertAction struct {
 	Condition string
+	As        string
 }
 
 func (AssertAction) IsAction() {}
@@ -111,6 +113,7 @@ func (AssertAction) IsAction() {}
 // ExecAction runs a command during block execution.
 type ExecAction struct {
 	Command string
+	As      string
 }
 
 func (ExecAction) IsAction() {}

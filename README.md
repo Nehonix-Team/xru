@@ -151,7 +151,6 @@ When directives like `#LOG`, `#ASSERT`, or `#EXEC` are used **inside** a `#BEGIN
 
 - **Comments**: Use `//` for single-line comments anywhere.
 - **Unquoted Keys**: Keys in objects don't require quotes if they are simple strings.
-- **XyPriss Variables**: Native support and preservation of `&(var).key` syntax.
 - **Formatting**: XRU preserves indentation and existing comments in your source files.
 
 ---

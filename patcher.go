@@ -185,6 +185,12 @@ func injectAtEnd(content, key string, value Value) string {
 
 	serialised := serialiseValue(value, indent)
 	prefix := strings.TrimRight(content[:pos], " \t\n\r")
+	
+	// Add comma to previous entry if needed
+	if !strings.HasSuffix(prefix, "{") && !strings.HasSuffix(prefix, ",") && !strings.HasSuffix(prefix, "[") {
+		prefix += ","
+	}
+	
 	entry := fmt.Sprintf("\n%s%q: %s,", indent, key, serialised)
 
 	return prefix + entry + "\n" + content[pos:]

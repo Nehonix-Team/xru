@@ -31,6 +31,13 @@ Opens a transformation block for an existing file.
 Creates a new file with the provided static content.
 - Everything between the opening and closing tag is treated as raw file content.
 
+### `#SELECT:<path>`
+Defines a base directory (sandbox) for all subsequent scoping rules.
+- **`<path>`**: Path relative to the initial target directory (or absolute).
+- All following `#BEGIN` or `#CREATE` directives will be resolved relative to this path.
+- This is particularly useful for monorepos or complex project structures.
+- You can use `#SELECT: .` to return to the root directory.
+
 ### Global Rules
 Any `@*INJECT` or `&` directive placed outside of a `#BEGIN` block is treated as a **Global Rule**.
 - Global rules are applied to matching source files.

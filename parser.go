@@ -58,13 +58,16 @@ func parseNew(src string) (*RuleFile, error) {
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
 
 		if strings.HasPrefix(trimmed, "#BEGIN:") {
 			commitPending()
 			if currentRule != nil {
 				rf.Rules = append(rf.Rules, *currentRule)
 			}
-			currentRule = &Rule{Type: RuleTypeBegin, Target: strings.TrimPrefix(trimmed, "#BEGIN:")}
+			currentRule = &Rule{Type: RuleTypeBegin, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#BEGIN:"))}
 			continue
 		}
 
@@ -73,7 +76,28 @@ func parseNew(src string) (*RuleFile, error) {
 			if currentRule != nil {
 				rf.Rules = append(rf.Rules, *currentRule)
 			}
-			currentRule = &Rule{Type: RuleTypeCreate, Target: strings.TrimPrefix(trimmed, "#CREATE:")}
+			currentRule = &Rule{Type: RuleTypeCreate, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#CREATE:"))}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "#SELECT:") {
+			commitPending()
+			if currentRule != nil {
+				rf.Rules = append(rf.Rules, *currentRule)
+			}
+			currentRule = &Rule{Type: RuleTypeSelect, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#SELECT:"))}
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "#BREAK:") || strings.HasPrefix(trimmed, "#EXIT:") {
+			commitPending()
+			if currentRule != nil {
+				rf.Rules = append(rf.Rules, *currentRule)
+			}
+			val := strings.TrimPrefix(trimmed, "#BREAK:")
+			if val == trimmed {
+				val = strings.TrimPrefix(trimmed, "#EXIT:")
+			}
+			currentRule = &Rule{Type: RuleTypeBreak, Target: strings.TrimSpace(val)}
 			continue
 		}
 
@@ -86,11 +110,12 @@ func parseNew(src string) (*RuleFile, error) {
 			continue
 		}
 
-		if strings.HasSuffix(trimmed, "INJECT:") && strings.HasPrefix(trimmed, "@") {
+		if strings.HasPrefix(trimmed, "@") && strings.Contains(trimmed, "INJECT:") {
 			commitPending()
 			tag := strings.TrimPrefix(trimmed, "@")
-			lang := strings.TrimSuffix(tag, "INJECT:")
-			key := strings.TrimSpace(strings.TrimPrefix(trimmed, "@"+lang+"INJECT:"))
+			idx := strings.Index(tag, "INJECT:")
+			lang := tag[:idx]
+			key := strings.TrimSpace(tag[idx+len("INJECT:"):])
 			pending = &pendingAction{isInject: true, lang: lang, key: key}
 			continue
 		}
@@ -238,19 +263,22 @@ func (p *valParser) parseArray() Array {
 
 func (p *valParser) parseKey() string {
 	p.skipWS()
-	start := p.pos
 	if p.pos < len(p.src) && (p.src[p.pos] == '"' || p.src[p.pos] == '\'') {
 		quote := p.src[p.pos]
 		p.pos++
-		start = p.pos
-		for p.pos < len(p.src) && p.src[p.pos] != quote {
+		start := p.pos
+		for p.pos < len(p.src) {
+			if p.src[p.pos] == quote && p.src[p.pos-1] != '\\' {
+				break
+			}
 			p.pos++
 		}
 		key := string(p.src[start:p.pos])
 		if p.pos < len(p.src) { p.pos++ }
-		return key
+		return unescape(key)
 	}
 
+	start := p.pos
 	for p.pos < len(p.src) && !unicode.IsSpace(p.src[p.pos]) && p.src[p.pos] != ':' && p.src[p.pos] != '}' && p.src[p.pos] != ',' {
 		p.pos++
 	}
@@ -259,24 +287,34 @@ func (p *valParser) parseKey() string {
 
 func (p *valParser) parseLiteral() Literal {
 	p.skipWS()
-	start := p.pos
 	if p.pos < len(p.src) && (p.src[p.pos] == '"' || p.src[p.pos] == '\'') {
 		quote := p.src[p.pos]
 		p.pos++
-		start = p.pos
-		for p.pos < len(p.src) && p.src[p.pos] != quote {
+		start := p.pos
+		for p.pos < len(p.src) {
+			if p.src[p.pos] == quote && p.src[p.pos-1] != '\\' {
+				break
+			}
 			p.pos++
 		}
 		val := string(p.src[start:p.pos])
 		if p.pos < len(p.src) { p.pos++ }
-		return Literal(val)
+		return Literal(unescape(val))
 	}
 
+	start := p.pos
 	// Parse until next delimiter
 	for p.pos < len(p.src) && p.src[p.pos] != '}' && p.src[p.pos] != ']' && p.src[p.pos] != ',' && p.src[p.pos] != '\n' {
 		p.pos++
 	}
 	return Literal(strings.TrimSpace(string(p.src[start:p.pos])))
+}
+
+func unescape(s string) string {
+	s = strings.ReplaceAll(s, "\\\"", "\"")
+	s = strings.ReplaceAll(s, "\\'", "'")
+	s = strings.ReplaceAll(s, "\\\\", "\\")
+	return s
 }
 
 func (p *valParser) skipWS() {

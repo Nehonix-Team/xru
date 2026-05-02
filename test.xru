@@ -1,19 +1,61 @@
+// Global rule: applies to any file with this marker
+@INJECT:{{GLOBAL_MARKER}}
+// Injected by global rule
+@END
 
-#BEGIN:package.json
+// Select the sandbox
+#SELECT: ./sandbox
+
+// Test CREATE
+#CREATE: new-file.txt
+This is a brand new file in the sandbox.
+#END
+
+// Test BEGIN with multiple patch operations
+#BEGIN: config.json
 &merge: {
-  scripts: {
-    "dev:xms": "xfpm run dev --mode xms"
+  name: "new-name",
+  settings: {
+    theme: "dark",
+    advanced: {
+      enable: true
+    }
+  }
+}
+&append: {
+  features: "monitoring"
+}
+&rp-k: {
+  "version": "app_version"
+}
+&rm: {
+  settings: {
+    debug: ""
   }
 }
 #END
 
-#BEGIN:xypriss.config.ts
-@TSINJECT:{{SECURITY_CONFIG}}
-  security: {
-    terminalOnly: {
-      enable: true,
-      allowedTools: ["postman", "curl"]
-    }
-  },
+// Test Injection
+#BEGIN: main.ts
+@TSINJECT:{{LOGIC}}
+  function initialize() {
+    console.log("Injected initialization logic");
+  }
 @END
+#END
+
+// Test Regex
+#BEGIN: version.txt
+&regex: {
+  "v[0-9]+\\.[0-9]+\\.[0-9]+": "v1.2.3"
+}
+#END
+
+// Back to root
+#SELECT: .
+
+#BEGIN: root-file.txt
+&regex: {
+  "Base": "Enhanced"
+}
 #END

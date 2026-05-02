@@ -12,6 +12,8 @@ type RuleType string
 const (
 	RuleTypeBegin  RuleType = "BEGIN"  // Transform an existing file
 	RuleTypeCreate RuleType = "CREATE" // Create a new file
+	RuleTypeSelect RuleType = "SELECT" // Define a target sandbox/directory
+	RuleTypeBreak  RuleType = "BREAK"  // Exit the program
 	RuleTypeGlobal RuleType = "GLOBAL" // Apply to all matching files
 )
 

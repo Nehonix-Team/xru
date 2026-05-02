@@ -17,43 +17,76 @@ import (
 )
 
 const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[31m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorBlue   = "\033[34m"
+	colorReset   = "\033[0m"
+	colorRed     = "\033[31m"
+	colorGreen   = "\033[32m"
+	colorYellow  = "\033[33m"
+	colorBlue    = "\033[34m"
 	colorMagenta = "\033[35m"
-	colorCyan   = "\033[36m"
+	colorCyan    = "\033[36m"
 	colorGray    = "\033[90m"
 	colorWhite   = "\033[97m"
 )
 
 var verbose bool
+var currentFile string
 
 type Scope struct {
-	Vars    map[string]string
-	Modules map[string]string // Alias -> ModuleName
-	Parent  *Scope
+	Vars     map[string]string
+	DefLines map[string]int
+	Used     map[string]bool
+	Modules  map[string]string // Alias -> ModuleName
+	Parent   *Scope
 }
 
-func (s *Scope) Flatten() map[string]string {
-	res := make(map[string]string)
-	if s.Parent != nil {
-		for k, v := range s.Parent.Flatten() {
-			res[k] = v
+func (s *Scope) Get(name string) (string, bool) {
+	if val, ok := s.Vars[name]; ok {
+		if s.Used == nil {
+			s.Used = make(map[string]bool)
 		}
+		s.Used[name] = true
+		return val, true
 	}
-	for k, v := range s.Vars {
-		res[k] = v
+	if s.Parent != nil {
+		return s.Parent.Get(name)
 	}
-	return res
+	return "", false
 }
 
-func (s *Scope) Set(name, val string) {
+func (s *Scope) Set(name, val string, line int) {
 	if s.Vars == nil {
 		s.Vars = make(map[string]string)
+		s.DefLines = make(map[string]int)
+	}
+	if _, ok := s.Vars[name]; ok {
+		fmt.Printf("%s:%d: %serror:%s variable '%s' already defined in this scope\n", currentFile, line, colorRed, colorReset, name)
+		os.Exit(1)
 	}
 	s.Vars[name] = val
+	s.DefLines[name] = line
+}
+
+func (s *Scope) RegisterModule(alias, name string, line int) {
+	if s.Modules == nil {
+		s.Modules = make(map[string]string)
+	}
+	if _, ok := s.Modules[alias]; ok {
+		fmt.Printf("%s:%d: %serror:%s module alias '%s' already defined in this scope\n", currentFile, line, colorRed, colorReset, alias)
+		os.Exit(1)
+	}
+	s.Modules[alias] = name
+}
+
+func (s *Scope) CheckUnused() {
+	if s.Vars == nil {
+		return
+	}
+	for name := range s.Vars {
+		if s.Used == nil || !s.Used[name] {
+			line := s.DefLines[name]
+			fmt.Printf("%s:%d: %swarning:%s variable '%s' is defined but never used\n", currentFile, line, colorYellow, colorReset, name)
+		}
+	}
 }
 
 func unescape(s string) string {
@@ -85,8 +118,10 @@ func colorify(s string) string {
 }
 
 var rootScope = &Scope{
-	Vars:    make(map[string]string),
-	Modules: map[string]string{"U": "Utils", "S": "Sys"}, // Default aliases
+	Vars:     make(map[string]string),
+	DefLines: make(map[string]int),
+	Used:     make(map[string]bool),
+	Modules:  make(map[string]string),
 }
 
 func main() {
@@ -139,6 +174,7 @@ func main() {
 }
 
 func runPatch(rulePath, targetDir string) {
+	currentFile = rulePath
 	absTarget, err := filepath.Abs(targetDir)
 	if err != nil {
 		fmt.Printf("%sError resolving target directory: %v%s\n", colorRed, err, colorReset)
@@ -156,6 +192,7 @@ func runPatch(rulePath, targetDir string) {
 	}
 
 	executeRules(rf.Rules, absTarget, absTarget, rulePath, rootScope)
+	rootScope.CheckUnused()
 
 	if verbose {
 		fmt.Printf("%s[SUCCESS]%s Transformation complete.\n", colorGreen, colorReset)
@@ -165,11 +202,11 @@ func runPatch(rulePath, targetDir string) {
 func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath string, scope *Scope) {
 	cb := currentBase
 	for _, rule := range rules {
-		target := engine.Interpolate(rule.Target, scope.Flatten())
+		target := engine.Interpolate(rule.Target, scope)
 
 		if rule.Type == engine.RuleTypeVar {
-			val := engine.Interpolate(rule.Content, scope.Flatten())
-			scope.Set(rule.Target, val)
+			val := engine.Interpolate(rule.Content, scope)
+			scope.Set(rule.Target, val, rule.Line)
 			continue
 		}
 
@@ -183,27 +220,24 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 				fmt.Printf("%s[SELECT]%s Switching sandbox to: %s\n", colorCyan, colorReset, cb)
 			}
 			if rule.As != "" {
-				scope.Set(rule.As, cb)
+				scope.Set(rule.As, cb, rule.Line)
 			}
 			continue
 		}
 
 		if rule.Type == engine.RuleTypeUse {
-			name := engine.Interpolate(rule.Target, scope.Flatten())
+			name := engine.Interpolate(rule.Target, scope)
 			alias := rule.As
 			if alias == "" {
 				alias = name
 			}
-			if scope.Modules == nil {
-				scope.Modules = make(map[string]string)
-			}
-			scope.Modules[alias] = name
+			scope.RegisterModule(alias, name, rule.Line)
 			continue
 		}
 
 		if rule.Type == engine.RuleTypeModule {
 			parts := strings.SplitN(rule.Target, ".", 2)
-			executeModuleAction(scope, cb, parts[0], parts[1], rule.Content, rule.As, rulePath, initialTarget)
+			executeModuleAction(scope, cb, parts[0], parts[1], rule.Content, rule.As, rulePath, initialTarget, rule.Line)
 			continue
 		}
 
@@ -300,13 +334,18 @@ func handleUpgrade() {
 
 func applyRule(targetDir string, rule engine.Rule, parentScope *Scope) error {
 	// Create local scope for this rule
-	scope := &Scope{Vars: make(map[string]string), Modules: parentScope.Modules, Parent: parentScope}
-
-	target := engine.Interpolate(rule.Target, scope.Flatten())
-	if rule.As != "" {
-		scope.Set(rule.As, target)
+	scope := &Scope{
+		Vars:     make(map[string]string),
+		DefLines: make(map[string]int),
+		Used:     make(map[string]bool),
+		Modules:  parentScope.Modules,
+		Parent:   parentScope,
 	}
-	vars := scope.Flatten()
+
+	target := engine.Interpolate(rule.Target, scope)
+	if rule.As != "" {
+		scope.Set(rule.As, target, rule.Line)
+	}
 
 	switch rule.Type {
 	case engine.RuleTypeCreate:
@@ -315,8 +354,10 @@ func applyRule(targetDir string, rule engine.Rule, parentScope *Scope) error {
 			fmt.Printf("  %s+%s Creating %s\n", colorGreen, colorReset, target)
 		}
 		os.MkdirAll(filepath.Dir(fullPath), 0755)
-		content := engine.Interpolate(rule.Content, vars)
-		return os.WriteFile(fullPath, []byte(content), 0644)
+		content := engine.Interpolate(rule.Content, scope)
+		err := os.WriteFile(fullPath, []byte(content), 0644)
+		scope.CheckUnused()
+		return err
 
 	case engine.RuleTypeBegin:
 		fullPath := filepath.Join(targetDir, target)
@@ -334,10 +375,11 @@ func applyRule(targetDir string, rule engine.Rule, parentScope *Scope) error {
 		for _, action := range rule.Actions {
 			content = applyAction(content, action, filepath.Ext(fullPath), scope, targetDir)
 		}
+		scope.CheckUnused()
 		return os.WriteFile(fullPath, []byte(content), 0644)
 
 	case engine.RuleTypeGlobal:
-		return filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+		err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
@@ -366,19 +408,20 @@ func applyRule(targetDir string, rule engine.Rule, parentScope *Scope) error {
 			}
 			return nil
 		})
+		scope.CheckUnused()
+		return err
 	}
 	return nil
 }
 
 func applyAction(content string, action engine.Action, fileExt string, scope *Scope, cb string) string {
-	vars := scope.Flatten()
 	switch a := action.(type) {
 	case engine.VarAction:
-		val := engine.Interpolate(a.Value, vars)
-		scope.Set(a.Name, val)
+		val := engine.Interpolate(a.Value, scope)
+		scope.Set(a.Name, val, a.Line)
 		return content
 	case engine.ModuleAction:
-		executeModuleAction(scope, cb, a.Module, a.Method, a.Target, a.As, "", "")
+		executeModuleAction(scope, cb, a.Module, a.Method, a.Target, a.As, "", "", a.Line)
 		return content
 	case engine.InjectAction:
 		if a.Lang != "" {
@@ -387,17 +430,17 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 				return content
 			}
 		}
-		code := engine.Interpolate(a.Code, vars)
+		code := engine.Interpolate(a.Code, scope)
 		return engine.InjectCode(content, a.Key, code)
 	case engine.PatchAction:
-		path := engine.Interpolate(a.Path, vars)
-		val := engine.InterpolateValue(a.Value, vars)
+		path := engine.Interpolate(a.Path, scope)
+		val := engine.InterpolateValue(a.Value, scope)
 		return engine.ApplyPatch(content, a.Op, path, val)
 	}
 	return content
 }
 
-func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, initialTarget string) {
+func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, initialTarget string, line int) {
 	// Resolve module name from alias
 	moduleName := mod
 	if scope.Modules != nil {
@@ -406,7 +449,7 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, in
 		}
 	}
 
-	target = engine.Interpolate(target, scope.Flatten())
+	target = engine.Interpolate(target, scope)
 
 	switch strings.ToLower(moduleName) {
 	case "utils", "u":
@@ -414,7 +457,7 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, in
 		case "LOG":
 			fmt.Printf("%s\n", colorify(unescape(target)))
 			if as != "" {
-				scope.Set(as, target)
+				scope.Set(as, target, line)
 			}
 		case "ASSERT":
 			cond := target
@@ -422,11 +465,11 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, in
 				path := strings.Trim(cond[7:len(cond)-1], "\"' ")
 				absPath := filepath.Join(cb, path)
 				if _, err := os.Stat(absPath); os.IsNotExist(err) {
-					fmt.Printf("%s[ASSERT FAILED]%s Requirement not met: %s\n", colorRed, colorReset, cond)
+					fmt.Printf("%s:%d: %s[ASSERT FAILED]%s Requirement not met: %s\n", currentFile, line, colorRed, colorReset, cond)
 					os.Exit(1)
 				}
 				if verbose {
-					fmt.Printf("%s[ASSERT OK]%s Condition met: %s\n", colorGreen, colorReset, cond)
+					fmt.Printf("%s:%d: %s[ASSERT OK]%s Condition met: %s\n", currentFile, line, colorGreen, colorReset, cond)
 				}
 			}
 		case "BREAK", "EXIT":
@@ -452,14 +495,14 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, in
 			if as != "" {
 				out, err := cmd.Output()
 				if err != nil {
-					fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+					fmt.Printf("%s:%d: %s[EXEC ERROR]%s %v\n", currentFile, line, colorRed, colorReset, err)
 				}
-				scope.Set(as, strings.TrimSpace(string(out)))
+				scope.Set(as, strings.TrimSpace(string(out)), line)
 			} else {
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
 				if err := cmd.Run(); err != nil {
-					fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+					fmt.Printf("%s:%d: %s[EXEC ERROR]%s %v\n", currentFile, line, colorRed, colorReset, err)
 				}
 			}
 		}

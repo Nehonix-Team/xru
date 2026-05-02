@@ -7,43 +7,52 @@ package engine
 import (
 	"os"
 	"regexp"
-	"strings"
 )
 
 var varRegex = regexp.MustCompile(`\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
+
+// VarProvider is an interface for looking up variables and tracking usage.
+type VarProvider interface {
+	Get(name string) (string, bool)
+}
 
 // readFile is the single I/O primitive used by the package.
 func readFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-// Interpolate replaces {VAR} placeholders with values from vars map.
-func Interpolate(s string, vars map[string]string) string {
-	for k, v := range vars {
-		s = strings.ReplaceAll(s, "{"+k+"}", v)
+// Interpolate replaces {VAR} placeholders with values from a VarProvider.
+func Interpolate(s string, provider VarProvider) string {
+	if provider == nil {
+		return s
 	}
-
-	// Replace any remaining {VAR} with error message
-	s = varRegex.ReplaceAllString(s, "[ERROR: UNDEFINED_VAR]")
-
-	return s
+	return varRegex.ReplaceAllStringFunc(s, func(m string) string {
+		name := m[1 : len(m)-1]
+		if val, ok := provider.Get(name); ok {
+			return val
+		}
+		return "[ERROR: UNDEFINED_VAR]"
+	})
 }
 
 // InterpolateValue recursively interpolates strings inside structured values.
-func InterpolateValue(v Value, vars map[string]string) Value {
+func InterpolateValue(v Value, provider VarProvider) Value {
+	if provider == nil {
+		return v
+	}
 	switch val := v.(type) {
 	case Literal:
-		return Literal(Interpolate(string(val), vars))
+		return Literal(Interpolate(string(val), provider))
 	case Object:
 		newObj := make(Object)
 		for k, v := range val {
-			newObj[k] = InterpolateValue(v, vars)
+			newObj[k] = InterpolateValue(v, provider)
 		}
 		return newObj
 	case Array:
 		newArr := make(Array, len(val))
 		for i, v := range val {
-			newArr[i] = InterpolateValue(v, vars)
+			newArr[i] = InterpolateValue(v, provider)
 		}
 		return newArr
 	}

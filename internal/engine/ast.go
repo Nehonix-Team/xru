@@ -63,6 +63,7 @@ type Rule struct {
 	As      string // Captured variable name
 	Content string
 	Actions []Action
+	Line    int
 }
 
 // Action is the interface for all rule actions.
@@ -75,6 +76,7 @@ type InjectAction struct {
 	Lang string // Target language/extension (e.g., "TS", "GO")
 	Key  string
 	Code string
+	Line int
 }
 
 func (InjectAction) IsAction() {}
@@ -84,6 +86,7 @@ type PatchAction struct {
 	Op    PatchOp
 	Path  string
 	Value Value
+	Line  int
 }
 
 func (PatchAction) IsAction() {}
@@ -92,6 +95,7 @@ func (PatchAction) IsAction() {}
 type VarAction struct {
 	Name  string
 	Value string
+	Line  int
 }
 
 func (VarAction) IsAction() {}
@@ -100,6 +104,7 @@ func (VarAction) IsAction() {}
 type LogAction struct {
 	Message string
 	As      string
+	Line    int
 }
 
 func (LogAction) IsAction() {}
@@ -108,6 +113,7 @@ func (LogAction) IsAction() {}
 type AssertAction struct {
 	Condition string
 	As        string
+	Line      int
 }
 
 func (AssertAction) IsAction() {}
@@ -116,6 +122,7 @@ func (AssertAction) IsAction() {}
 type ExecAction struct {
 	Command string
 	As      string
+	Line    int
 }
 
 func (ExecAction) IsAction() {}
@@ -126,6 +133,7 @@ type ModuleAction struct {
 	Method string
 	Target string
 	As     string
+	Line   int
 }
 
 func (ModuleAction) IsAction() {}

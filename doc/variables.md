@@ -17,13 +17,22 @@ The result or target of a directive or operation can be captured using the `as` 
 
 ---
 
-## 2. Scoping Architecture
-XRU implements a hierarchical scoping model to ensure predictable state transitions:
+## 2. The Golden Rules of Scoping
 
-1.  **Global Scope**: Variables defined at the root of the `.xru` file.
-2.  **Local Scope**: Variables defined within a block (`#BEGIN`, `#CREATE`).
-    - Local variables shadow global variables with the same identifier.
-    - Local state is strictly confined to the block and is deallocated upon `#END`.
+To ensure script reliability and maintainability, XRU enforces the following rules:
+
+### No Duplicate Definitions
+It is forbidden to define the same identifier twice within the same scope. This applies to both `let` and `as` captures.
+- **Error**: `let x = 1; let x = 2` (Immediate termination).
+
+### Shadowing Support
+A variable defined in a parent scope can be redefined within a sub-block (`#BEGIN`, `#CREATE`).
+- The local definition will shadow the global one until the block ends.
+- Once the block reaches `#END`, the original global value is restored.
+
+### Usage Tracking
+Every variable defined must be utilized at least once within its scope (via interpolation `{VAR}`).
+- **Warning**: The engine will emit a warning (tracked in IDEs) for any unused variables.
 
 ---
 

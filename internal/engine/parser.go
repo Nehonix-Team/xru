@@ -23,7 +23,7 @@ func parseNew(src string) (*RuleFile, error) {
 
 	var currentRule *Rule
 	var globalRule *Rule
-	
+
 	type pendingAction struct {
 		isInject bool
 		lang     string
@@ -31,6 +31,7 @@ func parseNew(src string) (*RuleFile, error) {
 		op       PatchOp
 		path     string
 		buf      []string
+		line     int
 	}
 	var pending *pendingAction
 
@@ -41,23 +42,24 @@ func parseNew(src string) (*RuleFile, error) {
 		body := strings.Join(pending.buf, "\n")
 		var a Action
 		if pending.isInject {
-			a = InjectAction{Lang: pending.lang, Key: pending.key, Code: body}
+			a = InjectAction{Lang: pending.lang, Key: pending.key, Code: body, Line: pending.line}
 		} else {
-			a = PatchAction{Op: pending.op, Path: pending.path, Value: ParseValue(body)}
+			a = PatchAction{Op: pending.op, Path: pending.path, Value: ParseValue(body), Line: pending.line}
 		}
 
 		if currentRule != nil {
 			currentRule.Actions = append(currentRule.Actions, a)
 		} else {
 			if globalRule == nil {
-				globalRule = &Rule{Type: RuleTypeGlobal}
+				globalRule = &Rule{Type: RuleTypeGlobal, Line: pending.line}
 			}
 			globalRule.Actions = append(globalRule.Actions, a)
 		}
 		pending = nil
 	}
 
-	for _, line := range lines {
+	for i, line := range lines {
+		lineNum := i + 1
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
 			continue
@@ -69,7 +71,7 @@ func parseNew(src string) (*RuleFile, error) {
 				rf.Rules = append(rf.Rules, *currentRule)
 			}
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#BEGIN:"))
-			currentRule = &Rule{Type: RuleTypeBegin, Target: target, As: as}
+			currentRule = &Rule{Type: RuleTypeBegin, Target: target, As: as, Line: lineNum}
 			continue
 		}
 
@@ -79,28 +81,28 @@ func parseNew(src string) (*RuleFile, error) {
 				rf.Rules = append(rf.Rules, *currentRule)
 			}
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#CREATE:"))
-			currentRule = &Rule{Type: RuleTypeCreate, Target: target, As: as}
+			currentRule = &Rule{Type: RuleTypeCreate, Target: target, As: as, Line: lineNum}
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, "#SELECT:") {
 			commitPending()
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#SELECT:"))
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeSelect, Target: target, As: as})
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeSelect, Target: target, As: as, Line: lineNum})
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, "#USE:") {
 			commitPending()
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#USE:"))
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeUse, Target: target, As: as})
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeUse, Target: target, As: as, Line: lineNum})
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, "#INCLUDE:") {
 			commitPending()
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#INCLUDE:"))
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeInclude, Target: target, As: as})
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeInclude, Target: target, As: as, Line: lineNum})
 			continue
 		}
 
@@ -125,11 +127,11 @@ func parseNew(src string) (*RuleFile, error) {
 
 					target, as := parseTarget(rest)
 
-					action := ModuleAction{Module: module, Method: method, Target: target, As: as}
+					action := ModuleAction{Module: module, Method: method, Target: target, As: as, Line: lineNum}
 					if currentRule != nil {
 						currentRule.Actions = append(currentRule.Actions, action)
 					} else {
-						rf.Rules = append(rf.Rules, Rule{Type: RuleTypeModule, Target: module + "." + method, Content: target, As: as})
+						rf.Rules = append(rf.Rules, Rule{Type: RuleTypeModule, Target: module + "." + method, Content: target, As: as, Line: lineNum})
 					}
 					continue
 				}
@@ -151,7 +153,7 @@ func parseNew(src string) (*RuleFile, error) {
 			idx := strings.Index(tag, "INJECT:")
 			lang := tag[:idx]
 			key := strings.TrimSpace(tag[idx+len("INJECT:"):])
-			pending = &pendingAction{isInject: true, lang: lang, key: key}
+			pending = &pendingAction{isInject: true, lang: lang, key: key, line: lineNum}
 			continue
 		}
 
@@ -165,9 +167,9 @@ func parseNew(src string) (*RuleFile, error) {
 		if name, val, ok := parseVar(trimmed); ok {
 			commitPending()
 			if currentRule != nil {
-				currentRule.Actions = append(currentRule.Actions, VarAction{Name: name, Value: val})
+				currentRule.Actions = append(currentRule.Actions, VarAction{Name: name, Value: val, Line: lineNum})
 			} else {
-				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeVar, Target: name, Content: val})
+				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeVar, Target: name, Content: val, Line: lineNum})
 			}
 			continue
 		}
@@ -176,7 +178,7 @@ func parseNew(src string) (*RuleFile, error) {
 		op, path, initial, ok := parseActionLine(trimmed)
 		if ok {
 			commitPending()
-			pending = &pendingAction{isInject: false, op: op, path: path, buf: []string{initial}}
+			pending = &pendingAction{isInject: false, op: op, path: path, buf: []string{initial}, line: lineNum}
 			continue
 		}
 

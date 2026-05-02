@@ -36,6 +36,20 @@
         "language": "xru",
         "path": "./snippets/xru.code-snippets"
       }
+    ],
+    "problemMatchers": [
+      {
+        "name": "xru",
+        "owner": "xru",
+        "fileLocation": "autoDetect",
+        "pattern": {
+          "regexp": "^(.*):(\\d+): (error|warning): (.*)$",
+          "file": 1,
+          "line": 2,
+          "severity": 3,
+          "message": 4
+        }
+      }
     ]
   },
   "repository": {

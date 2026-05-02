@@ -1,0 +1,11 @@
+#USE: Utils as U
+#USE: Sys as S
+
+let used_var = "I am used"
+let unused_var = "I am ignored"
+
+#BEGIN: unused_block
+let block_var = "I am local"
+#END
+
+U.LOG: "Message: {used_var}"

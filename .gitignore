@@ -1,6 +1,6 @@
 # Binaries
 bin/
-xru
+/xru
 
 # Build artifacts
 *.exe

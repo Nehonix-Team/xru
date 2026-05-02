@@ -337,7 +337,7 @@ func applyAction(content string, action engine.Action, fileExt string) string {
 		}
 		return engine.InjectCode(content, a.Key, a.Code)
 	case engine.PatchAction:
-		return engine.ApplyPatch(content, a.Op, a.Value)
+		return engine.ApplyPatch(content, a.Op, a.Path, a.Value)
 	}
 	return content
 }

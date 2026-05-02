@@ -16,7 +16,18 @@ import (
 )
 
 // ApplyPatch applies a structured patch to a string content.
-func ApplyPatch(content string, op PatchOp, patch Value) string {
+func ApplyPatch(content string, op PatchOp, path string, patch Value) string {
+	if path != "" {
+		switch op {
+		case PatchMerge, PatchSet:
+			return mergeStructured(content, deepen(path, patch))
+		case PatchRM:
+			return removeStructured(content, deepen(path, Literal("")))
+		case PatchAppend, PatchPush:
+			return appendStructured(content, deepen(path, patch))
+		}
+	}
+
 	switch op {
 	case PatchMerge:
 		if obj, ok := patch.(Object); ok {
@@ -34,6 +45,19 @@ func ApplyPatch(content string, op PatchOp, patch Value) string {
 		}
 	}
 	return content
+}
+
+func deepen(path string, val Value) Object {
+	parts := strings.Split(path, ".")
+	res := make(Object)
+	curr := res
+	for i := 0; i < len(parts)-1; i++ {
+		next := make(Object)
+		curr[parts[i]] = next
+		curr = next
+	}
+	curr[parts[len(parts)-1]] = val
+	return res
 }
 
 func removeStructured(content string, patch Value) string {

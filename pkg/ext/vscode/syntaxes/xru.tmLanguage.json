@@ -3,7 +3,14 @@
   "name": "XyPriss Rule Unit",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#create_html" },
+    { "include": "#create_json" },
+    { "include": "#create_js" },
+    { "include": "#create_ts" },
+    { "include": "#create_css" },
+    { "include": "#create_go" },
     { "include": "#scoping" },
+    { "include": "#functions" },
     { "include": "#inject_ts" },
     { "include": "#inject_js" },
     { "include": "#inject_go" },
@@ -121,6 +128,51 @@
     },
     "constants": {
       "patterns": [{ "name": "constant.language.xru", "match": "\\b(true|false|null)\\b" }]
+    },
+    "functions": {
+      "patterns": [{ "name": "entity.name.function.xru", "match": "\\b[a-z_][a-zA-Z0-9_]*(?=\\()" }]
+    },
+    "create_html": {
+      "begin": "^#CREATE:.*\\.html$",
+      "beginCaptures": { "0": { "name": "keyword.control.scoping.xru" } },
+      "end": "^#END",
+      "endCaptures": { "0": { "name": "keyword.control.scoping.end.xru" } },
+      "patterns": [{ "include": "text.html.basic" }]
+    },
+    "create_json": {
+      "begin": "^#CREATE:.*\\.json$",
+      "beginCaptures": { "0": { "name": "keyword.control.scoping.xru" } },
+      "end": "^#END",
+      "endCaptures": { "0": { "name": "keyword.control.scoping.end.xru" } },
+      "patterns": [{ "include": "source.json" }]
+    },
+    "create_js": {
+      "begin": "^#CREATE:.*\\.js$",
+      "beginCaptures": { "0": { "name": "keyword.control.scoping.xru" } },
+      "end": "^#END",
+      "endCaptures": { "0": { "name": "keyword.control.scoping.end.xru" } },
+      "patterns": [{ "include": "source.js" }]
+    },
+    "create_ts": {
+      "begin": "^#CREATE:.*\\.ts$",
+      "beginCaptures": { "0": { "name": "keyword.control.scoping.xru" } },
+      "end": "^#END",
+      "endCaptures": { "0": { "name": "keyword.control.scoping.end.xru" } },
+      "patterns": [{ "include": "source.ts" }]
+    },
+    "create_css": {
+      "begin": "^#CREATE:.*\\.css$",
+      "beginCaptures": { "0": { "name": "keyword.control.scoping.xru" } },
+      "end": "^#END",
+      "endCaptures": { "0": { "name": "keyword.control.scoping.end.xru" } },
+      "patterns": [{ "include": "source.css" }]
+    },
+    "create_go": {
+      "begin": "^#CREATE:.*\\.go$",
+      "beginCaptures": { "0": { "name": "keyword.control.scoping.xru" } },
+      "end": "^#END",
+      "endCaptures": { "0": { "name": "keyword.control.scoping.end.xru" } },
+      "patterns": [{ "include": "source.go" }]
     }
   },
   "scopeName": "source.xru"

@@ -2,17 +2,21 @@ let app_name = "XyPriss"
 let rel = "file.md"
 
 #SELECT: apps/{app_name} as ROOT
-#LOG: "Traitement de {app_name} dans {ROOT}\n"
+#LOG: "<cyan>[INFO]</> Traitement de <white>{app_name}</> dans <gray>{ROOT}</>\n"
 
 #BEGIN: config.json as C
   let theme = "dark"
   SET ui.theme "{theme}"
   SET metadata.owner "{app_name}"
-#LOG: "Affichage de la var theme dans le bloc {C}: {theme}"
-#ASSERT: "ui.theme == 'dark'"
-#EXEC: "cat {rel}" as L
-#LOG: "script result: \n{L}"
+  
+  #LOG: "  <blue>→ Applying theme:</> {theme} in {C}"
+  #ASSERT: "ui.theme == 'dark'"
+  
+  #EXEC: "cat {rel}" as L
+  #LOG: "<yellow>[SCRIPT OUTPUT]</>\n{L}"
 #END
 
+#LOG: "\n<green>[SUCCESS]</> Transformation finished for {app_name}"
+
 // Ici {theme} n'existe plus, mais {app_name} est toujours là
-#LOG: "Log de la variable scopée: {theme}"
+#LOG: "<red>[EXPECTED ERROR]</> Scoped variable check: {theme}"

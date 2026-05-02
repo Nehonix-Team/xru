@@ -1,0 +1,3 @@
+#SELECT: test/xru as P
+
+#LOG: "Selected {P}"

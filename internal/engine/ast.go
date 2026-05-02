@@ -57,6 +57,7 @@ type RuleFile struct {
 type Rule struct {
 	Type    RuleType
 	Target  string
+	As      string // Captured variable name
 	Content string
 	Actions []Action
 }

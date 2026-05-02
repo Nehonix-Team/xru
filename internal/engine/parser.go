@@ -77,15 +77,15 @@ func parseNew(src string) (*RuleFile, error) {
 			if currentRule != nil {
 				rf.Rules = append(rf.Rules, *currentRule)
 			}
-			currentRule = &Rule{Type: RuleTypeCreate, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#CREATE:"))}
+			target, as := parseTarget(strings.TrimPrefix(trimmed, "#CREATE:"))
+			currentRule = &Rule{Type: RuleTypeCreate, Target: target, As: as}
 			continue
 		}
+
 		if strings.HasPrefix(trimmed, "#SELECT:") {
 			commitPending()
-			if currentRule != nil {
-				rf.Rules = append(rf.Rules, *currentRule)
-			}
-			currentRule = &Rule{Type: RuleTypeSelect, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#SELECT:"))}
+			target, as := parseTarget(strings.TrimPrefix(trimmed, "#SELECT:"))
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeSelect, Target: target, As: as})
 			continue
 		}
 
@@ -104,37 +104,29 @@ func parseNew(src string) (*RuleFile, error) {
 
 		if strings.HasPrefix(trimmed, "#LOG:") {
 			commitPending()
-			if currentRule != nil {
-				rf.Rules = append(rf.Rules, *currentRule)
-			}
-			currentRule = &Rule{Type: RuleTypeLog, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#LOG:"))}
+			target, as := parseTarget(strings.TrimPrefix(trimmed, "#LOG:"))
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeLog, Target: target, As: as})
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, "#ASSERT:") {
 			commitPending()
-			if currentRule != nil {
-				rf.Rules = append(rf.Rules, *currentRule)
-			}
-			currentRule = &Rule{Type: RuleTypeAssert, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#ASSERT:"))}
+			target, as := parseTarget(strings.TrimPrefix(trimmed, "#ASSERT:"))
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeAssert, Target: target, As: as})
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, "#INCLUDE:") {
 			commitPending()
-			if currentRule != nil {
-				rf.Rules = append(rf.Rules, *currentRule)
-			}
-			currentRule = &Rule{Type: RuleTypeInclude, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#INCLUDE:"))}
+			target, as := parseTarget(strings.TrimPrefix(trimmed, "#INCLUDE:"))
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeInclude, Target: target, As: as})
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, "#EXEC:") {
 			commitPending()
-			if currentRule != nil {
-				rf.Rules = append(rf.Rules, *currentRule)
-			}
-			currentRule = &Rule{Type: RuleTypeExec, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#EXEC:"))}
+			target, as := parseTarget(strings.TrimPrefix(trimmed, "#EXEC:"))
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeExec, Target: target, As: as})
 			continue
 		}
 
@@ -189,6 +181,25 @@ func parseNew(src string) (*RuleFile, error) {
 	}
 
 	return rf, nil
+}
+
+func parseTarget(line string) (string, string) {
+	line = strings.TrimSpace(line)
+	// Look for " as " but ignore if it's inside quotes
+	inQuote := false
+	idx := -1
+	for i := 0; i < len(line)-4; i++ {
+		if line[i] == '"' || line[i] == '\'' { inQuote = !inQuote }
+		if !inQuote && line[i:i+4] == " as " {
+			idx = i
+			break
+		}
+	}
+
+	if idx != -1 {
+		return strings.TrimSpace(line[:idx]), strings.TrimSpace(line[idx+4:])
+	}
+	return line, ""
 }
 
 func parseActionLine(line string) (PatchOp, string, string, bool) {

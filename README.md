@@ -4,7 +4,7 @@ XRU is a Domain-Specific Language (DSL) designed for **Structured Text Transform
 
 ---
 
-## 🚀 Quick Install
+## Quick Install
 
 ### Linux / macOS
 ```bash
@@ -18,7 +18,7 @@ irm https://raw.githubusercontent.com/Nehonix-Team/xru/master/install.ps1 | iex
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 The documentation is modularized for better maintainability:
 
@@ -30,7 +30,7 @@ The documentation is modularized for better maintainability:
 
 ---
 
-## 🛠️ Usage Example
+## Usage Example
 
 Create a file named `patch.xru`:
 
@@ -57,12 +57,12 @@ xru patch.xru .
 
 ---
 
-## 🧩 VS Code Support
+## VS Code Support
 
 For syntax highlighting, install the XRU extension located in `pkg/ext/vscode`.
 
 ---
 
-## ⚖️ License
+## License
 
 MIT © Nehonix-Team

@@ -5,6 +5,10 @@ set -e
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
+EXT_NAME='xru-syntax.vsix'
+
+echo -e "${GREEN}[INFO]${NC} Cleaning up old extension..."
+rm -rf $EXT_NAME
 
 echo -e "${BLUE}[INFO]${NC} Building VS Code Extension..."
 
@@ -15,6 +19,6 @@ if ! command -v vsce &> /dev/null; then
 fi
 
 # Package the extension
-vsce package --out xru-syntax.vsix
+vsce package --out $EXT_NAME
 
-echo -e "${GREEN}[SUCCESS]${NC} Extension packaged: pkg/ext/vscode/xru-syntax.vsix"
+echo -e "${GREEN}[SUCCESS]${NC} Extension packaged: $EXT_NAME"

@@ -1,20 +1,27 @@
-# XRU Syntax Overview
+# XRU Syntax Specification
 
-XRU (XyPriss Rule Unit) is a **Structured Text Patcher** designed to preserve formatting and comments.
-
----
-
-## General Rules
-- **Comments**: Use `//` for single-line comments.
-- **Quoting**: Outer quotes are trimmed from directives and modular actions.
-- **Namespacing**: Utilities are called using `Namespace.Action: "content"`.
+The XRU (XyPriss Rule Unit) engine is a **Structured Text Patcher** designed to provide precise, formatting-preserving transformations.
 
 ---
 
-## Log Colorization
-When using `U.LOG`, you can use XML-like tags to colorize output. These tags are highlighted in VS Code.
+## 1. Syntax Foundations
 
-| Tag | Color |
+### Comments
+Use the `//` prefix for single-line comments. These are ignored by the parser and can be placed anywhere in the script.
+
+### Quoting Policy
+Outer quotes (single or double) are automatically stripped from structural directives and logic operations. Internal quotes (e.g., within JSON objects or shell commands) are preserved.
+
+### Namespacing
+Logic operations utilize a namespaced syntax to ensure modularity and avoid naming collisions: `Namespace.Action: "Content"`.
+
+---
+
+## 2. Standardized Log Colorization
+
+When utilizing the `U.LOG` operation, the engine supports XML-like inline tags for terminal colorization. These tags are natively highlighted in the XRU VS Code extension.
+
+| Tag | Resulting Color |
 | :--- | :--- |
 | `<red>` | Red |
 | `<green>` | Green |
@@ -24,9 +31,9 @@ When using `U.LOG`, you can use XML-like tags to colorize output. These tags are
 | `<cyan>` | Cyan |
 | `<gray>` | Gray |
 | `<white>` | White |
-| `</>` | Reset to default |
+| `</>` | Reset to Terminal Default |
 
-**Example:**
+### Implementation Example
 ```xru
-U.LOG: "<cyan>[INFO]</> Starting transformation..."
+U.LOG: "<cyan>[INFO]</> Transformation sequence initiated..."
 ```

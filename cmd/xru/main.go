@@ -429,21 +429,6 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, in
 					fmt.Printf("%s[ASSERT OK]%s Condition met: %s\n", colorGreen, colorReset, cond)
 				}
 			}
-		case "INCLUDE":
-			if rulePath == "" {
-				fmt.Printf("%s[INCLUDE ERROR]%s Cannot include from non-file context\n", colorRed, colorReset)
-				return
-			}
-			includePath := target
-			if !filepath.IsAbs(includePath) {
-				includePath = filepath.Join(filepath.Dir(rulePath), includePath)
-			}
-			irf, err := engine.ParseFile(includePath)
-			if err != nil {
-				fmt.Printf("%s[INCLUDE ERROR]%s %v\n", colorRed, colorReset, err)
-				return
-			}
-			executeRules(irf.Rules, initialTarget, cb, includePath, scope)
 		case "BREAK", "EXIT":
 			code := 0
 			if target != "" {

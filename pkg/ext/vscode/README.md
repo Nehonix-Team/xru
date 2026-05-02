@@ -9,10 +9,6 @@ This extension provides syntax highlighting for **XyPriss Rule Unit (.xru)** tra
 - **Values**: Full support for strings, numbers, booleans, and objects.
 - **Comments**: Supports `//` line comments.
 
-## Preview
-
-![XRU Syntax Preview](https://raw.githubusercontent.com/Nehonix-Team/xru/master/assets/syntax_preview.png)
-
 ## License
 
 MIT

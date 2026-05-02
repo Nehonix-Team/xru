@@ -22,7 +22,7 @@ ENTRY_POINT="./cmd/xru"
 # Extract version from Go source
 VERSION=$(grep "BinVersion =" internal/utils/lib_version.go | cut -d'"' -f2)
 
-echo -e "\n${BLUE}${BOLD} 🚀 XRU BUILD ENGINE ${NC} ${DIM}v${VERSION}${NC}"
+echo -e "\n${BLUE}${BOLD} XRU BUILD ENGINE ${NC} ${DIM}v${VERSION}${NC}"
 echo -e "${DIM} ──────────────────────────────────────────────────${NC}\n"
 
 # Check for compress flag
@@ -30,7 +30,7 @@ COMPRESS=false
 if [[ "$*" == *"--compress"* ]]; then
     COMPRESS=true
     if ! command -v upx >/dev/null 2>&1; then
-        echo -e " ${YELLOW}⚠️  UPX not found. Compression will be skipped.${NC}"
+        echo -e " ${YELLOW}[WARN] UPX not found. Compression will be skipped.${NC}"
         COMPRESS=false
     fi
 fi
@@ -67,24 +67,24 @@ for TARGET in "${TARGETS[@]}"; do
     # -s: Omit the symbol table and debug information
     # -w: Omit the DWARF symbol table
     if GOOS=$OS GOARCH=$ARCH go build -ldflags="-s -w" -o "${DIST_DIR}/${OUTPUT}" "$ENTRY_POINT"; then
-        echo -e "${GREEN}✓ DONE${NC}"
+        echo -e "${GREEN}[DONE]${NC}"
         
         # Compression phase
         if [ "$COMPRESS" = true ]; then
             printf "  ${MAGENTA}%-20s${NC} ${DIM}»${NC} " "UPX Compressing"
             if upx --best "${DIST_DIR}/${OUTPUT}" > /dev/null 2>&1; then
-                echo -e "${MAGENTA}✨ OPTIMIZED${NC}"
+                echo -e "${MAGENTA}[OPTIMIZED]${NC}"
             else
-                echo -e "${YELLOW}⨯ SKIPPED${NC}"
+                echo -e "${YELLOW}[SKIPPED]${NC}"
             fi
         fi
     else
-        echo -e "${NC}❌ FAILED${NC}"
+        echo -e "${NC}[FAILED]${NC}"
         exit 1
     fi
 done
 
-echo -e "\n${GREEN}${BOLD} ✅ BUILD PIPELINE COMPLETE ${NC}"
+echo -e "\n${GREEN}${BOLD} BUILD PIPELINE COMPLETE ${NC}"
 echo -e "${DIM} Artifacts stored in: ./${DIST_DIR}${NC}\n"
 
 ls -lh "$DIST_DIR" | grep "$BINARY_NAME" | awk '{print "  " $5 "\t" $9}'

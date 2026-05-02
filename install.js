@@ -6,10 +6,17 @@
 const http = require('https');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 const REPO = 'Nehonix-Team/xru';
 const BINARY_NAME = 'xru';
+
+const colors = {
+    reset: "\x1b[0m",
+    green: "\x1b[32m",
+    blue: "\x1b[34m",
+    cyan: "\x1b[36m",
+    red: "\x1b[31m"
+};
 
 async function getLatestVersion() {
     return new Promise((resolve, reject) => {
@@ -62,7 +69,7 @@ async function download(url, dest) {
 
 async function install() {
     try {
-        console.log('🚀 Initializing XRU Installer...');
+        console.log(`${colors.cyan}[INFO]${colors.reset} Initializing XRU Installer...`);
         const version = await getLatestVersion();
         const { os, arch } = getPlatform();
         const ext = os === 'windows' ? '.exe' : '';
@@ -71,18 +78,18 @@ async function install() {
 
         const dest = path.join(process.cwd(), BINARY_NAME + ext);
 
-        console.log(`📡 Fetching XRU ${version} for ${os}/${arch}...`);
+        console.log(`${colors.blue}[INFO]${colors.reset} Fetching XRU ${version} for ${os}/${arch}...`);
         await download(url, dest);
 
         if (os !== 'windows') {
             fs.chmodSync(dest, '755');
         }
 
-        console.log(`✅ XRU successfully installed at: ${dest}`);
-        console.log(`💡 Usage: ./${BINARY_NAME} version`);
+        console.log(`${colors.green}[SUCCESS]${colors.reset} XRU successfully installed at: ${dest}`);
+        console.log(`Usage: ./${BINARY_NAME} version`);
 
     } catch (err) {
-        console.error('❌ Installation failed:', err.message);
+        console.error(`${colors.red}[ERROR]${colors.reset} Installation failed:`, err.message);
         process.exit(1);
     }
 }

@@ -5,12 +5,12 @@ $binaryName = "xru"
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") { "amd64" } else { "arm64" }
 $os = "windows"
 
-Write-Host "🚀 Fetching latest version from GitHub..." -ForegroundColor Cyan
+Write-Host "[INFO] Fetching latest version from GitHub..." -ForegroundColor Cyan
 try {
     $latest = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest"
     $version = $latest.tag_name
 } catch {
-    Write-Host "❌ Failed to fetch latest version." -ForegroundColor Red
+    Write-Host "[ERROR] Failed to fetch latest version." -ForegroundColor Red
     exit 1
 }
 
@@ -23,13 +23,13 @@ if (!(Test-Path $destDir)) {
 }
 $destFile = "$destDir\${binaryName}.exe"
 
-Write-Host "📥 Installing ${binaryName} ${version} for ${os}/${arch}..." -ForegroundColor Blue
+Write-Host "[INFO] Installing ${binaryName} ${version} for ${os}/${arch}..." -ForegroundColor Blue
 
 # Download
 try {
     Invoke-WebRequest -Uri $url -OutFile $destFile
 } catch {
-    Write-Host "❌ Download failed. Check your connection or release availability." -ForegroundColor Red
+    Write-Host "[ERROR] Download failed. Check your connection or release availability." -ForegroundColor Red
     exit 1
 }
 
@@ -38,8 +38,8 @@ $path = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($path -notlike "*$destDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$path;$destDir", "User")
     $env:Path += ";$destDir"
-    Write-Host "💡 Added $destDir to PATH. Restart your terminal to apply changes." -ForegroundColor Yellow
+    Write-Host "[INFO] Added $destDir to PATH. Restart your terminal to apply changes." -ForegroundColor Yellow
 }
 
-Write-Host "✅ ${binaryName} successfully installed to $destFile" -ForegroundColor Green
+Write-Host "[SUCCESS] ${binaryName} successfully installed to $destFile" -ForegroundColor Green
 Write-Host "Run '$binaryName version' to verify."

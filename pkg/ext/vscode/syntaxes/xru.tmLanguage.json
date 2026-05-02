@@ -19,6 +19,7 @@
     { "include": "#inject_html" },
     { "include": "#actions_generic" },
     { "include": "#patch_ops" },
+    { "include": "#paths" },
     { "include": "#strings" },
     { "include": "#numbers" },
     { "include": "#constants" }
@@ -100,7 +101,7 @@
           "match": "^\\s*(\\+\\+|--|>>|<<|~~)"
         },
         {
-          "name": "keyword.operator.patch.keyword.xru",
+          "name": "entity.name.function.action.xru",
           "match": "\\b(MERGE|SET|REMOVE|PUSH|merge|set|rm|remove|push)\\b"
         },
         {
@@ -173,6 +174,9 @@
       "end": "^#END",
       "endCaptures": { "0": { "name": "keyword.control.scoping.end.xru" } },
       "patterns": [{ "include": "source.go" }]
+    },
+    "paths": {
+      "patterns": [{ "name": "variable.other.member.xru", "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+\\b" }]
     }
   },
   "scopeName": "source.xru"

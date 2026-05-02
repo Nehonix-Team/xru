@@ -22,7 +22,9 @@
     { "include": "#paths" },
     { "include": "#strings" },
     { "include": "#numbers" },
-    { "include": "#constants" }
+    { "include": "#constants" },
+    { "include": "#interpolation" },
+    { "include": "#variable_capture" }
   ],
   "repository": {
     "comments": {
@@ -174,6 +176,25 @@
       "end": "^#END",
       "endCaptures": { "0": { "name": "keyword.control.scoping.end.xru" } },
       "patterns": [{ "include": "source.go" }]
+    },
+    "variable_capture": {
+      "patterns": [
+        {
+          "match": "\\b(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.other.unit.xru" },
+            "2": { "name": "variable.other.xru" }
+          }
+        }
+      ]
+    },
+    "interpolation": {
+      "patterns": [
+        {
+          "name": "variable.interpolation.xru",
+          "match": "\\{[a-zA-Z_][a-zA-Z0-9_]*\\}"
+        }
+      ]
     },
     "paths": {
       "patterns": [{ "name": "variable.other.member.xru", "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+\\b" }]

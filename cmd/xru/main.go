@@ -28,7 +28,33 @@ const (
 )
 
 var verbose bool
-var globalVars = make(map[string]string)
+
+type Scope struct {
+	Vars   map[string]string
+	Parent *Scope
+}
+
+func (s *Scope) Flatten() map[string]string {
+	res := make(map[string]string)
+	if s.Parent != nil {
+		for k, v := range s.Parent.Flatten() {
+			res[k] = v
+		}
+	}
+	for k, v := range s.Vars {
+		res[k] = v
+	}
+	return res
+}
+
+func (s *Scope) Set(name, val string) {
+	if s.Vars == nil {
+		s.Vars = make(map[string]string)
+	}
+	s.Vars[name] = val
+}
+
+var rootScope = &Scope{Vars: make(map[string]string)}
 
 func main() {
 	flag.Usage = func() {
@@ -96,17 +122,23 @@ func runPatch(rulePath, targetDir string) {
 		fmt.Printf("%s[RUN]%s Applying XRU rules to %s...\n", colorBlue, colorReset, absTarget)
 	}
 
-	executeRules(rf.Rules, absTarget, absTarget, rulePath)
+	executeRules(rf.Rules, absTarget, absTarget, rulePath, rootScope)
 
 	if verbose {
 		fmt.Printf("%s[SUCCESS]%s Transformation complete.\n", colorGreen, colorReset)
 	}
 }
 
-func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath string) {
+func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath string, scope *Scope) {
 	cb := currentBase
 	for _, rule := range rules {
-		target := engine.Interpolate(rule.Target, globalVars)
+		target := engine.Interpolate(rule.Target, scope.Flatten())
+
+		if rule.Type == engine.RuleTypeVar {
+			val := engine.Interpolate(rule.Content, scope.Flatten())
+			scope.Set(rule.Target, val)
+			continue
+		}
 
 		if rule.Type == engine.RuleTypeSelect {
 			if filepath.IsAbs(target) {
@@ -118,7 +150,7 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 				fmt.Printf("%s[SELECT]%s Switching sandbox to: %s\n", colorCyan, colorReset, cb)
 			}
 			if rule.As != "" {
-				globalVars[rule.As] = cb
+				scope.Set(rule.As, cb)
 			}
 			continue
 		}
@@ -142,7 +174,7 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 		}
 
 		if rule.Type == engine.RuleTypeAssert {
-			cond := rule.Target
+			cond := target
 			if strings.HasPrefix(cond, "exists(") && strings.HasSuffix(cond, ")") {
 				path := strings.Trim(cond[7:len(cond)-1], "\"' ")
 				absPath := filepath.Join(cb, path)
@@ -170,7 +202,7 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 				fmt.Printf("%s[INCLUDE ERROR]%s %v\n", colorRed, colorReset, err)
 				continue
 			}
-			executeRules(irf.Rules, initialTarget, cb, includePath)
+			executeRules(irf.Rules, initialTarget, cb, includePath, scope)
 			continue
 		}
 
@@ -195,7 +227,7 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 			continue
 		}
 
-		if err := applyRule(cb, rule); err != nil {
+		if err := applyRule(cb, rule, scope); err != nil {
 			if verbose {
 				fmt.Printf("%s[ERROR]%s %v\n", colorRed, colorReset, err)
 			}
@@ -269,20 +301,27 @@ func handleUpgrade() {
 	fmt.Printf("%s[SUCCESS]%s Upgrade complete! Run 'xru version' to verify.\n", colorGreen, colorReset)
 }
 
-func applyRule(targetDir string, rule engine.Rule) error {
+func applyRule(targetDir string, rule engine.Rule, parentScope *Scope) error {
+	// Create local scope for this rule
+	scope := &Scope{Vars: make(map[string]string), Parent: parentScope}
+
+	target := engine.Interpolate(rule.Target, scope.Flatten())
+	if rule.As != "" {
+		scope.Set(rule.As, target)
+	}
+	vars := scope.Flatten()
+
 	switch rule.Type {
 	case engine.RuleTypeCreate:
-		target := engine.Interpolate(rule.Target, globalVars)
 		fullPath := filepath.Join(targetDir, target)
 		if verbose {
 			fmt.Printf("  %s+%s Creating %s\n", colorGreen, colorReset, target)
 		}
 		os.MkdirAll(filepath.Dir(fullPath), 0755)
-		content := engine.Interpolate(rule.Content, globalVars)
+		content := engine.Interpolate(rule.Content, vars)
 		return os.WriteFile(fullPath, []byte(content), 0644)
 
 	case engine.RuleTypeBegin:
-		target := engine.Interpolate(rule.Target, globalVars)
 		fullPath := filepath.Join(targetDir, target)
 		if verbose {
 			fmt.Printf("  %s→%s Patching %s\n", colorBlue, colorReset, target)
@@ -296,7 +335,7 @@ func applyRule(targetDir string, rule engine.Rule) error {
 		}
 		content := string(data)
 		for _, action := range rule.Actions {
-			content = applyAction(content, action, filepath.Ext(fullPath))
+			content = applyAction(content, action, filepath.Ext(fullPath), scope, targetDir)
 		}
 		return os.WriteFile(fullPath, []byte(content), 0644)
 
@@ -320,7 +359,7 @@ func applyRule(targetDir string, rule engine.Rule) error {
 			content := string(data)
 			original := content
 			for _, action := range rule.Actions {
-				content = applyAction(content, action, ext)
+				content = applyAction(content, action, ext, scope, targetDir)
 			}
 			if content != original {
 				if verbose {
@@ -334,8 +373,42 @@ func applyRule(targetDir string, rule engine.Rule) error {
 	return nil
 }
 
-func applyAction(content string, action engine.Action, fileExt string) string {
+func applyAction(content string, action engine.Action, fileExt string, scope *Scope, cb string) string {
+	vars := scope.Flatten()
 	switch a := action.(type) {
+	case engine.VarAction:
+		val := engine.Interpolate(a.Value, vars)
+		scope.Set(a.Name, val)
+		return content
+	case engine.LogAction:
+		fmt.Printf("%s[LOG]%s %s\n", colorMagenta, colorReset, engine.Interpolate(a.Message, vars))
+		return content
+	case engine.AssertAction:
+		cond := engine.Interpolate(a.Condition, vars)
+		if strings.HasPrefix(cond, "exists(") && strings.HasSuffix(cond, ")") {
+			path := strings.Trim(cond[7:len(cond)-1], "\"' ")
+			absPath := filepath.Join(cb, path)
+			if _, err := os.Stat(absPath); os.IsNotExist(err) {
+				fmt.Printf("%s[ASSERT FAILED]%s Requirement not met: %s\n", colorRed, colorReset, cond)
+				os.Exit(1)
+			}
+		}
+		return content
+	case engine.ExecAction:
+		cmdStr := engine.Interpolate(a.Command, vars)
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("cmd", "/C", cmdStr)
+		} else {
+			cmd = exec.Command("sh", "-c", cmdStr)
+		}
+		cmd.Dir = cb
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+		}
+		return content
 	case engine.InjectAction:
 		if a.Lang != "" {
 			targetExt := "." + strings.ToLower(a.Lang)
@@ -343,11 +416,11 @@ func applyAction(content string, action engine.Action, fileExt string) string {
 				return content
 			}
 		}
-		code := engine.Interpolate(a.Code, globalVars)
+		code := engine.Interpolate(a.Code, vars)
 		return engine.InjectCode(content, a.Key, code)
 	case engine.PatchAction:
-		path := engine.Interpolate(a.Path, globalVars)
-		val := engine.InterpolateValue(a.Value, globalVars)
+		path := engine.Interpolate(a.Path, vars)
+		val := engine.InterpolateValue(a.Value, vars)
 		return engine.ApplyPatch(content, a.Op, path, val)
 	}
 	return content

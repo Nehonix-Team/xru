@@ -1,3 +1,16 @@
-#SELECT: test/xru as P
+let app_name = "XyPriss"
 
-#LOG: "Selected {P}"
+#SELECT: apps/{app_name} as ROOT
+#LOG: "Traitement de {app_name} dans {ROOT}"
+
+#BEGIN: config.json as C
+  let theme = "dark"
+  SET ui.theme "{theme}"
+  SET metadata.owner "{app_name}"
+#LOG: "Affichage de la var theme dans le bloc {C}: {theme}"
+#ASSERT: "ui.theme == 'dark'"
+#EXEC: "echo 'hello'"
+#END
+
+// Ici {theme} n'existe plus, mais {app_name} est toujours là
+#LOG: "Log de la variable scopée: {theme}"

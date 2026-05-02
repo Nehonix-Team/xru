@@ -6,8 +6,11 @@ package engine
 
 import (
 	"os"
+	"regexp"
 	"strings"
 )
+
+var varRegex = regexp.MustCompile(`\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
 
 // readFile is the single I/O primitive used by the package.
 func readFile(path string) ([]byte, error) {
@@ -19,6 +22,10 @@ func Interpolate(s string, vars map[string]string) string {
 	for k, v := range vars {
 		s = strings.ReplaceAll(s, "{"+k+"}", v)
 	}
+
+	// Replace any remaining {VAR} with error message
+	s = varRegex.ReplaceAllString(s, "[ERROR: UNDEFINED_VAR]")
+
 	return s
 }
 

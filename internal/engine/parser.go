@@ -68,7 +68,8 @@ func parseNew(src string) (*RuleFile, error) {
 			if currentRule != nil {
 				rf.Rules = append(rf.Rules, *currentRule)
 			}
-			currentRule = &Rule{Type: RuleTypeBegin, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#BEGIN:"))}
+			target, as := parseTarget(strings.TrimPrefix(trimmed, "#BEGIN:"))
+			currentRule = &Rule{Type: RuleTypeBegin, Target: target, As: as}
 			continue
 		}
 
@@ -98,21 +99,30 @@ func parseNew(src string) (*RuleFile, error) {
 			if val == trimmed {
 				val = strings.TrimPrefix(trimmed, "#EXIT:")
 			}
-			currentRule = &Rule{Type: RuleTypeBreak, Target: strings.TrimSpace(val)}
+			target, as := parseTarget(val)
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeBreak, Target: target, As: as})
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, "#LOG:") {
 			commitPending()
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#LOG:"))
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeLog, Target: target, As: as})
+			if currentRule != nil {
+				currentRule.Actions = append(currentRule.Actions, LogAction{Message: target})
+			} else {
+				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeLog, Target: target, As: as})
+			}
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, "#ASSERT:") {
 			commitPending()
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#ASSERT:"))
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeAssert, Target: target, As: as})
+			if currentRule != nil {
+				currentRule.Actions = append(currentRule.Actions, AssertAction{Condition: target})
+			} else {
+				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeAssert, Target: target, As: as})
+			}
 			continue
 		}
 
@@ -126,7 +136,11 @@ func parseNew(src string) (*RuleFile, error) {
 		if strings.HasPrefix(trimmed, "#EXEC:") {
 			commitPending()
 			target, as := parseTarget(strings.TrimPrefix(trimmed, "#EXEC:"))
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeExec, Target: target, As: as})
+			if currentRule != nil {
+				currentRule.Actions = append(currentRule.Actions, ExecAction{Command: target})
+			} else {
+				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeExec, Target: target, As: as})
+			}
 			continue
 		}
 
@@ -151,6 +165,18 @@ func parseNew(src string) (*RuleFile, error) {
 
 		if trimmed == "@END" {
 			commitPending()
+			pending = nil
+			continue
+		}
+
+		// Variable declaration: let NAME = VALUE
+		if name, val, ok := parseVar(trimmed); ok {
+			commitPending()
+			if currentRule != nil {
+				currentRule.Actions = append(currentRule.Actions, VarAction{Name: name, Value: val})
+			} else {
+				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeVar, Target: name, Content: val})
+			}
 			continue
 		}
 
@@ -200,6 +226,25 @@ func parseTarget(line string) (string, string) {
 		return strings.TrimSpace(line[:idx]), strings.TrimSpace(line[idx+4:])
 	}
 	return line, ""
+}
+
+func parseVar(line string) (string, string, bool) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "let ") {
+		return "", "", false
+	}
+	idx := strings.Index(line, "=")
+	if idx == -1 {
+		return "", "", false
+	}
+	name := strings.TrimSpace(line[4:idx])
+	val := strings.TrimSpace(line[idx+1:])
+	// Trim quotes if present
+	if (strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"")) ||
+		(strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'")) {
+		val = val[1 : len(val)-1]
+	}
+	return name, val, true
 }
 
 func parseActionLine(line string) (PatchOp, string, string, bool) {

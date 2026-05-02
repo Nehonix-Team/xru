@@ -19,6 +19,7 @@ const (
 	RuleTypeInclude RuleType = "INCLUDE" // Include another rule file
 	RuleTypeExec    RuleType = "EXEC"    // Execute a shell command
 	RuleTypeGlobal  RuleType = "GLOBAL"  // Apply to all matching files
+	RuleTypeVar     RuleType = "VAR"     // Variable declaration
 )
 
 // PatchOp is the structured mutation operation.
@@ -84,3 +85,32 @@ type PatchAction struct {
 }
 
 func (PatchAction) IsAction() {}
+
+// VarAction defines a scoped variable.
+type VarAction struct {
+	Name  string
+	Value string
+}
+
+func (VarAction) IsAction() {}
+
+// LogAction prints a message during block execution.
+type LogAction struct {
+	Message string
+}
+
+func (LogAction) IsAction() {}
+
+// AssertAction validates a condition during block execution.
+type AssertAction struct {
+	Condition string
+}
+
+func (AssertAction) IsAction() {}
+
+// ExecAction runs a command during block execution.
+type ExecAction struct {
+	Command string
+}
+
+func (ExecAction) IsAction() {}

@@ -4,7 +4,7 @@
  * Parses .xru source into a RuleFile AST with structured values.
  ***************************************************************************** */
 
-package xru
+package engine
 
 import (
 	"os"

@@ -2,7 +2,7 @@
  * XFPM — XRU package internal utilities
  ***************************************************************************** */
 
-package xru
+package engine
 
 import "os"
 

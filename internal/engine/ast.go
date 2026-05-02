@@ -4,7 +4,7 @@
  * This defines the XRU language structure.
  ***************************************************************************** */
 
-package xru
+package engine
 
 // RuleType identifies what a rule does to its target file.
 type RuleType string

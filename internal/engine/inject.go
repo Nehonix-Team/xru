@@ -7,7 +7,7 @@
  *   - `// xfpm: KEY`      (without braces)
  ***************************************************************************** */
 
-package xru
+package engine
 
 import (
 	"fmt"

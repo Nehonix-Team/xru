@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Nehonix-Team/xru"
+	"github.com/Nehonix-Team/xru/internal/engine"
 	"github.com/Nehonix-Team/xru/internal/utils"
 )
 
@@ -85,7 +85,7 @@ func runPatch(rulePath, targetDir string) {
 		os.Exit(1)
 	}
 
-	rf, err := xru.ParseFile(rulePath)
+	rf, err := engine.ParseFile(rulePath)
 	if err != nil {
 		fmt.Printf("%sError parsing rule file: %v%s\n", colorRed, err, colorReset)
 		os.Exit(1)
@@ -102,10 +102,10 @@ func runPatch(rulePath, targetDir string) {
 	}
 }
 
-func executeRules(rules []xru.Rule, initialTarget, currentBase, rulePath string) {
+func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath string) {
 	cb := currentBase
 	for _, rule := range rules {
-		if rule.Type == xru.RuleTypeSelect {
+		if rule.Type == engine.RuleTypeSelect {
 			target := strings.TrimSpace(rule.Target)
 			if filepath.IsAbs(target) {
 				cb = target
@@ -118,7 +118,7 @@ func executeRules(rules []xru.Rule, initialTarget, currentBase, rulePath string)
 			continue
 		}
 
-		if rule.Type == xru.RuleTypeBreak {
+		if rule.Type == engine.RuleTypeBreak {
 			code := 0
 			if rule.Target != "" {
 				if c, err := strconv.Atoi(rule.Target); err == nil {
@@ -131,12 +131,12 @@ func executeRules(rules []xru.Rule, initialTarget, currentBase, rulePath string)
 			os.Exit(code)
 		}
 
-		if rule.Type == xru.RuleTypeLog {
+		if rule.Type == engine.RuleTypeLog {
 			fmt.Printf("%s[LOG]%s %s\n", colorMagenta, colorReset, rule.Target)
 			continue
 		}
 
-		if rule.Type == xru.RuleTypeAssert {
+		if rule.Type == engine.RuleTypeAssert {
 			cond := rule.Target
 			if strings.HasPrefix(cond, "exists(") && strings.HasSuffix(cond, ")") {
 				path := strings.Trim(cond[7:len(cond)-1], "\"' ")
@@ -152,7 +152,7 @@ func executeRules(rules []xru.Rule, initialTarget, currentBase, rulePath string)
 			continue
 		}
 
-		if rule.Type == xru.RuleTypeInclude {
+		if rule.Type == engine.RuleTypeInclude {
 			includePath := rule.Target
 			if !filepath.IsAbs(includePath) {
 				includePath = filepath.Join(filepath.Dir(rulePath), includePath)
@@ -160,7 +160,7 @@ func executeRules(rules []xru.Rule, initialTarget, currentBase, rulePath string)
 			if verbose {
 				fmt.Printf("%s[INCLUDE]%s Loading rules from: %s\n", colorBlue, colorReset, includePath)
 			}
-			irf, err := xru.ParseFile(includePath)
+			irf, err := engine.ParseFile(includePath)
 			if err != nil {
 				fmt.Printf("%s[INCLUDE ERROR]%s %v\n", colorRed, colorReset, err)
 				continue
@@ -169,7 +169,7 @@ func executeRules(rules []xru.Rule, initialTarget, currentBase, rulePath string)
 			continue
 		}
 
-		if rule.Type == xru.RuleTypeExec {
+		if rule.Type == engine.RuleTypeExec {
 			cmdStr := rule.Target
 			if verbose {
 				fmt.Printf("%s[EXEC]%s %s\n", colorCyan, colorReset, cmdStr)
@@ -264,9 +264,9 @@ func handleUpgrade() {
 	fmt.Printf("%s[SUCCESS]%s Upgrade complete! Run 'xru version' to verify.\n", colorGreen, colorReset)
 }
 
-func applyRule(targetDir string, rule xru.Rule) error {
+func applyRule(targetDir string, rule engine.Rule) error {
 	switch rule.Type {
-	case xru.RuleTypeCreate:
+	case engine.RuleTypeCreate:
 		fullPath := filepath.Join(targetDir, rule.Target)
 		if verbose {
 			fmt.Printf("  %s+%s Creating %s\n", colorGreen, colorReset, rule.Target)
@@ -274,7 +274,7 @@ func applyRule(targetDir string, rule xru.Rule) error {
 		os.MkdirAll(filepath.Dir(fullPath), 0755)
 		return os.WriteFile(fullPath, []byte(rule.Content), 0644)
 
-	case xru.RuleTypeBegin:
+	case engine.RuleTypeBegin:
 		fullPath := filepath.Join(targetDir, rule.Target)
 		if verbose {
 			fmt.Printf("  %s→%s Patching %s\n", colorBlue, colorReset, rule.Target)
@@ -292,7 +292,7 @@ func applyRule(targetDir string, rule xru.Rule) error {
 		}
 		return os.WriteFile(fullPath, []byte(content), 0644)
 
-	case xru.RuleTypeGlobal:
+	case engine.RuleTypeGlobal:
 		return filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
@@ -326,18 +326,18 @@ func applyRule(targetDir string, rule xru.Rule) error {
 	return nil
 }
 
-func applyAction(content string, action xru.Action, fileExt string) string {
+func applyAction(content string, action engine.Action, fileExt string) string {
 	switch a := action.(type) {
-	case xru.InjectAction:
+	case engine.InjectAction:
 		if a.Lang != "" {
 			targetExt := "." + strings.ToLower(a.Lang)
 			if targetExt != fileExt {
 				return content
 			}
 		}
-		return xru.InjectCode(content, a.Key, a.Code)
-	case xru.PatchAction:
-		return xru.ApplyPatch(content, a.Op, a.Value)
+		return engine.InjectCode(content, a.Key, a.Code)
+	case engine.PatchAction:
+		return engine.ApplyPatch(content, a.Op, a.Value)
 	}
 	return content
 }

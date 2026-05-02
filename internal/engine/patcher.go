@@ -6,7 +6,7 @@
  * It preserves existing comments, indentation, and XyPriss-specific syntax.
  ***************************************************************************** */
 
-package xru
+package engine
 
 import (
 	"encoding/json"

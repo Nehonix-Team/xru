@@ -1,18 +1,18 @@
 # XRU Syntax Overview
 
-XRU (XyPriss Rule Unit) is a **Structured Text Patcher** designed to preserve formatting and comments while applying transformations.
+XRU (XyPriss Rule Unit) is a **Structured Text Patcher** designed to preserve formatting and comments.
 
 ---
 
 ## General Rules
 - **Comments**: Use `//` for single-line comments.
-- **Quoting**: Outer quotes (single or double) are automatically trimmed from directives.
-- **Formatting**: Indentation and existing comments in source files are preserved.
+- **Quoting**: Outer quotes are trimmed from directives and modular actions.
+- **Namespacing**: Utilities are called using `Namespace.Action: "content"`.
 
 ---
 
 ## Log Colorization
-When using the `#LOG` directive, you can use XML-like tags to colorize output:
+When using `U.LOG`, you can use XML-like tags to colorize output. These tags are highlighted in VS Code.
 
 | Tag | Color |
 | :--- | :--- |
@@ -28,6 +28,5 @@ When using the `#LOG` directive, you can use XML-like tags to colorize output:
 
 **Example:**
 ```xru
-#LOG: "<cyan>[INFO]</> Starting transformation..."
-#LOG: "<red>[ERROR]</> Path not found: <gray>{path}</>"
+U.LOG: "<cyan>[INFO]</> Starting transformation..."
 ```

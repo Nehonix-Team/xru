@@ -10,6 +10,7 @@
     { "include": "#create_css" },
     { "include": "#create_go" },
     { "include": "#scoping" },
+    { "include": "#modular_actions" },
     { "include": "#functions" },
     { "include": "#inject_ts" },
     { "include": "#inject_js" },
@@ -35,9 +36,20 @@
       "patterns": [
         {
           "name": "keyword.control.scoping.xru",
-          "match": "^#(BEGIN|CREATE|SELECT|LOG|ASSERT|INCLUDE|EXEC|BREAK|EXIT):"
+          "match": "^#(BEGIN|CREATE|SELECT|GLOBAL|USE|INCLUDE):"
         },
         { "name": "keyword.control.scoping.end.xru", "match": "^#END(:.*)?$" }
+      ]
+    },
+    "modular_actions": {
+      "patterns": [
+        {
+          "match": "^\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*):",
+          "captures": {
+            "1": { "name": "variable.other.object.xru" },
+            "2": { "name": "entity.name.function.method.xru" }
+          }
+        }
       ]
     },
     "inject_ts": {
@@ -119,7 +131,8 @@
           "begin": "\"", "end": "\"",
           "patterns": [
             { "name": "constant.character.escape.xru", "match": "\\\\." },
-            { "include": "#interpolation" }
+            { "include": "#interpolation" },
+            { "include": "#log_colors" }
           ]
         },
         {
@@ -127,8 +140,17 @@
           "begin": "'", "end": "'",
           "patterns": [
             { "name": "constant.character.escape.xru", "match": "\\\\." },
-            { "include": "#interpolation" }
+            { "include": "#interpolation" },
+            { "include": "#log_colors" }
           ]
+        }
+      ]
+    },
+    "log_colors": {
+      "patterns": [
+        {
+          "name": "constant.other.color.xru",
+          "match": "<(red|green|yellow|blue|magenta|cyan|gray|white|/)>"
         }
       ]
     },

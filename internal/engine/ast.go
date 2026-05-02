@@ -20,6 +20,8 @@ const (
 	RuleTypeExec    RuleType = "EXEC"    // Execute a shell command
 	RuleTypeGlobal  RuleType = "GLOBAL"  // Apply to all matching files
 	RuleTypeVar     RuleType = "VAR"     // Variable declaration
+	RuleTypeUse     RuleType = "USE"     // Load a module
+	RuleTypeModule  RuleType = "MODULE"  // Call a module method
 )
 
 // PatchOp is the structured mutation operation.
@@ -117,3 +119,13 @@ type ExecAction struct {
 }
 
 func (ExecAction) IsAction() {}
+
+// ModuleAction represents a namespaced call (e.g., U.LOG).
+type ModuleAction struct {
+	Module string
+	Method string
+	Target string
+	As     string
+}
+
+func (ModuleAction) IsAction() {}

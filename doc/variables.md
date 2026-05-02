@@ -11,8 +11,9 @@ Declare variables anywhere.
 - `let app = "XyPriss"`
 
 ### Implicit: `as`
-Capture the result of a directive or action.
-- `#EXEC: "git rev-parse HEAD" as COMMIT`
+Capture the result of a directive or modular action.
+- `S.EXEC: "git rev-parse HEAD" as COMMIT`
+- `#SELECT: path as ROOT`
 
 ---
 
@@ -31,11 +32,6 @@ Use `{NAME}` to inject values into strings, paths, or objects.
 
 ```xru
 let theme = "dark"
-#LOG: "Setting theme to {theme}"
+U.LOG: "Setting theme to {theme}"
 SET config.ui.theme "{theme}"
 ```
-
-### Undefined Variables
-Accessing a missing variable results in:
-`[ERROR: UNDEFINED_VAR]`
-This prevents silent failures in generated configurations.

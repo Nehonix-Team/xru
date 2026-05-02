@@ -31,8 +31,9 @@ const (
 var verbose bool
 
 type Scope struct {
-	Vars   map[string]string
-	Parent *Scope
+	Vars    map[string]string
+	Modules map[string]string // Alias -> ModuleName
+	Parent  *Scope
 }
 
 func (s *Scope) Flatten() map[string]string {
@@ -83,7 +84,10 @@ func colorify(s string) string {
 	return s
 }
 
-var rootScope = &Scope{Vars: make(map[string]string)}
+var rootScope = &Scope{
+	Vars:    make(map[string]string),
+	Modules: map[string]string{"U": "Utils", "S": "Sys"}, // Default aliases
+}
 
 func main() {
 	flag.Usage = func() {
@@ -184,37 +188,22 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 			continue
 		}
 
-		if rule.Type == engine.RuleTypeBreak {
-			code := 0
-			if target != "" {
-				if c, err := strconv.Atoi(target); err == nil {
-					code = c
-				}
+		if rule.Type == engine.RuleTypeUse {
+			name := engine.Interpolate(rule.Target, scope.Flatten())
+			alias := rule.As
+			if alias == "" {
+				alias = name
 			}
-			if verbose {
-				fmt.Printf("%s[BREAK]%s Terminating with exit code %d\n", colorYellow, colorReset, code)
+			if scope.Modules == nil {
+				scope.Modules = make(map[string]string)
 			}
-			os.Exit(code)
-		}
-
-		if rule.Type == engine.RuleTypeLog {
-			fmt.Printf("%s\n", colorify(unescape(target)))
+			scope.Modules[alias] = name
 			continue
 		}
 
-		if rule.Type == engine.RuleTypeAssert {
-			cond := target
-			if strings.HasPrefix(cond, "exists(") && strings.HasSuffix(cond, ")") {
-				path := strings.Trim(cond[7:len(cond)-1], "\"' ")
-				absPath := filepath.Join(cb, path)
-				if _, err := os.Stat(absPath); os.IsNotExist(err) {
-					fmt.Printf("%s[ASSERT FAILED]%s Requirement not met: %s\n", colorRed, colorReset, cond)
-					os.Exit(1)
-				}
-				if verbose {
-					fmt.Printf("%s[ASSERT OK]%s Condition met: %s\n", colorGreen, colorReset, cond)
-				}
-			}
+		if rule.Type == engine.RuleTypeModule {
+			parts := strings.SplitN(rule.Target, ".", 2)
+			executeModuleAction(scope, cb, parts[0], parts[1], rule.Content, rule.As, rulePath, initialTarget)
 			continue
 		}
 
@@ -232,34 +221,6 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 				continue
 			}
 			executeRules(irf.Rules, initialTarget, cb, includePath, scope)
-			continue
-		}
-
-		if rule.Type == engine.RuleTypeExec {
-			cmdStr := target
-			if verbose {
-				fmt.Printf("%s[EXEC]%s %s\n", colorCyan, colorReset, cmdStr)
-			}
-			var cmd *exec.Cmd
-			if runtime.GOOS == "windows" {
-				cmd = exec.Command("cmd", "/C", cmdStr)
-			} else {
-				cmd = exec.Command("sh", "-c", cmdStr)
-			}
-			cmd.Dir = cb
-			if rule.As != "" {
-				out, err := cmd.Output()
-				if err != nil {
-					fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
-				}
-				scope.Set(rule.As, strings.TrimSpace(string(out)))
-			} else {
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				if err := cmd.Run(); err != nil {
-					fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
-				}
-			}
 			continue
 		}
 
@@ -339,7 +300,7 @@ func handleUpgrade() {
 
 func applyRule(targetDir string, rule engine.Rule, parentScope *Scope) error {
 	// Create local scope for this rule
-	scope := &Scope{Vars: make(map[string]string), Parent: parentScope}
+	scope := &Scope{Vars: make(map[string]string), Modules: parentScope.Modules, Parent: parentScope}
 
 	target := engine.Interpolate(rule.Target, scope.Flatten())
 	if rule.As != "" {
@@ -416,49 +377,8 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 		val := engine.Interpolate(a.Value, vars)
 		scope.Set(a.Name, val)
 		return content
-	case engine.LogAction:
-		msg := engine.Interpolate(a.Message, vars)
-		fmt.Printf("%s\n", colorify(unescape(msg)))
-		if a.As != "" {
-			scope.Set(a.As, msg)
-		}
-		return content
-	case engine.AssertAction:
-		cond := engine.Interpolate(a.Condition, vars)
-		if strings.HasPrefix(cond, "exists(") && strings.HasSuffix(cond, ")") {
-			path := strings.Trim(cond[7:len(cond)-1], "\"' ")
-			absPath := filepath.Join(cb, path)
-			if _, err := os.Stat(absPath); os.IsNotExist(err) {
-				fmt.Printf("%s[ASSERT FAILED]%s Requirement not met: %s\n", colorRed, colorReset, cond)
-				os.Exit(1)
-			}
-		}
-		if a.As != "" {
-			scope.Set(a.As, cond)
-		}
-		return content
-	case engine.ExecAction:
-		cmdStr := engine.Interpolate(a.Command, vars)
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmd = exec.Command("cmd", "/C", cmdStr)
-		} else {
-			cmd = exec.Command("sh", "-c", cmdStr)
-		}
-		cmd.Dir = cb
-		if a.As != "" {
-			out, err := cmd.Output()
-			if err != nil {
-				fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
-			}
-			scope.Set(a.As, strings.TrimSpace(string(out)))
-		} else {
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
-			}
-		}
+	case engine.ModuleAction:
+		executeModuleAction(scope, cb, a.Module, a.Method, a.Target, a.As, "", "")
 		return content
 	case engine.InjectAction:
 		if a.Lang != "" {
@@ -475,4 +395,88 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 		return engine.ApplyPatch(content, a.Op, path, val)
 	}
 	return content
+}
+
+func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, initialTarget string) {
+	// Resolve module name from alias
+	moduleName := mod
+	if scope.Modules != nil {
+		if val, ok := scope.Modules[mod]; ok {
+			moduleName = val
+		}
+	}
+
+	target = engine.Interpolate(target, scope.Flatten())
+
+	switch strings.ToLower(moduleName) {
+	case "utils", "u":
+		switch strings.ToUpper(method) {
+		case "LOG":
+			fmt.Printf("%s\n", colorify(unescape(target)))
+			if as != "" {
+				scope.Set(as, target)
+			}
+		case "ASSERT":
+			cond := target
+			if strings.HasPrefix(cond, "exists(") && strings.HasSuffix(cond, ")") {
+				path := strings.Trim(cond[7:len(cond)-1], "\"' ")
+				absPath := filepath.Join(cb, path)
+				if _, err := os.Stat(absPath); os.IsNotExist(err) {
+					fmt.Printf("%s[ASSERT FAILED]%s Requirement not met: %s\n", colorRed, colorReset, cond)
+					os.Exit(1)
+				}
+				if verbose {
+					fmt.Printf("%s[ASSERT OK]%s Condition met: %s\n", colorGreen, colorReset, cond)
+				}
+			}
+		case "INCLUDE":
+			if rulePath == "" {
+				fmt.Printf("%s[INCLUDE ERROR]%s Cannot include from non-file context\n", colorRed, colorReset)
+				return
+			}
+			includePath := target
+			if !filepath.IsAbs(includePath) {
+				includePath = filepath.Join(filepath.Dir(rulePath), includePath)
+			}
+			irf, err := engine.ParseFile(includePath)
+			if err != nil {
+				fmt.Printf("%s[INCLUDE ERROR]%s %v\n", colorRed, colorReset, err)
+				return
+			}
+			executeRules(irf.Rules, initialTarget, cb, includePath, scope)
+		case "BREAK", "EXIT":
+			code := 0
+			if target != "" {
+				if c, err := strconv.Atoi(target); err == nil {
+					code = c
+				}
+			}
+			os.Exit(code)
+		}
+	case "sys", "s":
+		switch strings.ToUpper(method) {
+		case "EXEC":
+			cmdStr := target
+			var cmd *exec.Cmd
+			if runtime.GOOS == "windows" {
+				cmd = exec.Command("cmd", "/C", cmdStr)
+			} else {
+				cmd = exec.Command("sh", "-c", cmdStr)
+			}
+			cmd.Dir = cb
+			if as != "" {
+				out, err := cmd.Output()
+				if err != nil {
+					fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+				}
+				scope.Set(as, strings.TrimSpace(string(out)))
+			} else {
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				if err := cmd.Run(); err != nil {
+					fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+				}
+			}
+		}
+	}
 }

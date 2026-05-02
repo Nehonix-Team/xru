@@ -90,39 +90,10 @@ func parseNew(src string) (*RuleFile, error) {
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "#BREAK:") || strings.HasPrefix(trimmed, "#EXIT:") {
+		if strings.HasPrefix(trimmed, "#USE:") {
 			commitPending()
-			if currentRule != nil {
-				rf.Rules = append(rf.Rules, *currentRule)
-			}
-			val := strings.TrimPrefix(trimmed, "#BREAK:")
-			if val == trimmed {
-				val = strings.TrimPrefix(trimmed, "#EXIT:")
-			}
-			target, as := parseTarget(val)
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeBreak, Target: target, As: as})
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "#LOG:") {
-			commitPending()
-			target, as := parseTarget(strings.TrimPrefix(trimmed, "#LOG:"))
-			if currentRule != nil {
-				currentRule.Actions = append(currentRule.Actions, LogAction{Message: target, As: as})
-			} else {
-				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeLog, Target: target, As: as})
-			}
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "#ASSERT:") {
-			commitPending()
-			target, as := parseTarget(strings.TrimPrefix(trimmed, "#ASSERT:"))
-			if currentRule != nil {
-				currentRule.Actions = append(currentRule.Actions, AssertAction{Condition: target, As: as})
-			} else {
-				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeAssert, Target: target, As: as})
-			}
+			target, as := parseTarget(strings.TrimPrefix(trimmed, "#USE:"))
+			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeUse, Target: target, As: as})
 			continue
 		}
 
@@ -133,15 +104,36 @@ func parseNew(src string) (*RuleFile, error) {
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "#EXEC:") {
-			commitPending()
-			target, as := parseTarget(strings.TrimPrefix(trimmed, "#EXEC:"))
-			if currentRule != nil {
-				currentRule.Actions = append(currentRule.Actions, ExecAction{Command: target, As: as})
-			} else {
-				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeExec, Target: target, As: as})
+		// Modular Action: Alias.Method: Target [as Alias]
+		if idx := strings.Index(trimmed, "."); idx != -1 {
+			colonIdx := strings.Index(trimmed, ":")
+			if colonIdx != -1 && colonIdx > idx {
+				// Ensure it's not a path or something else by checking if the part before . is a simple identifier
+				callPart := strings.TrimSpace(trimmed[:colonIdx])
+				if strings.Contains(callPart, ".") && !strings.ContainsAny(callPart, " /\\\"'{}[],") {
+					commitPending()
+					parts := strings.SplitN(trimmed, ":", 2)
+					call := parts[0]
+					rest := ""
+					if len(parts) > 1 {
+						rest = parts[1]
+					}
+
+					callParts := strings.SplitN(call, ".", 2)
+					module := strings.TrimSpace(callParts[0])
+					method := strings.TrimSpace(callParts[1])
+
+					target, as := parseTarget(rest)
+
+					action := ModuleAction{Module: module, Method: method, Target: target, As: as}
+					if currentRule != nil {
+						currentRule.Actions = append(currentRule.Actions, action)
+					} else {
+						rf.Rules = append(rf.Rules, Rule{Type: RuleTypeModule, Target: module + "." + method, Content: target, As: as})
+					}
+					continue
+				}
 			}
-			continue
 		}
 
 		if trimmed == "#END" || (currentRule != nil && strings.HasPrefix(trimmed, "#END:"+currentRule.Target)) {

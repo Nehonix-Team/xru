@@ -34,8 +34,7 @@
       "patterns": [
         {
           "name": "keyword.control.scoping.xru",
-          "match": "^#(BEGIN|CREATE|SELECT|LOG|ASSERT|INCLUDE|EXEC|BREAK|EXIT):",
-          "captures": { "1": { "name": "keyword.other.unit.xru" } }
+          "match": "^#(BEGIN|CREATE|SELECT|LOG|ASSERT|INCLUDE|EXEC|BREAK|EXIT):"
         },
         { "name": "keyword.control.scoping.end.xru", "match": "^#END(:.*)?$" }
       ]
@@ -117,12 +116,18 @@
         {
           "name": "string.quoted.double.xru",
           "begin": "\"", "end": "\"",
-          "patterns": [{ "name": "constant.character.escape.xru", "match": "\\\\." }]
+          "patterns": [
+            { "name": "constant.character.escape.xru", "match": "\\\\." },
+            { "include": "#interpolation" }
+          ]
         },
         {
           "name": "string.quoted.single.xru",
           "begin": "'", "end": "'",
-          "patterns": [{ "name": "constant.character.escape.xru", "match": "\\\\." }]
+          "patterns": [
+            { "name": "constant.character.escape.xru", "match": "\\\\." },
+            { "include": "#interpolation" }
+          ]
         }
       ]
     },

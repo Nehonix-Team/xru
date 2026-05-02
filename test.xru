@@ -1,4 +1,5 @@
 let app_name = "XyPriss"
+let rel = "file.md"
 
 #SELECT: apps/{app_name} as ROOT
 #LOG: "Traitement de {app_name} dans {ROOT}\n"
@@ -9,12 +10,9 @@ let app_name = "XyPriss"
   SET metadata.owner "{app_name}"
 #LOG: "Affichage de la var theme dans le bloc {C}: {theme}"
 #ASSERT: "ui.theme == 'dark'"
-#EXEC: "echo 'hello'" as L
-#LOG: "script result: {L}"
+#EXEC: "cat {rel}" as L
+#LOG: "script result: \n{L}"
 #END
-
-#INCLUDE: xru as t2
-#LOG: "file path: {t2}"
 
 // Ici {theme} n'existe plus, mais {app_name} est toujours là
 #LOG: "Log de la variable scopée: {theme}"

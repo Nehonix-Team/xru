@@ -24,7 +24,8 @@ const (
 	colorBlue   = "\033[34m"
 	colorMagenta = "\033[35m"
 	colorCyan   = "\033[36m"
-	colorBold   = "\033[1m"
+	colorGray    = "\033[90m"
+	colorWhite   = "\033[97m"
 )
 
 var verbose bool
@@ -57,6 +58,28 @@ func (s *Scope) Set(name, val string) {
 func unescape(s string) string {
 	s = strings.ReplaceAll(s, "\\n", "\n")
 	s = strings.ReplaceAll(s, "\\t", "\t")
+	return s
+}
+
+func colorify(s string) string {
+	s = strings.ReplaceAll(s, "<red>", colorRed)
+	s = strings.ReplaceAll(s, "<green>", colorGreen)
+	s = strings.ReplaceAll(s, "<yellow>", colorYellow)
+	s = strings.ReplaceAll(s, "<blue>", colorBlue)
+	s = strings.ReplaceAll(s, "<magenta>", colorMagenta)
+	s = strings.ReplaceAll(s, "<cyan>", colorCyan)
+	s = strings.ReplaceAll(s, "<gray>", colorGray)
+	s = strings.ReplaceAll(s, "<white>", colorWhite)
+	s = strings.ReplaceAll(s, "</>", colorReset)
+	// Support specific closing tags for convenience
+	s = strings.ReplaceAll(s, "</red>", colorReset)
+	s = strings.ReplaceAll(s, "</green>", colorReset)
+	s = strings.ReplaceAll(s, "</yellow>", colorReset)
+	s = strings.ReplaceAll(s, "</blue>", colorReset)
+	s = strings.ReplaceAll(s, "</magenta>", colorReset)
+	s = strings.ReplaceAll(s, "</cyan>", colorReset)
+	s = strings.ReplaceAll(s, "</gray>", colorReset)
+	s = strings.ReplaceAll(s, "</white>", colorReset)
 	return s
 }
 
@@ -175,7 +198,7 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 		}
 
 		if rule.Type == engine.RuleTypeLog {
-			fmt.Printf("%s[LOG]%s %s\n", colorMagenta, colorReset, unescape(target))
+			fmt.Printf("%s\n", colorify(unescape(target)))
 			continue
 		}
 
@@ -395,7 +418,7 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 		return content
 	case engine.LogAction:
 		msg := engine.Interpolate(a.Message, vars)
-		fmt.Printf("%s[LOG]%s %s\n", colorMagenta, colorReset, unescape(msg))
+		fmt.Printf("%s\n", colorify(unescape(msg)))
 		if a.As != "" {
 			scope.Set(a.As, msg)
 		}

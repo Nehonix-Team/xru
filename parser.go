@@ -110,6 +110,15 @@ func parseNew(src string) (*RuleFile, error) {
 			continue
 		}
 
+		if strings.HasPrefix(trimmed, "#ASSERT:") {
+			commitPending()
+			if currentRule != nil {
+				rf.Rules = append(rf.Rules, *currentRule)
+			}
+			currentRule = &Rule{Type: RuleTypeAssert, Target: strings.TrimSpace(strings.TrimPrefix(trimmed, "#ASSERT:"))}
+			continue
+		}
+
 		if trimmed == "#END" || (currentRule != nil && strings.HasPrefix(trimmed, "#END:"+currentRule.Target)) {
 			commitPending()
 			if currentRule != nil {

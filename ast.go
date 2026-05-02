@@ -15,6 +15,7 @@ const (
 	RuleTypeSelect RuleType = "SELECT" // Define a target sandbox/directory
 	RuleTypeBreak  RuleType = "BREAK"  // Exit the program
 	RuleTypeLog    RuleType = "LOG"    // Display a message
+	RuleTypeAssert RuleType = "ASSERT" // Validate a condition
 	RuleTypeGlobal RuleType = "GLOBAL" // Apply to all matching files
 )
 

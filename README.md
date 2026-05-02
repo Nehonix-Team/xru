@@ -4,6 +4,16 @@ XRU is a Domain-Specific Language (DSL) designed for **Structured Text Transform
 
 ---
 
+## Quick Install (Pre-built Binaries)
+
+If you don't have Go installed, you can quickly install XRU using Node.js:
+
+```bash
+curl -sL https://raw.githubusercontent.com/Nehonix-Team/xru/master/install.js | node
+```
+
+---
+
 ## 1. Scoping Directives
 
 Directives that define which file(s) are being targeted.

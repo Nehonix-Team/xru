@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -165,6 +166,27 @@ func executeRules(rules []xru.Rule, initialTarget, currentBase, rulePath string)
 				continue
 			}
 			executeRules(irf.Rules, initialTarget, cb, includePath)
+			continue
+		}
+
+		if rule.Type == xru.RuleTypeExec {
+			cmdStr := rule.Target
+			if verbose {
+				fmt.Printf("%s[EXEC]%s %s\n", colorCyan, colorReset, cmdStr)
+			}
+			// Use shell to support pipes and redirects
+			var cmd *exec.Cmd
+			if runtime.GOOS == "windows" {
+				cmd = exec.Command("cmd", "/C", cmdStr)
+			} else {
+				cmd = exec.Command("sh", "-c", cmdStr)
+			}
+			cmd.Dir = cb
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Printf("%s[EXEC ERROR]%s %v\n", colorRed, colorReset, err)
+			}
 			continue
 		}
 

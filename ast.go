@@ -17,7 +17,8 @@ const (
 	RuleTypeLog    RuleType = "LOG"    // Display a message
 	RuleTypeAssert RuleType = "ASSERT" // Validate a condition
 	RuleTypeInclude RuleType = "INCLUDE" // Include another rule file
-	RuleTypeGlobal RuleType = "GLOBAL" // Apply to all matching files
+	RuleTypeExec    RuleType = "EXEC"    // Execute a shell command
+	RuleTypeGlobal  RuleType = "GLOBAL"  // Apply to all matching files
 )
 
 // PatchOp is the structured mutation operation.

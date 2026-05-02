@@ -16,6 +16,7 @@ const (
 	RuleTypeBreak  RuleType = "BREAK"  // Exit the program
 	RuleTypeLog    RuleType = "LOG"    // Display a message
 	RuleTypeAssert RuleType = "ASSERT" // Validate a condition
+	RuleTypeInclude RuleType = "INCLUDE" // Include another rule file
 	RuleTypeGlobal RuleType = "GLOBAL" // Apply to all matching files
 )
 

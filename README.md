@@ -18,18 +18,20 @@ Creates a new file with the provided static content.
 - Everything between the opening and closing tag is treated as raw file content.
 
 ### Global Rules
-Any `@TSINJECT` or `&` directive placed outside of a `#BEGIN` block is treated as a **Global Rule**.
-- Global rules are applied to all matching source files (typically `.ts`, `.json`, `.jsonc`, `.md`).
+Any `@*INJECT` or `&` directive placed outside of a `#BEGIN` block is treated as a **Global Rule**.
+- Global rules are applied to matching source files.
+- **Filtering**: If a language prefix is used (e.g., `@GOINJECT`), the rule only applies to files with the corresponding extension (`.go`). Generic `@INJECT` (without prefix) applies to all text files.
 
 ---
 
 ## 2. Action Directives
 
-### `@TSINJECT:<key>` / `@END`
+### `@*INJECT:<key>` / `@END`
 Injects a block of code into a file at a specific marker.
+- **`*` Prefix**: Optional language extension (e.g., `@TSINJECT`, `@GOINJECT`, `@RUSTINJECT`).
 - **Marker Syntax**: Looks for `// xfpm: {{key}}` or `// xfpm: key` in the target file.
 - The marker line is replaced by the provided code block.
-- **Multi-line**: Supports any number of lines between `@TSINJECT` and `@END`.
+- **Multi-line**: Supports any number of lines between the opening tag and `@END`.
 
 ### `&merge:` (or `&add:`)
 Performs a deep-merge of a structured object into the target file.
@@ -49,6 +51,22 @@ Renames a key while preserving its value.
 
 ### `&rp-v:` (or `&rp-1:`)
 Replaces the value of an existing key.
+
+### `&append:`
+Appends an item to an existing array.
+```xru
+&append: {
+  plugins: "xypriss-auth-plugin"
+}
+```
+
+### `&regex:`
+Performs a regex-based search and replace.
+```xru
+&regex: {
+  "v[0-9]+\\.[0-9]+\\.[0-9]+": "v1.0.0"
+}
+```
 
 ---
 

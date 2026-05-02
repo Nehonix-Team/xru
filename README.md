@@ -98,8 +98,21 @@ XRU allows capturing execution state and reusing it via dynamic variables.
 ### Capture with `as`
 Append `as NAME` to any directive to store its target or result.
 - `#SELECT: path as VAR` : Stores the resolved absolute path.
-- `#EXEC: command as OUT` : Stores the command string (future: captures stdout).
+- `#EXEC: command as OUT` : Stores the command string.
 - `#CREATE: file as F` : Stores the file path.
+
+### Explicit Declaration with `let`
+You can declare variables anywhere without triggering an action.
+- `let version = "1.0.0"`
+- `let path = "./dist"`
+
+### Scoping Rules
+XRU manages variables using a hierarchical stack:
+1. **Global Scope**: Variables declared at the root of the `.xru` file.
+2. **Local Scope**: Variables declared inside a block (`#BEGIN`, `#CREATE`). 
+   - Scoped variables are only visible within their block.
+   - They are destroyed after `#END`.
+   - They can **shadow** global variables with the same name.
 
 ### F-String Interpolation `{}`
 Use `{NAME}` to inject variable values into strings, paths, or patch values.

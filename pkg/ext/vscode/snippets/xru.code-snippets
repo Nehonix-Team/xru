@@ -17,8 +17,57 @@
     ],
     "description": "Create a new file with content"
   },
+  "Xru Select": {
+    "prefix": "#select",
+    "body": ["#SELECT: ${1:path}"],
+    "description": "Switch sandbox directory"
+  },
+  "Xru Assert": {
+    "prefix": "#assert",
+    "body": ["#ASSERT: exists(\"${1:file}\")"],
+    "description": "Validate condition"
+  },
+  "Xru Log": {
+    "prefix": "#log",
+    "body": ["#LOG: \"${1:message}\""],
+    "description": "Print colored message"
+  },
+  "Xru Include": {
+    "prefix": "#include",
+    "body": ["#INCLUDE: ${1:file.xru}"],
+    "description": "Include external rules"
+  },
+  "Xru Exec": {
+    "prefix": "#exec",
+    "body": ["#EXEC: ${1:command}"],
+    "description": "Execute shell command"
+  },
+  "Xru Set": {
+    "prefix": "set",
+    "body": ["SET ${1:path} ${2:value}"],
+    "description": "Set/Overwrite value at path"
+  },
+  "Xru Push": {
+    "prefix": "push",
+    "body": ["PUSH ${1:path} ${2:value}"],
+    "description": "Push value to array at path"
+  },
+  "Xru Merge Path": {
+    "prefix": "merge",
+    "body": [
+      "MERGE ${1:path} {",
+      "\t${2:key}: ${3:value}",
+      "}"
+    ],
+    "description": "Merge object at path"
+  },
+  "Xru Remove Path": {
+    "prefix": "remove",
+    "body": ["REMOVE ${1:path}"],
+    "description": "Remove key or branch at path"
+  },
   "Xru TS Inject": {
-    "prefix": "@tsin",
+    "prefix": "@ts",
     "body": [
       "@TSINJECT:{{${1:MARKER}}}",
       "\t$0",
@@ -26,40 +75,41 @@
     ],
     "description": "Inject TypeScript code"
   },
-  "Xru Go Inject": {
-    "prefix": "@goin",
+  "Xru HTML Inject": {
+    "prefix": "@html",
     "body": [
-      "@GOINJECT:{{${1:MARKER}}}",
+      "@HTMLINJECT:{{${1:MARKER}}}",
       "\t$0",
       "@END"
     ],
-    "description": "Inject Go code"
+    "description": "Inject HTML code"
   },
-  "Xru Merge": {
-    "prefix": "&merge",
+  "Xru JSON Inject": {
+    "prefix": "@json",
     "body": [
-      "&merge: {",
+      "@JSONINJECT:{{${1:MARKER}}}",
+      "\t$0",
+      "@END"
+    ],
+    "description": "Inject JSON data"
+  },
+  "Xru Merge Symbol": {
+    "prefix": "++",
+    "body": [
+      "++ {",
       "\t${1:key}: ${2:value}",
       "}"
     ],
-    "description": "Deep merge structured data"
+    "description": "Deep merge (root level)"
   },
-  "Xru Append": {
-    "prefix": "&append",
-    "body": [
-      "&append: {",
-      "\t${1:array_key}: ${2:value}",
-      "}"
-    ],
-    "description": "Append item to array"
+  "Xru Remove Symbol": {
+    "prefix": "--",
+    "body": ["-- { ${1:key}: \"\" }"],
+    "description": "Remove (root level)"
   },
-  "Xru Regex": {
-    "prefix": "&regex",
-    "body": [
-      "&regex: {",
-      "\t\"${1:pattern}\": \"${2:replacement}\"",
-      "}"
-    ],
-    "description": "Regex search and replace"
+  "Xru Regex Symbol": {
+    "prefix": "~~",
+    "body": ["~~ { \"${1:pattern}\": \"${2:replacement}\" }"],
+    "description": "Regex replace"
   }
 }

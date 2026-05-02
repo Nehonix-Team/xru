@@ -25,7 +25,7 @@ Directives that define which file(s) are being targeted.
 ### `#BEGIN:<path>` / `#END`
 Opens a transformation block for an existing file.
 - **`<path>`**: Relative path to the file from the project root.
-- If the file does not exist, the engine skips the block with a warning.
+- If the file does not exist, the engine skips the block (silent by default, warning in verbose mode).
 
 ### `#CREATE:<path>` / `#END`
 Creates a new file with the provided static content.
@@ -34,109 +34,79 @@ Creates a new file with the provided static content.
 ### `#SELECT:<path>`
 Defines a base directory (sandbox) for all subsequent scoping rules.
 - **`<path>`**: Path relative to the initial target directory (or absolute).
-- All following `#BEGIN` or `#CREATE` directives will be resolved relative to this path.
-- This is particularly useful for monorepos or complex project structures.
-- You can use `#SELECT: .` to return to the root directory.
+- Useful for monorepos or complex project structures.
+- Use `#SELECT: .` to return to the root.
 
-### Global Rules
-Any `@*INJECT` or `&` directive placed outside of a `#BEGIN` block is treated as a **Global Rule**.
-- Global rules are applied to matching source files.
-- **Filtering**: If a language prefix is used (e.g., `@GOINJECT`), the rule only applies to files with the corresponding extension (`.go`). Generic `@INJECT` (without prefix) applies to all text files.
+### `#GLOBAL` Rules
+Any action placed outside of a scoping block applies to **all matching files** in the target directory (recursively).
+- Large directories like `.git`, `node_modules`, `dist` are automatically ignored for performance.
 
 ---
 
-## 2. Action Directives
+## 2. Control & Utility Directives
 
-### `@*INJECT:<key>` / `@END`
-Injects a block of code into a file at a specific marker.
-- **`*` Prefix**: Optional language extension (e.g., `@TSINJECT`, `@GOINJECT`, `@RUSTINJECT`).
-- **Marker Syntax**: Looks for `// xfpm: {{key}}` or `// xfpm: key` in the target file.
-- The marker line is replaced by the provided code block.
-- **Multi-line**: Supports any number of lines between the opening tag and `@END`.
+Advanced directives for execution flow and debugging.
 
-### `&merge:` (or `&add:`)
-Performs a deep-merge of a structured object into the target file.
-- **Logic**:
-  - If a key exists and the value is an object, it recurses into the existing braces `{ ... }`.
-  - If a key exists and the value is a literal (string/number), it replaces the existing value.
-  - If a key is missing, it is injected before the closing brace of the current scope.
-- **Preservation**: It does not re-parse the whole file. It only modifies the specific lines affected by the merge.
+### `#LOG:<message>`
+Prints a colored message to the console for feedback during transformation.
 
-### `&rm:`
-Removes keys or values from a structured file.
-- Can take a list of keys `[ "key1", "key2" ]` or a nested object to remove specific branches.
+### `#ASSERT: <condition>`
+Validates a requirement before proceeding. If it fails, execution stops immediately with an error code.
+- Example: `#ASSERT: exists("package.json")`
 
-### `&rp-k:` (or `&rp-0:`)
-Renames a key while preserving its value.
-- Syntax: `&rp-k: { "old_name": "new_name" }`
+### `#INCLUDE:<path>`
+Recursively includes another `.xru` file. This allows modularizing complex rule sets.
 
-### `&rp-v:` (or `&rp-1:`)
-Replaces the value of an existing key.
+### `#EXEC:<command>`
+Executes a shell command in the current sandbox directory.
 
-### `&append:`
-Appends an item to an existing array.
-```xru
-&append: {
-  plugins: "xypriss-auth-plugin"
-}
-```
-
-### `&regex:`
-Performs a regex-based search and replace.
-```xru
-&regex: {
-  "v[0-9]+\\.[0-9]+\\.[0-9]+": "v1.0.0"
-}
-```
+### `#BREAK` or `#EXIT:<code>`
+Terminates the program immediately. Optionally provides an exit code.
 
 ---
 
-## 3. Language Features
+## 3. Action Syntax (inside Blocks)
 
-The XRU language is designed to be developer-friendly and "relaxed" compared to strict JSON.
+XRU supports a hybrid syntax for maximum flexibility.
 
-### Unquoted Keys
-You can write structures without quoting every key, making the rules more readable.
-```xru
-&merge: {
-  $vars: {
-    secret: "xyz"
-  }
-}
-```
+### Symbols (Quick Root Actions)
+Best for top-level modifications or whole-object merges.
+- `++ { ... }` : **MERGE** (Deep merge an object)
+- `-- { ... }` : **REMOVE** (Delete specific keys)
+- `>> { ... }` : **RENAME** (Rename object keys)
+- `<< { ... }` : **APPEND** (Add item to an array)
+- `~~ { ... }` : **REGEX** (Search & Replace via regex)
 
-### XyPriss Variables
-XRU natively supports and preserves XyPriss variable syntax. It will never corrupt or try to "resolve" these strings during the patching phase.
-- Example: `"__name__": "&(pkg).name"`
+### Directives (Path-Targeted Actions)
+Best for precise deep-patching without repeating the structure.
+- `MERGE path { ... }` : Fusion at a specific path (e.g., `MERGE settings.theme { "mode": "dark" }`).
+- `SET path value` : Overwrite or create a value (e.g., `SET version "1.0.0"`).
+- `REMOVE path` : Delete a specific key or branch (e.g., `REMOVE internal.debug`).
+- `PUSH path value` : Append to an array at path (e.g., `PUSH features "auth"`).
 
-### Comments and Formatting
-- **In Rules**: You can use `//` comments inside your `&merge` or `&rm` blocks.
-- **In Target Files**: The engine respects and preserves all comments, blank lines, and custom indentation in the files it patches.
-
-### Brace Counting
-The engine uses intelligent brace-depth tracking. This allows it to find the correct insertion point even in complex nested structures, regardless of whether the file is valid JSON or uses non-standard extensions (like JSONC).
+### Code Injections
+`@*INJECT:<key>` / `@END`
+Injects code at a marker (e.g., `// xfpm: key`) in the target file.
+- Optional language prefix: `@TSINJECT`, `@GOINJECT`, etc.
 
 ---
 
-## 4. Example Rule File
+## 4. Language Features
 
-```xru
-#BEGIN:package.json
-&merge: {
-  scripts: {
-    "dev:xms": "xfpm run dev --mode xms"
-  }
-}
-#END
+- **Comments**: Use `//` for single-line comments anywhere.
+- **Unquoted Keys**: Keys in objects don't require quotes if they are simple strings.
+- **XyPriss Variables**: Native support and preservation of `&(var).key` syntax.
+- **Formatting**: XRU preserves indentation and existing comments in your source files.
 
-#BEGIN:xypriss.config.ts
-@TSINJECT:{{SECURITY_CONFIG}}
-  security: {
-    terminalOnly: {
-      enable: true,
-      allowedTools: ["postman", "curl"]
-    }
-  },
-@END
-#END
+---
+
+## 5. CLI Usage
+
+```bash
+xru [options] <rule_file.xru> [target_directory]
 ```
+
+### Options:
+- `-v`, `--verbose`: Show detailed execution logs and internal warnings.
+- `version`: Show version and platform info.
+- `upgrade`: Automatically update to the latest version.

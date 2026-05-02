@@ -1,2 +1,0 @@
-#ASSERT: exists("un-fichier-qui-n-existe-pas.txt")
-#LOG: "Ceci ne doit pas s'afficher"

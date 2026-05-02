@@ -6,10 +6,14 @@ XRU is a Domain-Specific Language (DSL) designed for **Structured Text Transform
 
 ## Quick Install (Pre-built Binaries)
 
-If you don't have Go installed, you can quickly install XRU using Node.js:
-
+### Linux / macOS
 ```bash
-curl -sL https://raw.githubusercontent.com/Nehonix-Team/xru/master/install.js | node
+curl -sL https://raw.githubusercontent.com/Nehonix-Team/xru/master/install.sh | bash
+```
+
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/Nehonix-Team/xru/master/install.ps1 | iex
 ```
 
 ---

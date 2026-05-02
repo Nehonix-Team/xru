@@ -19,3 +19,6 @@ go.sum
 
 # Private scripts
 private/
+
+# VS Code extension artifacts
+*.vsix

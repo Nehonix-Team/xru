@@ -30,6 +30,12 @@
         "scopeName": "source.xru",
         "path": "./syntaxes/xru.tmLanguage.json"
       }
+    ],
+    "snippets": [
+      {
+        "language": "xru",
+        "path": "./snippets/xru.code-snippets"
+      }
     ]
   },
   "repository": {

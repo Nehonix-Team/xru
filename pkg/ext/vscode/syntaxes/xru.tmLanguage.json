@@ -2,67 +2,87 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "XyPriss Rule Unit",
   "patterns": [
-    {
-      "include": "#comments"
-    },
-    {
-      "include": "#scoping"
-    },
-    {
-      "include": "#actions"
-    },
-    {
-      "include": "#patch_ops"
-    },
-    {
-      "include": "#strings"
-    },
-    {
-      "include": "#numbers"
-    },
-    {
-      "include": "#constants"
-    }
+    { "include": "#comments" },
+    { "include": "#scoping" },
+    { "include": "#inject_ts" },
+    { "include": "#inject_js" },
+    { "include": "#inject_go" },
+    { "include": "#inject_json" },
+    { "include": "#inject_css" },
+    { "include": "#inject_html" },
+    { "include": "#actions_generic" },
+    { "include": "#patch_ops" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#constants" }
   ],
   "repository": {
     "comments": {
-      "patterns": [
-        {
-          "name": "comment.line.double-slash.xru",
-          "match": "//.*$"
-        }
-      ]
+      "patterns": [{ "name": "comment.line.double-slash.xru", "match": "//.*$" }]
     },
     "scoping": {
       "patterns": [
         {
           "name": "keyword.control.scoping.xru",
           "match": "^#(BEGIN|CREATE):",
-          "captures": {
-            "1": { "name": "keyword.other.unit.xru" }
-          }
+          "captures": { "1": { "name": "keyword.other.unit.xru" } }
         },
-        {
-          "name": "keyword.control.scoping.end.xru",
-          "match": "^#END(:.*)?$"
-        }
+        { "name": "keyword.control.scoping.end.xru", "match": "^#END(:.*)?$" }
       ]
     },
-    "actions": {
+    "inject_ts": {
+      "begin": "^(@TSINJECT):",
+      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
+      "end": "^(@END)$",
+      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "patterns": [{ "include": "source.ts" }]
+    },
+    "inject_js": {
+      "begin": "^(@JSINJECT):",
+      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
+      "end": "^(@END)$",
+      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "patterns": [{ "include": "source.js" }]
+    },
+    "inject_go": {
+      "begin": "^(@GOINJECT):",
+      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
+      "end": "^(@END)$",
+      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "patterns": [{ "include": "source.go" }]
+    },
+    "inject_json": {
+      "begin": "^(@JSONINJECT):",
+      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
+      "end": "^(@END)$",
+      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "patterns": [{ "include": "source.json" }]
+    },
+    "inject_css": {
+      "begin": "^(@CSSINJECT):",
+      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
+      "end": "^(@END)$",
+      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "patterns": [{ "include": "source.css" }]
+    },
+    "inject_html": {
+      "begin": "^(@HTMLINJECT):",
+      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
+      "end": "^(@END)$",
+      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "patterns": [{ "include": "text.html.basic" }]
+    },
+    "actions_generic": {
       "patterns": [
         {
           "name": "keyword.control.action.inject.xru",
           "match": "^@[A-Z]*INJECT:",
-          "captures": {
-            "0": { "name": "entity.name.tag.xru" }
-          }
+          "captures": { "0": { "name": "entity.name.tag.xru" } }
         },
         {
           "name": "keyword.control.action.end.xru",
           "match": "^@END$",
-          "captures": {
-            "0": { "name": "entity.name.tag.xru" }
-          }
+          "captures": { "0": { "name": "entity.name.tag.xru" } }
         }
       ]
     },
@@ -78,43 +98,21 @@
       "patterns": [
         {
           "name": "string.quoted.double.xru",
-          "begin": "\"",
-          "end": "\"",
-          "patterns": [
-            {
-              "name": "constant.character.escape.xru",
-              "match": "\\\\."
-            }
-          ]
+          "begin": "\"", "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.xru", "match": "\\\\." }]
         },
         {
           "name": "string.quoted.single.xru",
-          "begin": "'",
-          "end": "'",
-          "patterns": [
-            {
-              "name": "constant.character.escape.xru",
-              "match": "\\\\."
-            }
-          ]
+          "begin": "'", "end": "'",
+          "patterns": [{ "name": "constant.character.escape.xru", "match": "\\\\." }]
         }
       ]
     },
     "numbers": {
-      "patterns": [
-        {
-          "name": "constant.numeric.xru",
-          "match": "\\b\\d+(\\.\\d+)?\\b"
-        }
-      ]
+      "patterns": [{ "name": "constant.numeric.xru", "match": "\\b\\d+(\\.\\d+)?\\b" }]
     },
     "constants": {
-      "patterns": [
-        {
-          "name": "constant.language.xru",
-          "match": "\\b(true|false|null)\\b"
-        }
-      ]
+      "patterns": [{ "name": "constant.language.xru", "match": "\\b(true|false|null)\\b" }]
     }
   },
   "scopeName": "source.xru"

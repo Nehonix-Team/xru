@@ -1,0 +1,65 @@
+{
+  "Xru Begin Block": {
+    "prefix": "#begin",
+    "body": [
+      "#BEGIN:${1:path/to/file}",
+      "\t$0",
+      "#END"
+    ],
+    "description": "Create a file patching block"
+  },
+  "Xru Create Block": {
+    "prefix": "#create",
+    "body": [
+      "#CREATE:${1:path/to/file}",
+      "\t$0",
+      "#END"
+    ],
+    "description": "Create a new file with content"
+  },
+  "Xru TS Inject": {
+    "prefix": "@tsin",
+    "body": [
+      "@TSINJECT:{{${1:MARKER}}}",
+      "\t$0",
+      "@END"
+    ],
+    "description": "Inject TypeScript code"
+  },
+  "Xru Go Inject": {
+    "prefix": "@goin",
+    "body": [
+      "@GOINJECT:{{${1:MARKER}}}",
+      "\t$0",
+      "@END"
+    ],
+    "description": "Inject Go code"
+  },
+  "Xru Merge": {
+    "prefix": "&merge",
+    "body": [
+      "&merge: {",
+      "\t${1:key}: ${2:value}",
+      "}"
+    ],
+    "description": "Deep merge structured data"
+  },
+  "Xru Append": {
+    "prefix": "&append",
+    "body": [
+      "&append: {",
+      "\t${1:array_key}: ${2:value}",
+      "}"
+    ],
+    "description": "Append item to array"
+  },
+  "Xru Regex": {
+    "prefix": "&regex",
+    "body": [
+      "&regex: {",
+      "\t\"${1:pattern}\": \"${2:replacement}\"",
+      "}"
+    ],
+    "description": "Regex search and replace"
+  }
+}

@@ -71,8 +71,11 @@ func (s *Scope) RegisterModule(alias, name string, line int) {
 	if s.Modules == nil {
 		s.Modules = make(map[string]string)
 	}
-	if _, ok := s.Modules[alias]; ok {
-		fmt.Printf("%s:%d: %serror:%s module alias '%s' already defined in this scope\n", currentFile, line, colorRed, colorReset, alias)
+	if existing, ok := s.Modules[alias]; ok {
+		if existing == name {
+			return
+		}
+		fmt.Printf("%s:%d: %serror:%s module alias '%s' already defined in this scope (points to '%s')\n", currentFile, line, colorRed, colorReset, alias, existing)
 		os.Exit(1)
 	}
 	s.Modules[alias] = name
@@ -106,15 +109,6 @@ func colorify(s string) string {
 	s = strings.ReplaceAll(s, "<gray>", colorGray)
 	s = strings.ReplaceAll(s, "<white>", colorWhite)
 	s = strings.ReplaceAll(s, "</>", colorReset)
-	// Support specific closing tags for convenience
-	s = strings.ReplaceAll(s, "</red>", colorReset)
-	s = strings.ReplaceAll(s, "</green>", colorReset)
-	s = strings.ReplaceAll(s, "</yellow>", colorReset)
-	s = strings.ReplaceAll(s, "</blue>", colorReset)
-	s = strings.ReplaceAll(s, "</magenta>", colorReset)
-	s = strings.ReplaceAll(s, "</cyan>", colorReset)
-	s = strings.ReplaceAll(s, "</gray>", colorReset)
-	s = strings.ReplaceAll(s, "</white>", colorReset)
 	return s
 }
 
@@ -126,52 +120,25 @@ var rootScope = &Scope{
 }
 
 func main() {
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "XRU: XyPriss Rule Unit — Structured Text Patcher (%s)\n\n", utils.BinVersion)
-		fmt.Fprintf(os.Stderr, "Usage:\n")
-		fmt.Fprintf(os.Stderr, "  xru [options] <rule_file.xru> [target_dir]\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nCommands:\n")
-		fmt.Fprintf(os.Stderr, "  upgrade      Update to latest version\n")
-		fmt.Fprintf(os.Stderr, "  version      Show version info\n")
-	}
-
 	v := flag.Bool("v", false, "Enable verbose output")
 	flag.Parse()
 	verbose = *v
 	args := flag.Args()
 
 	if len(args) < 1 {
-		flag.Usage()
 		os.Exit(1)
 	}
 
 	command := args[0]
-
 	switch command {
 	case "version":
-		fmt.Printf("XRU %s (%s/%s)\n", utils.BinVersion, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("XRU %s\n", utils.BinVersion)
 	case "upgrade":
 		handleUpgrade()
 	case "build":
-		if len(args) < 2 {
-			fmt.Printf("%sError: Missing rule file. Usage: xru build <rule_file>%s\n", colorRed, colorReset)
-			os.Exit(1)
-		}
+		if len(args) < 2 { os.Exit(1) }
 		runBuild(args[1])
-	case "run":
-		if len(args) < 2 {
-			fmt.Printf("%sError: Missing rule file. Usage: xru run <rule_file> [target]%s\n", colorRed, colorReset)
-			os.Exit(1)
-		}
-		target := "."
-		if len(args) > 2 {
-			target = args[2]
-		}
-		runPatch(args[1], target)
 	default:
-		// Fallback to shorthand: xru <file> [target]
 		target := "."
 		if len(args) > 1 {
 			target = args[1]
@@ -182,165 +149,120 @@ func main() {
 
 func runPatch(rulePath, targetDir string) {
 	currentFile = rulePath
-	absTarget, err := filepath.Abs(targetDir)
-	if err != nil {
-		fmt.Printf("%sError resolving target directory: %v%s\n", colorRed, err, colorReset)
-		os.Exit(1)
-	}
-
+	absTarget, _ := filepath.Abs(targetDir)
 	rf, err := engine.ParseFile(rulePath)
 	if err != nil {
-		fmt.Printf("%sError parsing rule file: %v%s\n", colorRed, err, colorReset)
+		fmt.Printf("%sError: %v%s\n", colorRed, err, colorReset)
 		os.Exit(1)
 	}
-
-	if verbose {
-		fmt.Printf("%s[RUN]%s Applying XRU rules to %s...\n", colorBlue, colorReset, absTarget)
-	}
-
 	executeRules(rf.Rules, absTarget, absTarget, rulePath, rootScope)
 	rootScope.CheckUnused()
-
-	if verbose {
-		fmt.Printf("%s[SUCCESS]%s Transformation complete.\n", colorGreen, colorReset)
-	}
 }
 
 func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath string, scope *Scope) {
 	cb := currentBase
+	skipElse := false
+
 	for _, rule := range rules {
 		target := engine.Interpolate(rule.Target, scope)
 
-		if rule.Type == engine.RuleTypeVar {
+		switch rule.Type {
+		case engine.RuleTypeVar:
 			val := engine.Interpolate(rule.Content, scope)
 			scope.Set(rule.Target, val, rule.Line)
-			continue
-		}
+			skipElse = false
 
-		if rule.Type == engine.RuleTypeSelect {
+		case engine.RuleTypeSelect:
 			if filepath.IsAbs(target) {
 				cb = target
 			} else {
 				cb = filepath.Join(initialTarget, target)
 			}
-			if verbose {
-				fmt.Printf("%s[SELECT]%s Switching sandbox to: %s\n", colorCyan, colorReset, cb)
+			if _, err := os.Stat(cb); os.IsNotExist(err) {
+				fmt.Printf("%s:%d: %serror:%s directory '%s' does not exist\n", currentFile, rule.Line, colorRed, colorReset, cb)
+				os.Exit(1)
 			}
 			if rule.As != "" {
 				scope.Set(rule.As, cb, rule.Line)
 			}
-			continue
-		}
+			skipElse = false
 
-		if rule.Type == engine.RuleTypeUse {
+		case engine.RuleTypeIf:
+			if evalCondition(rule.Target, scope, cb) {
+				executeRules(rule.SubRules, initialTarget, cb, rulePath, scope)
+				skipElse = true
+			} else {
+				skipElse = false
+			}
+
+		case engine.RuleTypeElseIf:
+			if !skipElse && evalCondition(rule.Target, scope, cb) {
+				executeRules(rule.SubRules, initialTarget, cb, rulePath, scope)
+				skipElse = true
+			}
+
+		case engine.RuleTypeElse:
+			if !skipElse {
+				executeRules(rule.SubRules, initialTarget, cb, rulePath, scope)
+			}
+			skipElse = false
+
+		case engine.RuleTypeUse:
 			name := engine.Interpolate(rule.Target, scope)
 			alias := rule.As
 			if alias == "" {
 				alias = name
 			}
 			scope.RegisterModule(alias, name, rule.Line)
-			continue
-		}
+			skipElse = false
 
-		if rule.Type == engine.RuleTypeModule {
+		case engine.RuleTypeModule:
 			parts := strings.SplitN(rule.Target, ".", 2)
-			executeModuleAction(scope, cb, parts[0], parts[1], rule.Content, rule.As, rulePath, initialTarget, rule.Line)
-			continue
-		}
+			executeModuleAction(scope, cb, parts[0], parts[1], rule.Content, rule.As, rule.Line)
+			skipElse = false
 
-		if rule.Type == engine.RuleTypeInclude {
+		case engine.RuleTypeInclude:
 			includePath := target
 			if !filepath.IsAbs(includePath) {
 				includePath = filepath.Join(filepath.Dir(rulePath), includePath)
 			}
-			if verbose {
-				fmt.Printf("%s[INCLUDE]%s Loading rules from: %s\n", colorBlue, colorReset, includePath)
-			}
 			irf, err := engine.ParseFile(includePath)
-			if err != nil {
-				fmt.Printf("%s[INCLUDE ERROR]%s %v\n", colorRed, colorReset, err)
-				continue
+			if err == nil {
+				executeRules(irf.Rules, initialTarget, cb, includePath, scope)
 			}
-			executeRules(irf.Rules, initialTarget, cb, includePath, scope)
-			continue
-		}
+			skipElse = false
 
-		if err := applyRule(cb, rule, scope); err != nil {
-			if verbose {
-				fmt.Printf("%s[ERROR]%s %v\n", colorRed, colorReset, err)
-			}
+		case engine.RuleTypeBegin, engine.RuleTypeCreate, engine.RuleTypeGlobal:
+			applyRule(initialTarget, cb, rule, scope)
+			skipElse = false
 		}
 	}
 }
 
-func handleUpgrade() {
-	fmt.Printf("%s[UPGRADE]%s Checking for updates...\n", colorCyan, colorReset)
-	
-	binaryName := "xru"
-	osName := runtime.GOOS
-	archName := runtime.GOARCH
-	
-	ext := ""
-	if osName == "windows" {
-		ext = ".exe"
-	}
-	
-	url := fmt.Sprintf("https://github.com/Nehonix-Team/xru/releases/latest/download/%s-%s-%s%s", binaryName, osName, archName, ext)
-	
-	fmt.Printf("%s[DOWNLOAD]%s Fetching latest binary from: %s\n", colorBlue, colorReset, url)
-	
-	executablePath, err := os.Executable()
-	if err != nil {
-		fmt.Printf("%sError: Could not find executable path: %v%s\n", colorRed, err, colorReset)
-		return
+func evalCondition(cond string, scope *Scope, cb string) bool {
+	cond = engine.Interpolate(cond, scope)
+	cond = strings.Trim(cond, "\"' ")
+
+	if strings.HasPrefix(cond, "exists(") && strings.HasSuffix(cond, ")") {
+		path := strings.Trim(cond[7:len(cond)-1], "\"' ")
+		absPath := filepath.Join(cb, path)
+		_, err := os.Stat(absPath)
+		return err == nil
 	}
 
-	tmpPath := executablePath + ".tmp"
-	out, err := os.Create(tmpPath)
-	if err != nil {
-		fmt.Printf("%sError: Could not create temp file: %v%s\n", colorRed, err, colorReset)
-		return
+	if strings.Contains(cond, "==") {
+		parts := strings.SplitN(cond, "==", 2)
+		return strings.Trim(parts[0], "\"' ") == strings.Trim(parts[1], "\"' ")
 	}
-	defer out.Close()
-
-	resp, err := http.Get(url)
-	if err != nil {
-		fmt.Printf("%sError: Download failed: %v%s\n", colorRed, err, colorReset)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("%sError: Server returned %s. Ensure a release exists for your platform.%s\n", colorRed, resp.Status, colorReset)
-		return
+	if strings.Contains(cond, "!=") {
+		parts := strings.SplitN(cond, "!=", 2)
+		return strings.Trim(parts[0], "\"' ") != strings.Trim(parts[1], "\"' ")
 	}
 
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		fmt.Printf("%sError: Failed to save binary: %v%s\n", colorRed, err, colorReset)
-		return
-	}
-
-	os.Chmod(tmpPath, 0755)
-
-	if runtime.GOOS == "windows" {
-		oldPath := executablePath + ".old"
-		os.Rename(executablePath, oldPath)
-		err = os.Rename(tmpPath, executablePath)
-	} else {
-		err = os.Rename(tmpPath, executablePath)
-	}
-
-	if err != nil {
-		fmt.Printf("%sError: Could not replace binary: %v. You might need sudo.%s\n", colorRed, err, colorReset)
-		return
-	}
-
-	fmt.Printf("%s[SUCCESS]%s Upgrade complete! Run 'xru version' to verify.\n", colorGreen, colorReset)
+	return cond == "true"
 }
 
-func applyRule(targetDir string, rule engine.Rule, parentScope *Scope) error {
-	// Create local scope for this rule
+func applyRule(initialTarget, currentBase string, rule engine.Rule, parentScope *Scope) {
 	scope := &Scope{
 		Vars:     make(map[string]string),
 		DefLines: make(map[string]int),
@@ -356,69 +278,43 @@ func applyRule(targetDir string, rule engine.Rule, parentScope *Scope) error {
 
 	switch rule.Type {
 	case engine.RuleTypeCreate:
-		fullPath := filepath.Join(targetDir, target)
-		if verbose {
-			fmt.Printf("  %s+%s Creating %s\n", colorGreen, colorReset, target)
-		}
+		fullPath := filepath.Join(currentBase, target)
 		os.MkdirAll(filepath.Dir(fullPath), 0755)
 		content := engine.Interpolate(rule.Content, scope)
-		err := os.WriteFile(fullPath, []byte(content), 0644)
-		scope.CheckUnused()
-		return err
+		os.WriteFile(fullPath, []byte(content), 0644)
+		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope)
 
 	case engine.RuleTypeBegin:
-		fullPath := filepath.Join(targetDir, target)
-		if verbose {
-			fmt.Printf("  %s→%s Patching %s\n", colorBlue, colorReset, target)
-		}
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			return fmt.Errorf("file %s does not exist", target)
-		}
+		fullPath := filepath.Join(currentBase, target)
 		data, err := os.ReadFile(fullPath)
 		if err != nil {
-			return err
+			return
 		}
 		content := string(data)
 		for _, action := range rule.Actions {
-			content = applyAction(content, action, filepath.Ext(fullPath), scope, targetDir)
+			content = applyAction(content, action, filepath.Ext(fullPath), scope, currentBase)
 		}
-		scope.CheckUnused()
-		return os.WriteFile(fullPath, []byte(content), 0644)
+		os.WriteFile(fullPath, []byte(content), 0644)
+		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope)
 
 	case engine.RuleTypeGlobal:
-		err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				name := info.Name()
-				if name == ".git" || name == "node_modules" || name == "dist" || name == "vendor" || name == ".gemini" {
-					return filepath.SkipDir
-				}
+		filepath.Walk(currentBase, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
 				return nil
 			}
-			ext := filepath.Ext(path)
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
+			data, _ := os.ReadFile(path)
 			content := string(data)
 			original := content
 			for _, action := range rule.Actions {
-				content = applyAction(content, action, ext, scope, targetDir)
+				content = applyAction(content, action, filepath.Ext(path), scope, currentBase)
 			}
 			if content != original {
-				if verbose {
-					fmt.Printf("  %s*%s Global match: %s\n", colorYellow, colorReset, path)
-				}
-				return os.WriteFile(path, []byte(content), info.Mode())
+				os.WriteFile(path, []byte(content), info.Mode())
 			}
 			return nil
 		})
-		scope.CheckUnused()
-		return err
+		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope)
 	}
-	return nil
 }
 
 func applyAction(content string, action engine.Action, fileExt string, scope *Scope, cb string) string {
@@ -428,12 +324,11 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 		scope.Set(a.Name, val, a.Line)
 		return content
 	case engine.ModuleAction:
-		executeModuleAction(scope, cb, a.Module, a.Method, a.Target, a.As, "", "", a.Line)
+		executeModuleAction(scope, cb, a.Module, a.Method, a.Target, a.As, a.Line)
 		return content
 	case engine.InjectAction:
 		if a.Lang != "" {
-			targetExt := "." + strings.ToLower(a.Lang)
-			if targetExt != fileExt {
+			if "."+strings.ToLower(a.Lang) != fileExt {
 				return content
 			}
 		}
@@ -447,17 +342,14 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 	return content
 }
 
-func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, initialTarget string, line int) {
-	// Resolve module name from alias
+func executeModuleAction(scope *Scope, cb, mod, method, target, as string, line int) {
 	moduleName := mod
 	if scope.Modules != nil {
 		if val, ok := scope.Modules[mod]; ok {
 			moduleName = val
 		}
 	}
-
 	target = engine.Interpolate(target, scope)
-
 	switch strings.ToLower(moduleName) {
 	case "utils", "u":
 		switch strings.ToUpper(method) {
@@ -465,19 +357,6 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, in
 			fmt.Printf("%s\n", colorify(unescape(target)))
 			if as != "" {
 				scope.Set(as, target, line)
-			}
-		case "ASSERT":
-			cond := target
-			if strings.HasPrefix(cond, "exists(") && strings.HasSuffix(cond, ")") {
-				path := strings.Trim(cond[7:len(cond)-1], "\"' ")
-				absPath := filepath.Join(cb, path)
-				if _, err := os.Stat(absPath); os.IsNotExist(err) {
-					fmt.Printf("%s:%d: %s[ASSERT FAILED]%s Requirement not met: %s\n", currentFile, line, colorRed, colorReset, cond)
-					os.Exit(1)
-				}
-				if verbose {
-					fmt.Printf("%s:%d: %s[ASSERT OK]%s Condition met: %s\n", currentFile, line, colorGreen, colorReset, cond)
-				}
 			}
 		case "BREAK", "EXIT":
 			code := 0
@@ -491,58 +370,48 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as, rulePath, in
 	case "sys", "s":
 		switch strings.ToUpper(method) {
 		case "EXEC":
-			cmdStr := target
 			var cmd *exec.Cmd
 			if runtime.GOOS == "windows" {
-				cmd = exec.Command("cmd", "/C", cmdStr)
+				cmd = exec.Command("cmd", "/C", target)
 			} else {
-				cmd = exec.Command("sh", "-c", cmdStr)
+				cmd = exec.Command("sh", "-c", target)
 			}
 			cmd.Dir = cb
 			if as != "" {
-				out, err := cmd.Output()
-				if err != nil {
-					fmt.Printf("%s:%d: %s[EXEC ERROR]%s %v\n", currentFile, line, colorRed, colorReset, err)
-				}
+				out, _ := cmd.Output()
 				scope.Set(as, strings.TrimSpace(string(out)), line)
 			} else {
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
-				if err := cmd.Run(); err != nil {
-					fmt.Printf("%s:%d: %s[EXEC ERROR]%s %v\n", currentFile, line, colorRed, colorReset, err)
-				}
+				cmd.Run()
 			}
 		}
 	}
 }
 
+func handleUpgrade() {
+	binaryName := "xru"
+	osName := runtime.GOOS
+	archName := runtime.GOARCH
+	ext := ""
+	if osName == "windows" { ext = ".exe" }
+	url := fmt.Sprintf("https://github.com/Nehonix-Team/xru/releases/latest/download/%s-%s-%s%s", binaryName, osName, archName, ext)
+	executablePath, _ := os.Executable()
+	tmpPath := executablePath + ".tmp"
+	out, _ := os.Create(tmpPath)
+	defer out.Close()
+	resp, _ := http.Get(url)
+	defer resp.Body.Close()
+	io.Copy(out, resp.Body)
+	os.Chmod(tmpPath, 0755)
+	os.Rename(tmpPath, executablePath)
+}
+
 func runBuild(rulePath string) {
-	rf, err := engine.ParseFile(rulePath)
-	if err != nil {
-		fmt.Printf("%sError parsing rule file: %v%s\n", colorRed, err, colorReset)
-		os.Exit(1)
-	}
-
-	shScript, err := compiler.CompileToSH(rf)
-	if err != nil {
-		fmt.Printf("%sError compiling to SH: %v%s\n", colorRed, err, colorReset)
-		os.Exit(1)
-	}
-
-	psScript, err := compiler.CompileToPS1(rf)
-	if err != nil {
-		fmt.Printf("%sError compiling to PS1: %v%s\n", colorRed, err, colorReset)
-		os.Exit(1)
-	}
-
+	rf, _ := engine.ParseFile(rulePath)
+	shScript, _ := compiler.CompileToSH(rf)
+	psScript, _ := compiler.CompileToPS1(rf)
 	base := strings.TrimSuffix(rulePath, filepath.Ext(rulePath))
-	shPath := base + ".sh"
-	psPath := base + ".ps1"
-
-	os.WriteFile(shPath, []byte(shScript), 0755)
-	os.WriteFile(psPath, []byte(psScript), 0644)
-
-	fmt.Printf("%s[BUILD]%s Standalone scripts generated:\n", colorGreen, colorReset)
-	fmt.Printf("  - Unix: %s\n", shPath)
-	fmt.Printf("  - Win:  %s\n", psPath)
+	os.WriteFile(base+".sh", []byte(shScript), 0755)
+	os.WriteFile(base+".ps1", []byte(psScript), 0644)
 }

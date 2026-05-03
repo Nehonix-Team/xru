@@ -1,0 +1,3 @@
+#USE: Utils as 
+U.LOG: "  <magenta>[SUB]</> Sub-rules loaded!"
+let sub_var = "shared"

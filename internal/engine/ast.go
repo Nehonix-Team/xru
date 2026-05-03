@@ -1,12 +1,11 @@
-/***************************************************************************
- * XFPM — XRU AST Node Definitions
- *
- * This defines the XRU language structure.
- ***************************************************************************** */
-
 package engine
 
-// RuleType identifies what a rule does to its target file.
+// RuleFile is the top-level container for a .xru file.
+type RuleFile struct {
+	Rules []Rule
+}
+
+// RuleType defines the category of a transformation rule.
 type RuleType string
 
 const (
@@ -15,7 +14,9 @@ const (
 	RuleTypeSelect RuleType = "SELECT" // Define a target sandbox/directory
 	RuleTypeBreak  RuleType = "BREAK"  // Exit the program
 	RuleTypeLog    RuleType = "LOG"    // Display a message
-	RuleTypeAssert RuleType = "ASSERT" // Validate a condition
+	RuleTypeIf      RuleType = "IF"      // Conditional block
+	RuleTypeElseIf  RuleType = "ELSEIF"  // Conditional alternative
+	RuleTypeElse    RuleType = "ELSE"    // Fallback block
 	RuleTypeInclude RuleType = "INCLUDE" // Include another rule file
 	RuleTypeExec    RuleType = "EXEC"    // Execute a shell command
 	RuleTypeGlobal  RuleType = "GLOBAL"  // Apply to all matching files
@@ -24,46 +25,43 @@ const (
 	RuleTypeModule  RuleType = "MODULE"  // Call a module method
 )
 
-// PatchOp is the structured mutation operation.
+// PatchOp defines the type of patch operation.
 type PatchOp string
 
 const (
-	PatchRM    PatchOp = "RM"    // Remove keys
-	PatchRPK   PatchOp = "RPK"   // Rename key
-	PatchRPV   PatchOp = "RPV"   // Replace value
-	PatchMerge PatchOp = "MERGE"  // Structured Deep-merge
-	PatchAppend PatchOp = "APPEND" // Append to array
+	PatchMerge  PatchOp = "MERGE"  // Merge JSON objects or text blocks
+	PatchSet    PatchOp = "SET"    // Set a specific key or value
+	PatchRM     PatchOp = "REMOVE" // Remove a key or block
+	PatchPush   PatchOp = "PUSH"   // Append to a JSON array
+	PatchRPK    PatchOp = "RPK"    // Replace key
+	PatchRPV    PatchOp = "RPV"    // Replace value
+	PatchAppend PatchOp = "APPEND" // Append text
 	PatchRegex  PatchOp = "REGEX"  // Regex replacement
-	PatchSet    PatchOp = "SET"    // Set value at path
-	PatchPush   PatchOp = "PUSH"   // Push value to array
 )
 
-// Value represents a structured data piece in the XRU language.
+// Value represents a generic value in the rules (string, object, array).
 type Value interface {
 	IsValue()
 }
 
-type Object map[string]Value
-type Array []Value
 type Literal string
-
-func (Object) IsValue()  {}
-func (Array) IsValue()   {}
 func (Literal) IsValue() {}
 
-// RuleFile is the top-level result of parsing an .xru file.
-type RuleFile struct {
-	Rules []Rule
-}
+type Object map[string]Value
+func (Object) IsValue() {}
+
+type Array []Value
+func (Array) IsValue() {}
 
 // Rule represents a single transformation directive.
 type Rule struct {
-	Type    RuleType
-	Target  string
-	As      string // Captured variable name
-	Content string
-	Actions []Action
-	Line    int
+	Type     RuleType
+	Target   string
+	As       string // Captured variable name
+	Content  string
+	Actions  []Action
+	SubRules []Rule
+	Line     int
 }
 
 // Action is the interface for all rule actions.
@@ -71,17 +69,7 @@ type Action interface {
 	IsAction()
 }
 
-// InjectAction replaces a `// xfpm: {{KEY}}` marker.
-type InjectAction struct {
-	Lang string // Target language/extension (e.g., "TS", "GO")
-	Key  string
-	Code string
-	Line int
-}
-
-func (InjectAction) IsAction() {}
-
-// PatchAction applies a structured mutation.
+// PatchAction represents a modification to structured text.
 type PatchAction struct {
 	Op    PatchOp
 	Path  string
@@ -91,7 +79,17 @@ type PatchAction struct {
 
 func (PatchAction) IsAction() {}
 
-// VarAction defines a scoped variable.
+// InjectAction represents a code injection at a specific marker.
+type InjectAction struct {
+	Lang string
+	Key  string
+	Code string
+	Line int
+}
+
+func (InjectAction) IsAction() {}
+
+// VarAction represents a variable declaration inside a rule.
 type VarAction struct {
 	Name  string
 	Value string
@@ -100,34 +98,7 @@ type VarAction struct {
 
 func (VarAction) IsAction() {}
 
-// LogAction prints a message during block execution.
-type LogAction struct {
-	Message string
-	As      string
-	Line    int
-}
-
-func (LogAction) IsAction() {}
-
-// AssertAction validates a condition during block execution.
-type AssertAction struct {
-	Condition string
-	As        string
-	Line      int
-}
-
-func (AssertAction) IsAction() {}
-
-// ExecAction runs a command during block execution.
-type ExecAction struct {
-	Command string
-	As      string
-	Line    int
-}
-
-func (ExecAction) IsAction() {}
-
-// ModuleAction represents a namespaced call (e.g., U.LOG).
+// ModuleAction represents a call to an external module (e.g. Utils.LOG).
 type ModuleAction struct {
 	Module string
 	Method string

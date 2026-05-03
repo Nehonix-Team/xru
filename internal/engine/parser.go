@@ -1,7 +1,8 @@
 /***************************************************************************
  * XFPM — XRU Language Parser
  *
- * Parses .xru source into a RuleFile AST with structured values.
+ * Parses .xru source into a RuleFile AST with structured values and nesting.
+ * Enforces column-0 for structural directives (#), allows spaces after #.
  ***************************************************************************** */
 
 package engine
@@ -21,7 +22,7 @@ func parseNew(src string) (*RuleFile, error) {
 	lines := strings.Split(src, "\n")
 	rf := &RuleFile{}
 
-	var currentRule *Rule
+	var stack []*Rule
 	var globalRule *Rule
 
 	type pendingAction struct {
@@ -47,8 +48,9 @@ func parseNew(src string) (*RuleFile, error) {
 			a = PatchAction{Op: pending.op, Path: pending.path, Value: ParseValue(body), Line: pending.line}
 		}
 
-		if currentRule != nil {
-			currentRule.Actions = append(currentRule.Actions, a)
+		if len(stack) > 0 {
+			parent := stack[len(stack)-1]
+			parent.Actions = append(parent.Actions, a)
 		} else {
 			if globalRule == nil {
 				globalRule = &Rule{Type: RuleTypeGlobal, Line: pending.line}
@@ -65,52 +67,138 @@ func parseNew(src string) (*RuleFile, error) {
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "#BEGIN:") {
-			commitPending()
-			if currentRule != nil {
-				rf.Rules = append(rf.Rules, *currentRule)
+		// STRICT MODE: Directives starting with # MUST be at column 0
+		if strings.HasPrefix(line, "#") {
+			// Allow spaces after # for nesting visualization: #  IF
+			directiveLine := "#" + strings.TrimSpace(line[1:])
+			
+			if strings.HasPrefix(directiveLine, "#BEGIN:") {
+				commitPending()
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#BEGIN:"))
+				rule := &Rule{Type: RuleTypeBegin, Target: target, As: as, Line: lineNum}
+				stack = append(stack, rule)
+				continue
 			}
-			target, as := parseTarget(strings.TrimPrefix(trimmed, "#BEGIN:"))
-			currentRule = &Rule{Type: RuleTypeBegin, Target: target, As: as, Line: lineNum}
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "#CREATE:") {
-			commitPending()
-			if currentRule != nil {
-				rf.Rules = append(rf.Rules, *currentRule)
+			if strings.HasPrefix(directiveLine, "#CREATE:") {
+				commitPending()
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#CREATE:"))
+				rule := &Rule{Type: RuleTypeCreate, Target: target, As: as, Line: lineNum}
+				stack = append(stack, rule)
+				continue
 			}
-			target, as := parseTarget(strings.TrimPrefix(trimmed, "#CREATE:"))
-			currentRule = &Rule{Type: RuleTypeCreate, Target: target, As: as, Line: lineNum}
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "#SELECT:") {
-			commitPending()
-			target, as := parseTarget(strings.TrimPrefix(trimmed, "#SELECT:"))
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeSelect, Target: target, As: as, Line: lineNum})
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "#USE:") {
-			commitPending()
-			target, as := parseTarget(strings.TrimPrefix(trimmed, "#USE:"))
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeUse, Target: target, As: as, Line: lineNum})
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "#INCLUDE:") {
-			commitPending()
-			target, as := parseTarget(strings.TrimPrefix(trimmed, "#INCLUDE:"))
-			rf.Rules = append(rf.Rules, Rule{Type: RuleTypeInclude, Target: target, As: as, Line: lineNum})
-			continue
+			if strings.HasPrefix(directiveLine, "#IF:") {
+				commitPending()
+				cond := strings.TrimSpace(strings.TrimPrefix(directiveLine, "#IF:"))
+				rule := &Rule{Type: RuleTypeIf, Target: cond, Line: lineNum}
+				stack = append(stack, rule)
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#ELSEIF:") {
+				commitPending()
+				if len(stack) > 0 {
+					last := stack[len(stack)-1]
+					if last.Type == RuleTypeIf || last.Type == RuleTypeElseIf {
+						prev := *stack[len(stack)-1]
+						stack = stack[:len(stack)-1]
+						if len(stack) > 0 {
+							stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, prev)
+						} else {
+							rf.Rules = append(rf.Rules, prev)
+						}
+					}
+				}
+				cond := strings.TrimSpace(strings.TrimPrefix(directiveLine, "#ELSEIF:"))
+				rule := &Rule{Type: RuleTypeElseIf, Target: cond, Line: lineNum}
+				stack = append(stack, rule)
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#ELSE") {
+				commitPending()
+				if len(stack) > 0 {
+					last := stack[len(stack)-1]
+					if last.Type == RuleTypeIf || last.Type == RuleTypeElseIf {
+						prev := *stack[len(stack)-1]
+						stack = stack[:len(stack)-1]
+						if len(stack) > 0 {
+							stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, prev)
+						} else {
+							rf.Rules = append(rf.Rules, prev)
+						}
+					}
+				}
+				rule := &Rule{Type: RuleTypeElse, Line: lineNum}
+				stack = append(stack, rule)
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#SELECT:") {
+				commitPending()
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#SELECT:"))
+				rule := Rule{Type: RuleTypeSelect, Target: target, As: as, Line: lineNum}
+				if len(stack) > 0 {
+					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
+				} else {
+					rf.Rules = append(rf.Rules, rule)
+				}
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#USE:") {
+				commitPending()
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#USE:"))
+				rule := Rule{Type: RuleTypeUse, Target: target, As: as, Line: lineNum}
+				if len(stack) > 0 {
+					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
+				} else {
+					rf.Rules = append(rf.Rules, rule)
+				}
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#INCLUDE:") {
+				commitPending()
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#INCLUDE:"))
+				rule := Rule{Type: RuleTypeInclude, Target: target, As: as, Line: lineNum}
+				if len(stack) > 0 {
+					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
+				} else {
+					rf.Rules = append(rf.Rules, rule)
+				}
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#GLOBAL:") {
+				commitPending()
+				target := strings.TrimSpace(strings.TrimPrefix(directiveLine, "#GLOBAL:"))
+				rule := Rule{Type: RuleTypeGlobal, Target: target, Line: lineNum}
+				if len(stack) > 0 {
+					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
+				} else {
+					rf.Rules = append(rf.Rules, rule)
+				}
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#GLOBAL") {
+				commitPending()
+				rule := &Rule{Type: RuleTypeGlobal, Line: lineNum}
+				stack = append(stack, rule)
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#END") {
+				commitPending()
+				if len(stack) > 0 {
+					rule := *stack[len(stack)-1]
+					stack = stack[:len(stack)-1]
+					if len(stack) > 0 {
+						stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
+					} else {
+						rf.Rules = append(rf.Rules, rule)
+					}
+				}
+				continue
+			}
 		}
 
 		// Modular Action: Alias.Method: Target [as Alias]
 		if idx := strings.Index(trimmed, "."); idx != -1 {
 			colonIdx := strings.Index(trimmed, ":")
 			if colonIdx != -1 && colonIdx > idx {
-				// Ensure it's not a path or something else by checking if the part before . is a simple identifier
 				callPart := strings.TrimSpace(trimmed[:colonIdx])
 				if strings.Contains(callPart, ".") && !strings.ContainsAny(callPart, " /\\\"'{}[],") {
 					commitPending()
@@ -120,31 +208,18 @@ func parseNew(src string) (*RuleFile, error) {
 					if len(parts) > 1 {
 						rest = parts[1]
 					}
-
 					callParts := strings.SplitN(call, ".", 2)
 					module := strings.TrimSpace(callParts[0])
 					method := strings.TrimSpace(callParts[1])
-
 					target, as := parseTarget(rest)
-
-					action := ModuleAction{Module: module, Method: method, Target: target, As: as, Line: lineNum}
-					if currentRule != nil {
-						currentRule.Actions = append(currentRule.Actions, action)
+					if len(stack) > 0 {
+						stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, Rule{Type: RuleTypeModule, Target: module + "." + method, Content: target, As: as, Line: lineNum})
 					} else {
 						rf.Rules = append(rf.Rules, Rule{Type: RuleTypeModule, Target: module + "." + method, Content: target, As: as, Line: lineNum})
 					}
 					continue
 				}
 			}
-		}
-
-		if trimmed == "#END" || (currentRule != nil && strings.HasPrefix(trimmed, "#END:"+currentRule.Target)) {
-			commitPending()
-			if currentRule != nil {
-				rf.Rules = append(rf.Rules, *currentRule)
-				currentRule = nil
-			}
-			continue
 		}
 
 		if strings.HasPrefix(trimmed, "@") && strings.Contains(trimmed, "INJECT:") {
@@ -166,15 +241,15 @@ func parseNew(src string) (*RuleFile, error) {
 		// Variable declaration: let NAME = VALUE
 		if name, val, ok := parseVar(trimmed); ok {
 			commitPending()
-			if currentRule != nil {
-				currentRule.Actions = append(currentRule.Actions, VarAction{Name: name, Value: val, Line: lineNum})
+			if len(stack) > 0 {
+				stack[len(stack)-1].Actions = append(stack[len(stack)-1].Actions, VarAction{Name: name, Value: val, Line: lineNum})
 			} else {
 				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeVar, Target: name, Content: val, Line: lineNum})
 			}
 			continue
 		}
 
-		// Actions (Symbols: ++ -- >> << ~~) or Keywords (MERGE SET REMOVE PUSH)
+		// Actions
 		op, path, initial, ok := parseActionLine(trimmed)
 		if ok {
 			commitPending()
@@ -182,8 +257,8 @@ func parseNew(src string) (*RuleFile, error) {
 			continue
 		}
 
-		if currentRule != nil && currentRule.Type == RuleTypeCreate {
-			currentRule.Content += line + "\n"
+		if len(stack) > 0 && stack[len(stack)-1].Type == RuleTypeCreate {
+			stack[len(stack)-1].Content += line + "\n"
 			continue
 		}
 
@@ -193,9 +268,16 @@ func parseNew(src string) (*RuleFile, error) {
 	}
 
 	commitPending()
-	if currentRule != nil {
-		rf.Rules = append(rf.Rules, *currentRule)
+	for len(stack) > 0 {
+		rule := *stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if len(stack) > 0 {
+			stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
+		} else {
+			rf.Rules = append(rf.Rules, rule)
+		}
 	}
+
 	if globalRule != nil {
 		rf.Rules = append(rf.Rules, *globalRule)
 	}
@@ -205,7 +287,6 @@ func parseNew(src string) (*RuleFile, error) {
 
 func parseTarget(line string) (string, string) {
 	line = strings.TrimSpace(line)
-	// Look for " as " but ignore if it's inside quotes
 	inQuote := false
 	idx := -1
 	for i := 0; i < len(line)-4; i++ {
@@ -217,22 +298,18 @@ func parseTarget(line string) (string, string) {
 			break
 		}
 	}
-
 	target := line
 	as := ""
 	if idx != -1 {
 		target = strings.TrimSpace(line[:idx])
 		as = strings.TrimSpace(line[idx+4:])
 	}
-
-	// Trim outer quotes from target
 	if len(target) >= 2 {
 		if (target[0] == '"' && target[len(target)-1] == '"') ||
 			(target[0] == '\'' && target[len(target)-1] == '\'') {
 			target = target[1 : len(target)-1]
 		}
 	}
-
 	return target, as
 }
 
@@ -247,7 +324,6 @@ func parseVar(line string) (string, string, bool) {
 	}
 	name := strings.TrimSpace(line[4:idx])
 	val := strings.TrimSpace(line[idx+1:])
-	// Trim quotes if present
 	if (strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"")) ||
 		(strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'")) {
 		val = val[1 : len(val)-1]
@@ -256,14 +332,11 @@ func parseVar(line string) (string, string, bool) {
 }
 
 func parseActionLine(line string) (PatchOp, string, string, bool) {
-	// Symbols (Direct root actions)
 	if strings.HasPrefix(line, "++") { return PatchMerge, "", strings.TrimSpace(line[2:]), true }
 	if strings.HasPrefix(line, "--") { return PatchRM, "", strings.TrimSpace(line[2:]), true }
 	if strings.HasPrefix(line, ">>") { return PatchRPK, "", strings.TrimSpace(line[2:]), true }
 	if strings.HasPrefix(line, "<<") { return PatchAppend, "", strings.TrimSpace(line[2:]), true }
 	if strings.HasPrefix(line, "~~") { return PatchRegex, "", strings.TrimSpace(line[2:]), true }
-
-	// Legacy & Support
 	if strings.HasPrefix(line, "&") {
 		parts := strings.SplitN(line[1:], ":", 2)
 		opStr := strings.ToLower(parts[0])
@@ -280,8 +353,6 @@ func parseActionLine(line string) (PatchOp, string, string, bool) {
 		}
 		if op != "" { return op, "", strings.TrimSpace(initial), true }
 	}
-
-	// Keywords (Path-based or explicit)
 	upper := strings.ToUpper(line)
 	keywords := []struct{k string; op PatchOp}{
 		{"MERGE ", PatchMerge},
@@ -289,15 +360,11 @@ func parseActionLine(line string) (PatchOp, string, string, bool) {
 		{"REMOVE ", PatchRM},
 		{"PUSH ", PatchPush},
 	}
-
 	for _, kv := range keywords {
 		if strings.HasPrefix(upper, kv.k) {
 			rest := strings.TrimSpace(line[len(kv.k):])
-			// Path is everything until the first structural character or space
 			path := ""
 			initial := rest
-			
-			// Find where the value starts
 			idx := -1
 			for i, r := range rest {
 				if r == '{' || r == '[' || r == '"' || r == '\'' || unicode.IsSpace(r) {
@@ -305,23 +372,19 @@ func parseActionLine(line string) (PatchOp, string, string, bool) {
 					break
 				}
 			}
-			
 			if idx != -1 {
 				path = strings.TrimSpace(rest[:idx])
 				initial = strings.TrimSpace(rest[idx:])
 			} else {
-				// No structural character found, might be just a path (for RM)
 				path = rest
 				initial = ""
 			}
 			return kv.op, path, initial, true
 		}
 	}
-
 	return "", "", "", false
 }
 
-// ParseValue is a simple recursive descent parser for XRU structures.
 func ParseValue(s string) Value {
 	p := &valParser{src: []rune(s)}
 	return p.parse()
@@ -334,63 +397,47 @@ type valParser struct {
 
 func (p *valParser) parse() Value {
 	p.skipWS()
-	if p.pos >= len(p.src) {
-		return Literal("")
-	}
-
+	if p.pos >= len(p.src) { return Literal("") }
 	switch p.src[p.pos] {
-	case '{':
-		return p.parseObject()
-	case '[':
-		return p.parseArray()
-	default:
-		return p.parseLiteral()
+	case '{': return p.parseObject()
+	case '[': return p.parseArray()
+	default: return p.parseLiteral()
 	}
 }
 
 func (p *valParser) parseObject() Object {
 	obj := make(Object)
-	p.pos++ // skip {
+	p.pos++
 	for {
 		p.skipWS()
 		if p.pos >= len(p.src) || p.src[p.pos] == '}' {
 			if p.pos < len(p.src) { p.pos++ }
 			break
 		}
-
 		key := p.parseKey()
 		p.skipWS()
-		if p.pos < len(p.src) && p.src[p.pos] == ':' {
-			p.pos++
-		}
+		if p.pos < len(p.src) && p.src[p.pos] == ':' { p.pos++ }
 		val := p.parse()
 		obj[key] = val
-
 		p.skipWS()
-		if p.pos < len(p.src) && p.src[p.pos] == ',' {
-			p.pos++
-		}
+		if p.pos < len(p.src) && p.src[p.pos] == ',' { p.pos++ }
 	}
 	return obj
 }
 
 func (p *valParser) parseArray() Array {
 	arr := make(Array, 0)
-	p.pos++ // skip [
+	p.pos++
 	for {
 		p.skipWS()
 		if p.pos >= len(p.src) || p.src[p.pos] == ']' {
 			if p.pos < len(p.src) { p.pos++ }
 			break
 		}
-
 		val := p.parse()
 		arr = append(arr, val)
-
 		p.skipWS()
-		if p.pos < len(p.src) && p.src[p.pos] == ',' {
-			p.pos++
-		}
+		if p.pos < len(p.src) && p.src[p.pos] == ',' { p.pos++ }
 	}
 	return arr
 }
@@ -402,16 +449,13 @@ func (p *valParser) parseKey() string {
 		p.pos++
 		start := p.pos
 		for p.pos < len(p.src) {
-			if p.src[p.pos] == quote && p.src[p.pos-1] != '\\' {
-				break
-			}
+			if p.src[p.pos] == quote && p.src[p.pos-1] != '\\' { break }
 			p.pos++
 		}
 		key := string(p.src[start:p.pos])
 		if p.pos < len(p.src) { p.pos++ }
 		return unescape(key)
 	}
-
 	start := p.pos
 	for p.pos < len(p.src) && !unicode.IsSpace(p.src[p.pos]) && p.src[p.pos] != ':' && p.src[p.pos] != '}' && p.src[p.pos] != ',' {
 		p.pos++
@@ -426,18 +470,14 @@ func (p *valParser) parseLiteral() Literal {
 		p.pos++
 		start := p.pos
 		for p.pos < len(p.src) {
-			if p.src[p.pos] == quote && p.src[p.pos-1] != '\\' {
-				break
-			}
+			if p.src[p.pos] == quote && p.src[p.pos-1] != '\\' { break }
 			p.pos++
 		}
 		val := string(p.src[start:p.pos])
 		if p.pos < len(p.src) { p.pos++ }
 		return Literal(unescape(val))
 	}
-
 	start := p.pos
-	// Parse until next delimiter
 	for p.pos < len(p.src) && p.src[p.pos] != '}' && p.src[p.pos] != ']' && p.src[p.pos] != ',' && p.src[p.pos] != '\n' {
 		p.pos++
 	}
@@ -457,11 +497,8 @@ func (p *valParser) skipWS() {
 			p.pos++
 			continue
 		}
-		// Handle // comments in value
 		if p.pos+1 < len(p.src) && p.src[p.pos] == '/' && p.src[p.pos+1] == '/' {
-			for p.pos < len(p.src) && p.src[p.pos] != '\n' {
-				p.pos++
-			}
+			for p.pos < len(p.src) && p.src[p.pos] != '\n' { p.pos++ }
 			continue
 		}
 		break
@@ -470,8 +507,6 @@ func (p *valParser) skipWS() {
 
 func ParseFile(path string) (*RuleFile, error) {
 	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	return parseNew(string(data))
 }

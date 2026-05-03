@@ -1,0 +1,17 @@
+#USE: Utils as U
+
+let mode = "prod"
+
+#IF: "{mode,
+  "theme": "dark",
+} == 'prod'"
+  U.LOG: "<green>[PROD MODE]</> Optimized settings applied."
+#ELSE:
+  U.LOG: "<white>[DEFAULT]</> Standard settings."
+#END
+
+#IF: "exists(config.json)"
+  U.LOG: "<blue>[OK]</> config.json exists."
+#END
+
+#SELECT: "non_existent_folder"

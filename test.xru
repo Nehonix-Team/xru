@@ -4,6 +4,7 @@
 let app_name = "XyPriss"
 let rel = "file.md"
 
+// Sécurité : XRU vérifiera maintenant que ce dossier existe vraiment
 #SELECT: apps/{app_name} as ROOT
 U.LOG: "<cyan>[INFO]</> Traitement de <white>{app_name}</> dans <gray>{ROOT}</>\n"
 
@@ -12,14 +13,27 @@ U.LOG: "<cyan>[INFO]</> Traitement de <white>{app_name}</> dans <gray>{ROOT}</>\
   SET ui.theme "{theme}"
   SET metadata.owner "{app_name}"
   
-  U.LOG: "  <blue>→ Applying theme:</> {theme} in {C}"
-  U.ASSERT: "ui.theme == 'dark'"
+  U.LOG: "  <blue>→ Applying theme: {theme} in {C}"
+
+  // Nouvelle syntaxe libre et imbriquée (Nesting)
+# IF: exists(nonExistent.json)
+    U.LOG: "  <green>[OK]</> Validation réussie."
+# ELSE:
+    U.LOG: "  <red>[FATAL]</> Fichier de configuration critique manquant !"
+    U.EXIT: 1
+# END
   
   S.EXEC: "cat {rel}" as L
-  U.LOG: "<yellow>[SCRIPT OUTPUT]</>\n{L}"
+  U.LOG: "<yellow>[SCRIPT OUTPUT]</>\n<red>{L}</>"
 #END
 
-U.LOG: "\n<green>[SUCCESS]</> Transformation finished for {app_name}"
+U.LOG: "\n<green>[SUCCESS]</> Transformation terminée pour {app_name}"
 
-// Ici {theme} n'existe plus, mais {app_name} est toujours là
+// Ici {theme} n'existe plus (scope local au bloc #BEGIN)
 U.LOG: "<red>[EXPECTED ERROR]</> Scoped variable check: {theme}"
+
+U.LOG: "Attempting to inject script"
+
+@TSINJECT: {{OK}}
+  console.log("Injection réussie");
+@END

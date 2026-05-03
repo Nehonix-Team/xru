@@ -11,9 +11,7 @@ New-Item -Path "docs/README.md" -ItemType File -Force
 Set-Content -Path "docs/README.md" -Value @'
     # Documentation for {project_name}
     Created by XRU Full Syntax Test.
-    Base: {ROOT,
-    "theme": "dark",
-}
+    Base: {ROOT}
 '@
 $DOC_LIST = & ls -R docs
 Write-Host "  [FILESYSTEM] Docs created:\n$DOC_LIST"

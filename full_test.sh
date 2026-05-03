@@ -23,6 +23,4 @@ echo "  [FILESYSTEM] Docs created:\n${DOC_LIST}"
 echo "[SKIP] Structural patching for src/main.ts is not supported in pure SH"
 # Warning: Structural patching for config.json requires xru binary
 echo "[SKIP] Structural patching for config.json is not supported in pure SH"
-echo "\n[SUCCESS] Full Syntax Test completed for ${project_name,
-  "theme": "dark",
-}!"
+echo "\n[SUCCESS] Full Syntax Test completed for ${project_name}!"

@@ -95,45 +95,63 @@
       ]
     },
     "inject_ts": {
-      "begin": "^(@TSINJECT):",
-      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
-      "end": "^(@END)$",
-      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "begin": "^\\s*(@TSINJECT):\\s*(.*)$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.scoping.xru" },
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+      },
+      "end": "^\\s*(@END)\\s*$",
+      "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
       "patterns": [{ "include": "source.ts" }]
     },
     "inject_js": {
-      "begin": "^(@JSINJECT):",
-      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
-      "end": "^(@END)$",
-      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "begin": "^\\s*(@JSINJECT):\\s*(.*)$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.scoping.xru" },
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+      },
+      "end": "^\\s*(@END)\\s*$",
+      "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
       "patterns": [{ "include": "source.js" }]
     },
     "inject_go": {
-      "begin": "^(@GOINJECT):",
-      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
-      "end": "^(@END)$",
-      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "begin": "^\\s*(@GOINJECT):\\s*(.*)$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.scoping.xru" },
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+      },
+      "end": "^\\s*(@END)\\s*$",
+      "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
       "patterns": [{ "include": "source.go" }]
     },
     "inject_json": {
-      "begin": "^(@JSONINJECT):",
-      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
-      "end": "^(@END)$",
-      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "begin": "^\\s*(@JSONINJECT):\\s*(.*)$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.scoping.xru" },
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+      },
+      "end": "^\\s*(@END)\\s*$",
+      "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
       "patterns": [{ "include": "source.json" }]
     },
     "inject_css": {
-      "begin": "^(@CSSINJECT):",
-      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
-      "end": "^(@END)$",
-      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "begin": "^\\s*(@CSSINJECT):\\s*(.*)$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.scoping.xru" },
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+      },
+      "end": "^\\s*(@END)\\s*$",
+      "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
       "patterns": [{ "include": "source.css" }]
     },
     "inject_html": {
-      "begin": "^(@HTMLINJECT):",
-      "beginCaptures": { "0": { "name": "entity.name.tag.xru" } },
-      "end": "^(@END)$",
-      "endCaptures": { "1": { "name": "entity.name.tag.xru" } },
+      "begin": "^\\s*(@HTMLINJECT):\\s*(.*)$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.scoping.xru" },
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+      },
+      "end": "^\\s*(@END)\\s*$",
+      "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
       "patterns": [{ "include": "text.html.basic" }]
     },
     "actions_generic": {

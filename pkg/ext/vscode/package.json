@@ -6,7 +6,8 @@
   "publisher": "nehonix",
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:xru"
+    "onLanguage:xru",
+    "onLanguage:markdown"
   ],
   "engines": {
     "vscode": "^1.75.0"
@@ -32,15 +33,28 @@
       {
         "language": "xru",
         "scopeName": "source.xru",
-        "path": "./syntaxes/xru.tmLanguage.json"
+        "path": "./syntaxes/xru.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.ts": "typescript",
+          "source.js": "javascript",
+          "source.json": "json",
+          "source.css": "css",
+          "source.go": "go",
+          "text.html.basic": "html"
+        }
       }
     ],
     "snippets": [
       {
         "language": "xru",
         "path": "./snippets/xru.code-snippets"
+      },
+      {
+        "language": "markdown",
+        "path": "./snippets/xru.code-snippets"
       }
     ],
+
     "problemMatchers": [
       {
         "name": "xru",

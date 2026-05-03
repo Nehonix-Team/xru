@@ -416,6 +416,30 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as string, line 
 				cmd.Run()
 			}
 		}
+	case "fs":
+		switch strings.ToUpper(method) {
+		case "MKDIR":
+			os.MkdirAll(filepath.Join(cb, target), 0755)
+		case "RM":
+			os.RemoveAll(filepath.Join(cb, target))
+		case "TOUCH":
+			os.WriteFile(filepath.Join(cb, target), []byte(""), 0644)
+		case "COPY", "MOVE":
+			parts := strings.SplitN(target, "->", 2)
+			if len(parts) < 2 {
+				fmt.Printf("%s:%d: %serror:%s %s requires 'src -> dst' syntax\n", currentFile, line, colorRed, colorReset, method)
+				os.Exit(1)
+			}
+			src := filepath.Join(cb, strings.TrimSpace(parts[0]))
+			dst := filepath.Join(cb, strings.TrimSpace(parts[1]))
+			if strings.ToUpper(method) == "MOVE" {
+				os.Rename(src, dst)
+			} else {
+				// Simple copy (file only for now)
+				input, _ := os.ReadFile(src)
+				os.WriteFile(dst, input, 0644)
+			}
+		}
 	}
 }
 

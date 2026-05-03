@@ -1,14 +1,15 @@
 #USE: Utils as U
 #USE: Sys as S
+#USE: FS
 
 let app_name = "XyPriss"
 let rel = "file.md"
 let p = "apps"
 
-// On crée le dossier apps s'il n'existe pas pour que SELECT fonctionne
+// Utilisation du nouveau module FS (propre et multiplateforme)
 #IF: !exists({p})
   U.LOG: "Creating directory {p}..."
-  S.EXEC: "mkdir -p {p}"
+  FS.MKDIR: {p}
 #END
 
 #SELECT: {p} as ROOT

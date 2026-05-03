@@ -60,13 +60,22 @@
         },
         {
           "name": "meta.directive.select.xru",
-          "match": "^(#\\s*(?:SELECT|BEGIN|CREATE|INCLUDE)):\\s*([^\\s]+)(?:\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
-          "captures": {
-            "1": { "name": "keyword.control.scoping.xru" },
-            "2": { "name": "string.unquoted.path.xru" },
-            "3": { "name": "keyword.control.scoping.xru" },
-            "4": { "name": "variable.other.alias.xru" }
-          }
+          "begin": "^(#\\s*(?:SELECT|BEGIN|CREATE|INCLUDE)):",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.scoping.xru" }
+          },
+          "end": "$",
+          "patterns": [
+            { "include": "#interpolation" },
+            { "include": "#strings" },
+            {
+              "match": "\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+              "captures": {
+                "1": { "name": "keyword.control.scoping.xru" },
+                "2": { "name": "variable.other.alias.xru" }
+              }
+            }
+          ]
         },
         {
           "name": "keyword.control.scoping.xru",

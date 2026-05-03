@@ -53,15 +53,6 @@ Defines a conditional execution block.
 ---
 
 ## 3. Logic Operations
-Logic operations handle system interaction and diagnostics. They follow the namespaced syntax: `Alias.Action: Content`.
+Logic operations handle system interaction, diagnostics, and file manipulation. They are organized into **Modules**.
 
-### Module: `Utils` (Default Alias: `U`)
-| Action | Description |
-| :--- | :--- |
-| `U.LOG` | Transmits a formatted message to the standard output. Supports HSL/ANSI tags like `<cyan>`. |
-| `U.EXIT` | Terminates the XRU process with a specific exit code (e.g., `U.EXIT: 1`). |
-
-### Module: `Sys` (Default Alias: `S`)
-| Action | Description |
-| :--- | :--- |
-| `S.EXEC` | Executes a shell command within the current sandbox. |
+See [Standard Modules](modules.md) for a complete reference of available modules and actions (Utils, Sys, FS).

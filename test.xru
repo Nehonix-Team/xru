@@ -43,6 +43,12 @@ U.LOG: "<cyan>[INFO]</> Lab ready at: <gray>{ROOT}</>"
 FS.MOVE: main.ts -> index.ts
 U.LOG: "\n<green>[SUCCESS]</> Lab experiment finished for {app_name}"
 
+
 // 5. Verification
 S.EXEC: "cat index.ts" as FINAL_CODE
 U.LOG: "<magenta>[FINAL CODE]</>\n{FINAL_CODE}"
+
+@JSINJECT: test
+  const r =  /^.*marker_for_regex.*$/
+@END
+

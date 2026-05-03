@@ -3,11 +3,15 @@
 
 let app_name = "XyPriss"
 let rel = "file.md"
+let p = "apps/{app_name}"
+
+#CREATE:{p}
+  
+#END
 
 // Sécurité : XRU vérifiera maintenant que ce dossier existe vraiment
-#SELECT: apps/{app_name} as ROOT
+#SELECT: {p} as ROOT
 U.LOG: "<cyan>[INFO]</> Traitement de <white>{app_name}</> dans <gray>{ROOT}</>\n"
-
 #BEGIN: config.json as C
   let theme = "dark"
   SET ui.theme "{theme}"

@@ -8,6 +8,7 @@
 package engine
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"unicode"
@@ -264,7 +265,11 @@ func parseNew(src string) (*RuleFile, error) {
 
 		if pending != nil {
 			pending.buf = append(pending.buf, line)
+			continue
 		}
+
+		// SYNTAX ERROR: Unknown line that isn't a structural directive or valid action
+		return nil, fmt.Errorf("%d: syntax error: unknown directive or action '%s'", lineNum, trimmed)
 	}
 
 	commitPending()

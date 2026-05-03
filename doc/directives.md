@@ -5,49 +5,63 @@ The XRU language architecture is divided into two distinct functional layers: **
 ---
 
 ## 1. Structural Directives
-Structural directives define the execution context, file targeting, and script organization. They are always prefixed with the `#` symbol.
+Structural directives define the execution context, file targeting, and control flow. 
 
-### `#USE:<Module> [as Alias]`
-Mounts an internal or external module into the script execution context.
-- **`<Module>`**: The identifier of the module to load.
-- **`[as Alias]`**: Optional local identifier.
-- **Defaults**: `Utils` (aliased to `U`), `Sys` (aliased to `S`).
+> [!IMPORTANT]
+> **Column-0 Rule**: All structural directives starting with `#` must be positioned at the very beginning of the line (Column 0). However, spaces are allowed after the `#` character to visualize nesting (e.g., `#  IF:`).
 
-### `#SELECT:<Path> [as Alias]`
-Defines the working directory (sandbox) for all relative path resolutions.
-- **`<Path>`**: Target directory path.
-- **`[as Alias]`**: Captures the absolute path into a variable.
+### Context & Scoping
+#### `#USE:<Module> [as Alias]`
+Mounts a module into the execution context.
+- **Defaults**: `Utils` (alias `U`), `Sys` (alias `S`).
 
-### `#BEGIN:<Path> [as Alias]` / `#END`
-Defines a transformation block for an existing file.
-- Changes made within this block are local to the specified file.
+#### `#SELECT:<Path> [as Alias]`
+Defines the working directory (sandbox).
+- **Security**: XRU validates that the path exists. If not, execution is aborted.
 
-### `#CREATE:<Path> [as Alias]` / `#END`
-Defines a block for the creation of a new file with the specified content.
+#### `#BEGIN:<Path> [as Alias]` / `#END`
+Defines a transformation block for an existing file. Supports nested control flow.
 
-### `#GLOBAL`
-Instructs the engine to apply subsequent actions to all files within the current sandbox recursively.
+#### `#CREATE:<Path> [as Alias]` / `#END`
+Creates a new file with the provided content.
 
-### `#INCLUDE:<Path>`
-Statically imports and executes another `.xru` rule file.
+#### `#GLOBAL`
+Applies subsequent actions to all files within the current sandbox recursively.
 
 ---
 
-## 2. Logic Operations
-Logic operations handle program flow, system interaction, and diagnostics. They follow the namespaced syntax: `Alias.Action: "Content"`.
+## 2. Control Flow
+XRU supports native conditional logic that can be nested within structural blocks.
+
+### `#IF: <Condition>` / `#ELSE IF:` / `#ELSE:` / `#END`
+Defines a conditional execution block.
+- **Conditions**: Barewords are supported (no quotes needed).
+- **Functions**: `exists(path)` checks for file existence within the current sandbox.
+- **Operators**: `==`, `!=` for variable comparison.
+
+```xru
+#IF: exists(config.json)
+    U.LOG: "Config found!"
+#ELSE:
+    U.LOG: "Missing config, creating default..."
+    #CREATE: config.json
+       { "theme": "dark" }
+    #END
+#END
+```
+
+---
+
+## 3. Logic Operations
+Logic operations handle system interaction and diagnostics. They follow the namespaced syntax: `Alias.Action: Content`.
 
 ### Module: `Utils` (Default Alias: `U`)
-Provides core utility functions for script execution.
-
 | Action | Description |
 | :--- | :--- |
-| `U.LOG` | Transmits a formatted message to the standard output. |
-| `U.ASSERT` | Evaluates a condition and halts execution if validation fails. |
+| `U.LOG` | Transmits a formatted message to the standard output. Supports HSL/ANSI tags like `<cyan>`. |
+| `U.EXIT` | Terminates the XRU process with a specific exit code (e.g., `U.EXIT: 1`). |
 
 ### Module: `Sys` (Default Alias: `S`)
-Provides low-level system interactions.
-
 | Action | Description |
 | :--- | :--- |
 | `S.EXEC` | Executes a shell command within the current sandbox. |
-| `S.EXIT` | Terminates the XRU process with a specific exit code. |

@@ -36,9 +36,22 @@
       "patterns": [
         {
           "name": "keyword.control.scoping.xru",
-          "match": "^#(BEGIN|CREATE|SELECT|GLOBAL|USE|INCLUDE):"
+          "match": "^#\\s*(BEGIN|CREATE|SELECT|GLOBAL|USE|INCLUDE|ELSE|END)\\b:?"
         },
-        { "name": "keyword.control.scoping.end.xru", "match": "^#END(:.*)?$" }
+        {
+          "name": "keyword.control.scoping.if.xru",
+          "begin": "^#\\s*(IF|ELSEIF):",
+          "beginCaptures": {
+            "0": { "name": "keyword.control.scoping.xru" }
+          },
+          "end": "$",
+          "patterns": [
+            { "include": "#strings" },
+            { "include": "#interpolation" },
+            { "name": "entity.name.function.xru", "match": "\\bexists(?=\\()" },
+            { "name": "keyword.operator.comparison.xru", "match": "==|!=" }
+          ]
+        }
       ]
     },
     "modular_actions": {
@@ -96,6 +109,13 @@
     },
     "actions_generic": {
       "patterns": [
+        {
+          "name": "keyword.control.scoping.if.xru",
+          "begin": "^#\\s*(IF|ELSEIF):",
+          "beginCaptures": {
+            "0": { "name": "keyword.control.scoping.xru" }
+          }
+        },
         {
           "name": "keyword.control.action.inject.xru",
           "match": "^@[A-Z]*INJECT:",

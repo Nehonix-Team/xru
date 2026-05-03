@@ -8,44 +8,45 @@ The XRU engine provides a robust state management system using dynamic variables
 
 ### Explicit Declaration: `let`
 Variables can be explicitly declared within any scope.
-- `let project_name = "XyPriss"`
+- **Bareword Support**: `let project_name = XyPriss`
+- **Quoted**: `let project_name = "XyPriss"`
 
 ### Implicit Capture: `as`
-The result or target of a directive or operation can be captured using the `as` keyword.
+The result or target of a directive can be captured into a variable.
 - `S.EXEC: "git rev-parse HEAD" as COMMIT_HASH`
-- `#SELECT: "./dist" as SANDBOX_ROOT`
+- `#SELECT: apps/{app_name} as ROOT`
 
 ---
 
-## 2. The Golden Rules of Scoping
+## 2. Scoping Rules
 
-To ensure script reliability and maintainability, XRU enforces the following rules:
+XRU uses a hierarchical scoping system.
 
-### No Duplicate Definitions
-It is forbidden to define the same identifier twice within the same scope. This applies to both `let` and `as` captures.
-- **Error**: `let x = 1; let x = 2` (Immediate termination).
+### Block Scopes (`#BEGIN`, `#CREATE`, `#GLOBAL`)
+These structural directives create a **New Sub-Scope**.
+- Variables defined inside are **local** to the block.
+- **Shadowing**: You can redefine a variable from a parent scope; it will be restored after the `#END`.
 
-### Shadowing Support
-A variable defined in a parent scope can be redefined within a sub-block (`#BEGIN`, `#CREATE`).
-- The local definition will shadow the global one until the block ends.
-- Once the block reaches `#END`, the original global value is restored.
+### Control Scopes (`#IF`, `#ELSE`)
+Conditional blocks **Share the Current Scope**.
+- Variables defined inside an `#IF` persist after the `#END`.
+- This allows conditional configuration setup.
 
 ### Usage Tracking
-Every variable defined must be utilized at least once within its scope (via interpolation `{VAR}`).
-- **Warning**: The engine will emit a warning (tracked in IDEs) for any unused variables.
+Every variable must be used via `{VAR}` interpolation. Unused variables trigger a warning to help maintain clean scripts.
 
 ---
 
 ## 3. String Interpolation `{}`
-Variable values are injected into strings, paths, or structured objects using the `{IDENTIFIER}` syntax.
+Variable values are injected using the `{IDENTIFIER}` syntax.
 
 ```xru
-let theme_mode = "dark"
-U.LOG: "Applying {theme_mode} configuration..."
-SET ui.theme "{theme_mode}"
+let theme = dark
+U.LOG: "Applying {theme}..."
+#BEGIN: config.json
+  SET ui.theme "{theme}"
+#END
 ```
 
-### Undefined Variable Handling
-Accessing an undefined or out-of-scope variable triggers an immediate error injection:
-`[ERROR: UNDEFINED_VAR]`
-This fails-fast to prevent corrupted project configurations.
+### Undefined Variables
+Accessing an undefined variable triggers a fatal error injection: `[ERROR: UNDEFINED_VAR]`. This ensures that no invalid configuration is silently generated.

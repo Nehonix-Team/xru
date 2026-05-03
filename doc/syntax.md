@@ -1,25 +1,36 @@
 # XRU Syntax Specification
 
-The XRU (XyPriss Rule Unit) engine is a **Structured Text Patcher** designed to provide precise, formatting-preserving transformations.
+The XRU (XyPriss Rule Unit) engine is a **Structured Text Patcher** designed to provide precise, formatting-preserving transformations with a rigorous structural layout.
 
 ---
 
 ## 1. Syntax Foundations
 
+### Structural Layout
+- **Column-0 Rule**: Every directive starting with `#` must have its anchor (`#`) at the very first character of the line.
+- **Nesting Visualization**: To improve readability in nested blocks, spaces are allowed **after** the `#` character.
+
+```xru
+#BEGIN: main.ts
+#  IF: exists(config.json)
+     U.LOG: "Nested logic"
+#  END
+#END
+```
+
+### Quoting Policy (Barewords)
+XRU follows a "Bareword" policy. Quotes (single or double) around directive targets or logic operation content are **optional**.
+- `U.LOG: Hello World` is equivalent to `U.LOG: "Hello World"`
+- `#IF: {var} == val` is equivalent to `#IF: "{var}" == "val"`
+
 ### Comments
-Use the `//` prefix for single-line comments. These are ignored by the parser and can be placed anywhere in the script.
-
-### Quoting Policy
-Outer quotes (single or double) are automatically stripped from structural directives and logic operations. Internal quotes (e.g., within JSON objects or shell commands) are preserved.
-
-### Namespacing
-Logic operations utilize a namespaced syntax to ensure modularity and avoid naming collisions: `Namespace.Action: "Content"`.
+Use the `//` prefix for single-line comments.
 
 ---
 
 ## 2. Standardized Log Colorization
 
-When utilizing the `U.LOG` operation, the engine supports XML-like inline tags for terminal colorization. These tags are natively highlighted in the XRU VS Code extension.
+When utilizing the `U.LOG` operation, the engine supports XML-like inline tags for terminal colorization.
 
 | Tag | Resulting Color |
 | :--- | :--- |

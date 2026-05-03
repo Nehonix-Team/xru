@@ -178,8 +178,13 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 			} else {
 				cb = filepath.Join(initialTarget, target)
 			}
-			if _, err := os.Stat(cb); os.IsNotExist(err) {
+			info, err := os.Stat(cb)
+			if os.IsNotExist(err) {
 				fmt.Printf("%s:%d: %serror:%s directory '%s' does not exist\n", currentFile, rule.Line, colorRed, colorReset, cb)
+				os.Exit(1)
+			}
+			if !info.IsDir() {
+				fmt.Printf("%s:%d: %serror:%s path '%s' is a file, but SELECT requires a directory\n", currentFile, rule.Line, colorRed, colorReset, cb)
 				os.Exit(1)
 			}
 			if rule.As != "" {

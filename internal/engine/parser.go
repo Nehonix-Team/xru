@@ -64,9 +64,6 @@ func parseNew(src string) (*RuleFile, error) {
 	for i, line := range lines {
 		lineNum := i + 1
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
-			continue
-		}
 
 		// STRICT MODE: Directives starting with # MUST be at column 0
 		if strings.HasPrefix(line, "#") {
@@ -258,8 +255,19 @@ func parseNew(src string) (*RuleFile, error) {
 			continue
 		}
 
-		if len(stack) > 0 && stack[len(stack)-1].Type == RuleTypeCreate {
+		if trimmed == "" {
+			if len(stack) > 0 && stack[len(stack)-1].Type == RuleTypeCreate {
+				stack[len(stack)-1].Content += line + "\n"
+			}
+			continue
+		}
+
+		if len(stack) > 0 && stack[len(stack)-1].Type == RuleTypeCreate && !strings.HasPrefix(trimmed, "#END") {
 			stack[len(stack)-1].Content += line + "\n"
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "//") {
 			continue
 		}
 

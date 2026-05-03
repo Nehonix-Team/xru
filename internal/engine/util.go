@@ -5,8 +5,9 @@
 package engine
 
 import (
-	"os"
+	// "os"
 	"regexp"
+	"strings"
 )
 
 var varRegex = regexp.MustCompile(`\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
@@ -16,10 +17,10 @@ type VarProvider interface {
 	Get(name string) (string, bool)
 }
 
-// readFile is the single I/O primitive used by the package.
-func readFile(path string) ([]byte, error) {
-	return os.ReadFile(path)
-}
+// // readFile is the single I/O primitive used by the package.
+// func readFile(path string) ([]byte, error) {
+// 	return os.ReadFile(path)
+// }
 
 // Interpolate replaces {VAR} placeholders with values from a VarProvider.
 func Interpolate(s string, provider VarProvider) string {
@@ -35,6 +36,9 @@ func Interpolate(s string, provider VarProvider) string {
 			return "[SYNTAX_ERROR: UNCLOSED_BRACE]"
 		}
 	}
+
+	// Handle escaping: \{ becomes {
+	s = strings.ReplaceAll(s, "\\{", "{")
 
 	if provider == nil {
 		return s

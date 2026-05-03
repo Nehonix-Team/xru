@@ -396,6 +396,9 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as string, line 
 				}
 			}
 			os.Exit(code)
+		default:
+			fmt.Printf("%s:%d: %serror:%s unknown method '%s' for module '%s'\n", currentFile, line, colorRed, colorReset, method, moduleName)
+			os.Exit(1)
 		}
 	case "sys", "s":
 		switch strings.ToUpper(method) {
@@ -415,6 +418,9 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as string, line 
 				cmd.Stderr = os.Stderr
 				cmd.Run()
 			}
+		default:
+			fmt.Printf("%s:%d: %serror:%s unknown method '%s' for module '%s'\n", currentFile, line, colorRed, colorReset, method, moduleName)
+			os.Exit(1)
 		}
 	case "fs":
 		switch strings.ToUpper(method) {
@@ -439,7 +445,13 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as string, line 
 				input, _ := os.ReadFile(src)
 				os.WriteFile(dst, input, 0644)
 			}
+		default:
+			fmt.Printf("%s:%d: %serror:%s unknown method '%s' for module '%s'\n", currentFile, line, colorRed, colorReset, method, moduleName)
+			os.Exit(1)
 		}
+	default:
+		fmt.Printf("%s:%d: %serror:%s unknown module '%s'\n", currentFile, line, colorRed, colorReset, moduleName)
+		os.Exit(1)
 	}
 }
 

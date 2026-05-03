@@ -3,44 +3,47 @@
 #USE: FS
 
 let app_name = "XyPriss"
-let rel = "file.md"
 let p = "apps"
 
-// Utilisation du nouveau module FS (propre et multiplateforme)
+// 1. Test du module FS & Conditions
 #IF: !exists({p})
-  U.LOG: "Creating directory {p}..."
+  U.LOG: "<yellow>[FS]</> Creating lab directory: {p}"
   FS.MKDIR: {p}
 #END
 
 #SELECT: {p} as ROOT
-U.LOG: "<cyan>[INFO]</> Traitement de <white>{app_name}</> dans <gray>{ROOT}</>\n"
+U.LOG: "<cyan>[INFO]</> Lab ready at: <gray>{ROOT}</>"
 
-#BEGIN: config.json as C
-  let theme = "dark"
-  SET ui.theme "{theme}"
-  SET metadata.owner "{app_name}"
-  
-  U.LOG: "  <blue>→ Applying theme: {theme} in {C}"
+// 2. Création d'un fichier cobaye
+#CREATE: main.ts
+  import { init } from 'core';
 
-  // Nouvelle syntaxe libre et imbriquée (Nesting)
-# IF: exists(nonExistent.json)
-    U.LOG: "  <green>[OK]</> Validation réussie."
-# ELSE:
-    U.LOG: "  <red>[FATAL]</> Fichier de configuration critique manquant !"
-    U.EXIT: 1
-# END
+  // xru: imports
   
-  S.EXEC: "cat {rel}" as L
-  U.LOG: "<yellow>[SCRIPT OUTPUT]</>\n<red>{L}</>"
+  init();
+
+  // marker_for_regex
+  console.log("Starting...");
 #END
 
-U.LOG: "\n<green>[SUCCESS]</> Transformation terminée pour {app_name}"
+// 3. Test des Injections
+#BEGIN: main.ts
+  U.LOG: "<blue>[INJECT]</> Testing Universal Marker (xru: imports)"
+  @TSINJECT: imports
+    import { Logger } from 'logger';
+    import { Database } from 'db';
+  @END
 
-// Ici {theme} n'existe plus (scope local au bloc #BEGIN)
-U.LOG: "<red>[EXP ECTED ERROR]</> Scoped variable check: {theme}"
+  U.LOG: "<blue>[INJECT]</> Testing Regex Marker (/^.*marker_for_regex.*$/)"
+  @TSINJECT: /^.*marker_for_regex.*$/
+    console.log("Entire line replaced via Regex!");
+  @END
+#END
 
-U.LOG: "Attempting to inject script"
+// 4. Finalisation
+FS.MOVE: main.ts -> index.ts
+U.LOG: "\n<green>[SUCCESS]</> Lab experiment finished for {app_name}"
 
-@TSINJECT: {{OK}}
-  console.log("Injection réussie");
-@END
+// 5. Verification
+S.EXEC: "cat index.ts" as FINAL_CODE
+U.LOG: "<magenta>[FINAL CODE]</>\n{FINAL_CODE}"

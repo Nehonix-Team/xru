@@ -100,7 +100,7 @@
       "begin": "^\\s*(@TSINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "constant.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -110,7 +110,7 @@
       "begin": "^\\s*(@JSINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "constant.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -120,7 +120,7 @@
       "begin": "^\\s*(@GOINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "constant.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -130,7 +130,7 @@
       "begin": "^\\s*(@JSONINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "constant.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -140,7 +140,7 @@
       "begin": "^\\s*(@CSSINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "constant.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -150,7 +150,7 @@
       "begin": "^\\s*(@HTMLINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "constant.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -301,10 +301,19 @@
       ]
     },
     "interpolation": {
+      "name": "meta.interpolation.xru",
+      "begin": "\\{",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.interpolation.begin.xru" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.interpolation.end.xru" }
+      },
       "patterns": [
         {
-          "name": "variable.interpolation.xru",
-          "match": "\\{[a-zA-Z_][a-zA-Z0-9_]*\\}"
+          "name": "variable.other.interpolation.xru",
+          "match": "[a-zA-Z_][a-zA-Z0-9_]*"
         }
       ]
     },

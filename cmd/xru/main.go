@@ -114,11 +114,11 @@ func colorify(s string) string {
 
 func checkSyntaxError(val string, line int) {
 	if val == "[SYNTAX_ERROR: UNCLOSED_QUOTE]" {
-		fmt.Printf("%s:%d: %serror:%s unclosed quote detected\n", currentFile, line, colorRed, colorReset)
+		fmt.Printf("%s:%d: %ssyntax error:%s missing terminating '\"' or \"'\" character\n", currentFile, line, colorRed, colorReset)
 		os.Exit(1)
 	}
 	if val == "[SYNTAX_ERROR: UNCLOSED_BRACE]" {
-		fmt.Printf("%s:%d: %serror:%s unclosed brace '{' detected (missing '}')\n", currentFile, line, colorRed, colorReset)
+		fmt.Printf("%s:%d: %ssyntax error:%s missing terminating '}' for variable interpolation\n", currentFile, line, colorRed, colorReset)
 		os.Exit(1)
 	}
 }

@@ -12,6 +12,15 @@ Core utilities for diagnostics and process control.
 | `LOG` | `U.LOG: <content>` | Prints a message to stdout. Supports HSL/ANSI color tags. |
 | `EXIT` | `U.EXIT: <code>` | Terminates the XRU process immediately with the specified exit code. |
 
+### Examples
+```xru
+U.LOG: "<green>[SUCCESS]</> Process completed."
+#IF: !exists("required.file")
+    U.LOG: "<red>[FATAL]</> Missing dependency."
+    U.EXIT: 1
+#END
+```
+
 ---
 
 ## 2. Sys Module (Alias: `S`)
@@ -21,6 +30,13 @@ Low-level system interactions and shell execution.
 | :--- | :--- | :--- |
 | `EXEC` | `S.EXEC: <cmd> [as Var]` | Executes a shell command within the current sandbox. Capture output with `as`. |
 | `ARG` | `S.ARG: <key> as Var` | Reads a terminal argument. Key can be a flag (e.g. `"--mode"`) or an index (e.g. `1`). |
+
+### Examples
+```xru
+S.ARG: 1 as PROJECT_NAME
+S.EXEC: "git rev-parse --short HEAD" as COMMIT
+U.LOG: "Deploying {PROJECT_NAME} at {COMMIT}..."
+```
 
 ---
 
@@ -35,6 +51,16 @@ Cross-platform file and directory manipulation. Highly recommended over `S.EXEC`
 | `COPY` | `FS.COPY: <src> -> <dst>` | Copies a file from source to destination. |
 | `MOVE` | `FS.MOVE: <src> -> <dst>` | Moves/Renames a file or directory. |
 
+### Examples
+```xru
+FS.MKDIR: "logs/archive"
+FS.TOUCH: "logs/session.log"
+FS.COPY: "config.json" -> "config.backup.json"
+FS.MOVE: "temp/build.zip" -> "dist/build.zip"
+FS.RM: "temp"
+```
+
 ### Note on Path Separators
 For `COPY` and `MOVE`, use the `->` separator to distinguish between source and destination.
 Example: `FS.MOVE: old_name.txt -> new_name.txt`
+

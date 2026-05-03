@@ -18,6 +18,17 @@ Best for top-level modifications or whole-object merges. Barewords are supported
 | `<<` | **APPEND** | Add an item to an array. |
 | `~~` | **REGEX** | Search and Replace via regular expressions. |
 
+### Examples
+```xru
+#BEGIN: "settings.json"
+  ++ { "theme": "dark", "zoom": 1.2 }
+  -- "experimental_features"
+  >> "old_key" "new_key"
+  << "plugins" "git-integration"
+  ~~ "http://localhost:3000" "https://api.myapp.com"
+#END
+```
+
 ---
 
 ## 2. Path-Targeted Keywords
@@ -25,43 +36,68 @@ Best for precise deep-patching without repeating the entire file structure.
 
 ### `SET <path> <value>`
 Overwrites or creates a value at a specific path. 
-- Example: `SET version 1.2.3` (Bareword)
-- Example: `SET ui.theme "dark"`
+```xru
+#BEGIN: "config.json"
+  SET version "1.2.3"
+  SET ui.colors.primary "#ff0000"
+#END
+```
 
 ### `MERGE <path> <object>`
 Performs a deep merge at a specific nested path.
-- Example: `MERGE settings.theme { mode: dark }`
+```xru
+#BEGIN: "package.json"
+  MERGE scripts { "start": "node index.js", "test": "jest" }
+#END
+```
 
 ### `REMOVE <path>`
 Deletes a specific key or branch.
+```xru
+#BEGIN: "config.yaml"
+  REMOVE metadata.labels.obsolete
+#END
+```
 
 ### `PUSH <path> <value>`
 Appends a value to an array at a specific path.
+```xru
+#BEGIN: "tsconfig.json"
+  PUSH compilerOptions.lib "esnext"
+#END
+```
 
 ---
 
 ## 3. Code Injections
-Used for injecting raw code at specific markers in source files.
+Used for injecting raw code at specific markers in source files. XRU uses a **Universal Marker Detection** system.
 
 ### `@*INJECT: <key>` / `@END`
-Injects code at a dynamic marker within a source file. XRU uses a **Universal Marker Detection** system that is language-agnostic.
-
-- **Comment Styles**: Supports `//`, `#`, `--`, `/*`, `<!--`.
-- **Triggers**: Detects `-->`, `xru:`, `xfpm:`, or direct keys.
-- **Key Format**: Works with or without `{{}}` braces.
-- **Advanced Regex**: Use `/pattern/` to perform a direct regex search and replace for injection.
+Injects code at a dynamic marker. The prefix (`TS`, `JS`, `GO`, etc.) is optional but helps with syntax highlighting in some editors.
 
 #### Example Markers (Target Files)
-- `// --> {{imports}}`
-- `# xru: configuration`
-- `/* xfpm: style */`
-- `<!-- --> {{footer}}`
+```typescript
+// --> {{imports}}
+import { base } from './base';
+
+/* xru: logic */
+const x = 10;
+
+# xfpm: config
+VERSION=1.0
+```
 
 #### Example Usage (XRU)
 ```xru
-#BEGIN: main.ts
+#BEGIN: "main.ts"
   @TSINJECT: imports
-    import { Logger } from './logger';
+    import { Auth } from './auth';
+    import { Store } from './store';
+  @END
+
+  @INJECT: logic
+    console.log("Injected logic running");
   @END
 #END
 ```
+

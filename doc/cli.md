@@ -34,3 +34,15 @@ xru script.xru ./target-dir --mode=prod
 XRU uses a smart detection for the `[target_directory]`:
 - If the argument after the rule file starts with `-` (a flag), XRU assumes the target is `.` and treats that argument as a script argument.
 - Otherwise, it treats the first argument as the target and subsequent arguments as script arguments.
+
+#### Script Implementation of Arguments
+```xru
+// script.xru
+#ARG: "--mode" as MODE
+#ARG: 1 as TARGET_FILE
+
+#IF: {MODE} == "prod"
+    U.LOG: "Processing {TARGET_FILE} in PRODUCTION mode"
+#END
+```
+

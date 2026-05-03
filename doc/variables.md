@@ -8,13 +8,19 @@ The XRU engine provides a robust state management system using dynamic variables
 
 ### Explicit Declaration: `let`
 Variables can be explicitly declared within any scope.
-- **Bareword Support**: `let project_name = XyPriss`
-- **Quoted**: `let project_name = "XyPriss"`
+```xru
+let project_name = "XyPriss"
+let port = 8080
+U.LOG: "Configuring {project_name} on port {port}"
+```
 
 ### Implicit Capture: `as`
 The result or target of a directive can be captured into a variable.
-- `S.EXEC: "git rev-parse HEAD" as COMMIT_HASH`
-- `#SELECT: apps/{app_name} as ROOT`
+```xru
+S.EXEC: "git rev-parse --short HEAD" as COMMIT
+#SELECT: "apps/{app_name}" as APP_ROOT
+#ARG: "--mode" as MODE
+```
 
 ---
 
@@ -27,10 +33,28 @@ These structural directives create a **New Sub-Scope**.
 - Variables defined inside are **local** to the block.
 - **Shadowing**: You can redefine a variable from a parent scope; it will be restored after the `#END`.
 
+```xru
+let name = "Global"
+#BEGIN: "local.txt"
+    let name = "Local"
+    U.LOG: "{name}" // Prints "Local"
+#END
+U.LOG: "{name}" // Prints "Global"
+```
+
 ### Control Scopes (`#IF`, `#ELSE`)
 Conditional blocks **Share the Current Scope**.
 - Variables defined inside an `#IF` persist after the `#END`.
 - This allows conditional configuration setup.
+
+```xru
+#IF: exists("prod.flag")
+    let env = "production"
+#ELSE:
+    let env = "development"
+#END
+U.LOG: "Environment is {env}" // 'env' is accessible here
+```
 
 ### Usage Tracking
 Every variable must be used via `{VAR}` interpolation. Unused variables trigger a warning to help maintain clean scripts.
@@ -38,15 +62,14 @@ Every variable must be used via `{VAR}` interpolation. Unused variables trigger 
 ---
 
 ## 3. String Interpolation `{}`
-Variable values are injected using the `{IDENTIFIER}` syntax.
+Variable values are injected using the `{IDENTIFIER}` syntax. Interpolation is recursive, meaning a variable's value can contain other variables.
 
 ```xru
-let theme = dark
-U.LOG: "Applying {theme}..."
-#BEGIN: config.json
-  SET ui.theme "{theme}"
-#END
+let base_url = "https://api.example.com"
+let endpoint = "{base_url}/v1/auth"
+U.LOG: "Connecting to {endpoint}"
 ```
 
 ### Undefined Variables
 Accessing an undefined variable triggers a fatal error injection: `[ERROR: UNDEFINED_VAR]`. This ensures that no invalid configuration is silently generated.
+

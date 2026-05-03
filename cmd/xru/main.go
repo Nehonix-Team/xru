@@ -439,6 +439,11 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as string, line 
 				}
 			}
 			os.Exit(code)
+		case "ARG", "ARGS":
+			val := getTerminalArg(target)
+			if as != "" {
+				scope.Set(as, val, line)
+			}
 		default:
 			fmt.Printf("%s:%d: %serror:%s unknown method '%s' for module '%s'\n", currentFile, line, colorRed, colorReset, method, moduleName)
 			os.Exit(1)

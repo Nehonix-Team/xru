@@ -13,25 +13,58 @@ Structural directives define the execution context, file targeting, and control 
 ### Context & Scoping
 #### `#USE:<Module> [as Alias]`
 Mounts a module into the execution context.
-- **Defaults**: `Utils` (alias `U`), `Sys` (alias `S`).
+```xru
+#USE: sys as S
+#USE: utils as U
+S.EXEC: "ls"
+```
 
 #### `#SELECT:"<Path>" [as Alias]`
-Defines the working directory (sandbox).
-- **Security**: XRU validates that the path exists. If not, execution is aborted.
+Defines the working directory (sandbox) for subsequent actions.
+```xru
+#IF: !exists("dist")
+    FS.MKDIR: "dist"
+#END
+#SELECT: "dist"
+// All following file operations will be relative to 'dist'
+#CREATE: "version.txt"
+    1.0.0
+#END
+```
 
 #### `#ARG:"<Key>" as <VarName>`
 Reads an argument from the terminal command line.
-- **Flag names**: (e.g. `"--mode"`) returns the value of the flag or `"true"`.
-- **Positional**: (e.g. `1`) returns the N-th argument (starting after the rule file).
+```xru
+#ARG: 1 as PROJECT_NAME
+#ARG: "--env" as ENVIRONMENT
+U.LOG: "Initializing {PROJECT_NAME} in {ENVIRONMENT} mode..."
+```
 
 #### `#BEGIN:"<Path>" [as Alias]` / `#END`
-Defines a transformation block for an existing file. Supports nested control flow.
+Defines a transformation block for an existing file.
+```xru
+#BEGIN: "package.json"
+  SET version "2.0.0"
+  MERGE dependencies { "xypriss": "latest" }
+#END
+```
 
 #### `#CREATE:"<Path>" [as Alias]` / `#END`
 Creates a new file with the provided content.
+```xru
+#CREATE: "README.md"
+    # My Project
+    Created using XRU on {date}
+#END
+```
 
 #### `#GLOBAL`
 Applies subsequent actions to all files within the current sandbox recursively.
+```xru
+#GLOBAL
+    ~~ "Copyright 2023" "Copyright 2024"
+#END
+```
 
 ---
 
@@ -45,13 +78,16 @@ Defines a conditional execution block.
 - **Operators**: `==`, `!=` for variable comparison.
 
 ```xru
-#IF: "exists('config.json')"
-    U.LOG: "Config found!"
-#ELSE:
+#IF: !exists("config.json")
     U.LOG: "Missing config, creating default..."
     #CREATE: "config.json"
        { "theme": "dark" }
     #END
+#ELSE IF: exists("config.old.json")
+    U.LOG: "Migrating old config..."
+    FS.MOVE: "config.old.json" -> "config.json"
+#ELSE:
+    U.LOG: "Config found!"
 #END
 ```
 
@@ -61,3 +97,4 @@ Defines a conditional execution block.
 Logic operations handle system interaction, diagnostics, and file manipulation. They are organized into **Modules**.
 
 See [Standard Modules](modules.md) for a complete reference of available modules and actions (Utils, Sys, FS).
+

@@ -1,5 +1,5 @@
 #USE: sys as S
-#USE: "utils" as U
+#USE: utils as U
 
 S.ARG: "--mode" as m
 S.ARG: 1 as first

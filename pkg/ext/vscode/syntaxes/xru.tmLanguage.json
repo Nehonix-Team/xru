@@ -35,10 +35,6 @@
     "scoping": {
       "patterns": [
         {
-          "name": "keyword.control.scoping.xru",
-          "match": "^#\\s*(BEGIN|CREATE|SELECT|GLOBAL|USE|INCLUDE|ELSE|END)\\b:?"
-        },
-        {
           "name": "keyword.control.scoping.if.xru",
           "begin": "^#\\s*(IF|ELSEIF):",
           "beginCaptures": {
@@ -51,6 +47,30 @@
             { "name": "entity.name.function.xru", "match": "\\bexists(?=\\()" },
             { "name": "keyword.operator.comparison.xru", "match": "==|!=" }
           ]
+        },
+        {
+          "name": "meta.directive.use.xru",
+          "match": "^(#\\s*USE):\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
+          "captures": {
+            "1": { "name": "keyword.control.scoping.xru" },
+            "2": { "name": "entity.name.type.module.xru" },
+            "3": { "name": "keyword.control.scoping.xru" },
+            "4": { "name": "variable.other.alias.xru" }
+          }
+        },
+        {
+          "name": "meta.directive.select.xru",
+          "match": "^(#\\s*(?:SELECT|BEGIN|CREATE|INCLUDE)):\\s*([^\\s]+)(?:\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
+          "captures": {
+            "1": { "name": "keyword.control.scoping.xru" },
+            "2": { "name": "string.unquoted.path.xru" },
+            "3": { "name": "keyword.control.scoping.xru" },
+            "4": { "name": "variable.other.alias.xru" }
+          }
+        },
+        {
+          "name": "keyword.control.scoping.xru",
+          "match": "^#\\s*(GLOBAL|ELSE|END)\\b:?"
         }
       ]
     },

@@ -15,21 +15,25 @@ import (
 	"strings"
 )
 
-// InjectCode replaces lines containing specific markers with the provided code block.
-// It supports multiple comment styles (//, #, --, /*, <!--) and triggers (--> , xru:, xfpm:).
+// InjectCode replaces lines containing specific markers or matching a regex with code.
 func InjectCode(content, key, code string) string {
-	escaped := regexp.QuoteMeta(key)
-	if strings.HasPrefix(key, "{{") && strings.HasSuffix(key, "}}") {
-		escaped = regexp.QuoteMeta(key[2 : len(key)-2])
-	}
+	var re *regexp.Regexp
 
-	// Pattern universel :
-	// 1. Détecte le début de ligne
-	// 2. Détecte un préfixe de commentaire (//, #, --, /*, <!--)
-	// 3. Détecte un déclencheur optionnel (--> , xru:, xfpm:)
-	// 4. Détecte la clé (avec ou sans accolades {{}})
-	pattern := fmt.Sprintf(`(?m)^.*(?://|#|--|/\*|<!--)\s*(?:-->|xru:|xfpm:)?\s*(?:\{\{)?%s(?:\}\})?.*$`, escaped)
-	re := regexp.MustCompile(pattern)
+	// Si la clé est un Regex (ex: /pattern/)
+	if strings.HasPrefix(key, "/") && strings.HasSuffix(key, "/") && len(key) > 2 {
+		pattern := key[1 : len(key)-1]
+		// On ajoute (?m) pour le support multi-ligne par défaut
+		re = regexp.MustCompile("(?m)" + pattern)
+	} else {
+		// Sinon, recherche par marqueur universel
+		escaped := regexp.QuoteMeta(key)
+		if strings.HasPrefix(key, "{{") && strings.HasSuffix(key, "}}") {
+			escaped = regexp.QuoteMeta(key[2 : len(key)-2])
+		}
+		// Pattern universel avec support des commentaires et déclencheurs
+		pattern := fmt.Sprintf(`(?m)^.*(?://|#|--|/\*|<!--)\s*(?:-->|xru:|xfpm:)?\s*(?:\{\{)?%s(?:\}\})?.*$`, escaped)
+		re = regexp.MustCompile(pattern)
+	}
 
 	return re.ReplaceAllString(content, code)
 }

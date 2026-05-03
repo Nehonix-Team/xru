@@ -49,6 +49,7 @@ Injects code at a dynamic marker within a source file. XRU uses a **Universal Ma
 - **Comment Styles**: Supports `//`, `#`, `--`, `/*`, `<!--`.
 - **Triggers**: Detects `-->`, `xru:`, `xfpm:`, or direct keys.
 - **Key Format**: Works with or without `{{}}` braces.
+- **Advanced Regex**: Use `/pattern/` to perform a direct regex search and replace for injection.
 
 #### Example Markers (Target Files)
 - `// --> {{imports}}`

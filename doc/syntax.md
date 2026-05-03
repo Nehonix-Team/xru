@@ -18,10 +18,17 @@ The XRU (XyPriss Rule Unit) engine is a **Structured Text Patcher** designed to 
 #END
 ```
 
-### Quoting Policy (Barewords)
-XRU follows a "Bareword" policy. Quotes (single or double) around directive targets or logic operation content are **optional**.
-- `U.LOG: Hello World` is equivalent to `U.LOG: "Hello World"`
-- `#IF: {var} == val` is equivalent to `#IF: "{var}" == "val"`
+### Strict Quoting Policy
+XRU enforces a strict quoting policy for string literals to prevent ambiguity with variables or keywords.
+- **Mandatory Quotes**: String literals (log messages, file paths, regex patterns, flag names) **MUST** be enclosed in single (`'`) or double (`"`) quotes.
+- **Optional Quotes**: Quotes are optional for the `#USE` directive (module names) and for purely numeric values (e.g. `1`, `8080`).
+
+```xru
+#USE: sys as S             // OK: Optional for #USE
+U.LOG: "Hello world"       // OK: Mandatory for text
+S.ARG: "--mode" as m       // OK: Mandatory for flag names
+S.ARG: 1 as first          // OK: Optional for numbers
+```
 
 ### Comments
 Use the `//` prefix for single-line comments.

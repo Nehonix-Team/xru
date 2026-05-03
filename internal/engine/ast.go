@@ -23,6 +23,7 @@ const (
 	RuleTypeVar     RuleType = "VAR"     // Variable declaration
 	RuleTypeUse     RuleType = "USE"     // Load a module
 	RuleTypeModule  RuleType = "MODULE"  // Call a module method
+	RuleTypeArg     RuleType = "ARG"     // Read terminal argument
 )
 
 // PatchOp defines the type of patch operation.

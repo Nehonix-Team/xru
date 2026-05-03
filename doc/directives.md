@@ -15,14 +15,19 @@ Structural directives define the execution context, file targeting, and control 
 Mounts a module into the execution context.
 - **Defaults**: `Utils` (alias `U`), `Sys` (alias `S`).
 
-#### `#SELECT:<Path> [as Alias]`
+#### `#SELECT:"<Path>" [as Alias]`
 Defines the working directory (sandbox).
 - **Security**: XRU validates that the path exists. If not, execution is aborted.
 
-#### `#BEGIN:<Path> [as Alias]` / `#END`
+#### `#ARG:"<Key>" as <VarName>`
+Reads an argument from the terminal command line.
+- **Flag names**: (e.g. `"--mode"`) returns the value of the flag or `"true"`.
+- **Positional**: (e.g. `1`) returns the N-th argument (starting after the rule file).
+
+#### `#BEGIN:"<Path>" [as Alias]` / `#END`
 Defines a transformation block for an existing file. Supports nested control flow.
 
-#### `#CREATE:<Path> [as Alias]` / `#END`
+#### `#CREATE:"<Path>" [as Alias]` / `#END`
 Creates a new file with the provided content.
 
 #### `#GLOBAL`
@@ -40,11 +45,11 @@ Defines a conditional execution block.
 - **Operators**: `==`, `!=` for variable comparison.
 
 ```xru
-#IF: exists(config.json)
+#IF: "exists('config.json')"
     U.LOG: "Config found!"
 #ELSE:
     U.LOG: "Missing config, creating default..."
-    #CREATE: config.json
+    #CREATE: "config.json"
        { "theme": "dark" }
     #END
 #END

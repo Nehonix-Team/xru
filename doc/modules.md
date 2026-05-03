@@ -20,6 +20,7 @@ Low-level system interactions and shell execution.
 | Action | Syntax | Description |
 | :--- | :--- | :--- |
 | `EXEC` | `S.EXEC: <cmd> [as Var]` | Executes a shell command within the current sandbox. Capture output with `as`. |
+| `ARG` | `S.ARG: <key> as Var` | Reads a terminal argument. Key can be a flag (e.g. `"--mode"`) or an index (e.g. `1`). |
 
 ---
 

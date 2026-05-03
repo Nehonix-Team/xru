@@ -23,6 +23,14 @@ xru update.xru
 # Run rules on a specific project folder
 xru patch.xru ./my-project
 
-# Verbose execution for debugging
-xru -v setup.xru
+# Passing arguments to a script
+xru script.xru --mode=prod --debug
+
+# Passing both target and arguments
+xru script.xru ./target-dir --mode=prod
 ```
+
+### Argument Detection Logic
+XRU uses a smart detection for the `[target_directory]`:
+- If the argument after the rule file starts with `-` (a flag), XRU assumes the target is `.` and treats that argument as a script argument.
+- Otherwise, it treats the first argument as the target and subsequent arguments as script arguments.

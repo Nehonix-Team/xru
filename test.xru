@@ -15,7 +15,7 @@ let p = "apps"
 U.LOG: "<cyan>[INFO]</> Lab ready at: <gray>{ROOT}</>"
 
 // 2. Création d'un fichier cobaye
-#CREATE: main.ts
+#CREATE: "main.ts"
   import { init } from 'core';
 
   // xru: imports

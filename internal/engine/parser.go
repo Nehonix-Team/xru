@@ -72,14 +72,14 @@ func parseNew(src string) (*RuleFile, error) {
 			
 			if strings.HasPrefix(directiveLine, "#BEGIN:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#BEGIN:"))
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#BEGIN:"), true)
 				rule := &Rule{Type: RuleTypeBegin, Target: target, As: as, Line: lineNum}
 				stack = append(stack, rule)
 				continue
 			}
 			if strings.HasPrefix(directiveLine, "#CREATE:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#CREATE:"))
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#CREATE:"), true)
 				rule := &Rule{Type: RuleTypeCreate, Target: target, As: as, Line: lineNum}
 				stack = append(stack, rule)
 				continue
@@ -130,7 +130,7 @@ func parseNew(src string) (*RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#SELECT:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#SELECT:"))
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#SELECT:"), true)
 				rule := Rule{Type: RuleTypeSelect, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
@@ -141,8 +141,19 @@ func parseNew(src string) (*RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#USE:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#USE:"))
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#USE:"), false)
 				rule := Rule{Type: RuleTypeUse, Target: target, As: as, Line: lineNum}
+				if len(stack) > 0 {
+					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
+				} else {
+					rf.Rules = append(rf.Rules, rule)
+				}
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#ARG:") {
+				commitPending()
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#ARG:"), true)
+				rule := Rule{Type: RuleTypeArg, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
 				} else {
@@ -152,7 +163,7 @@ func parseNew(src string) (*RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#INCLUDE:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#INCLUDE:"))
+				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#INCLUDE:"), true)
 				rule := Rule{Type: RuleTypeInclude, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
@@ -209,7 +220,7 @@ func parseNew(src string) (*RuleFile, error) {
 					callParts := strings.SplitN(call, ".", 2)
 					module := strings.TrimSpace(callParts[0])
 					method := strings.TrimSpace(callParts[1])
-					target, as := parseTarget(rest)
+					target, as := parseTarget(rest, true)
 					if len(stack) > 0 {
 						stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, Rule{Type: RuleTypeModule, Target: module + "." + method, Content: target, As: as, Line: lineNum})
 					} else {
@@ -298,7 +309,7 @@ func parseNew(src string) (*RuleFile, error) {
 	return rf, nil
 }
 
-func parseTarget(line string) (string, string) {
+func parseTarget(line string, strictQuotes bool) (string, string) {
 	line = strings.TrimSpace(line)
 	inQuote := false
 	var quoteChar rune
@@ -329,10 +340,24 @@ func parseTarget(line string) (string, string) {
 		target = strings.TrimSpace(line[:idx])
 		as = strings.TrimSpace(line[idx+4:])
 	}
-	if len(target) >= 2 {
-		if (target[0] == '"' && target[len(target)-1] == '"') ||
-			(target[0] == '\'' && target[len(target)-1] == '\'') {
+	if target != "" {
+		isQuoted := (len(target) >= 2) && ((target[0] == '"' && target[len(target)-1] == '"') ||
+			(target[0] == '\'' && target[len(target)-1] == '\''))
+
+		if isQuoted {
 			target = target[1 : len(target)-1]
+		} else {
+			// Check if it's a number
+			isNumber := true
+			for _, r := range target {
+				if !unicode.IsDigit(r) {
+					isNumber = false
+					break
+				}
+			}
+			if !isNumber && strictQuotes {
+				return "[SYNTAX_ERROR: MISSING_QUOTES]", ""
+			}
 		}
 	}
 	return target, as

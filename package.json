@@ -1,5 +1,6 @@
 {
   "scripts": {
-    "build:ext": "bash ./pkg/ext/vscode/build.sh"
+    "build:ext": "bash ./pkg/ext/vscode/build.sh",
+    "publish:go": "bash push.sh"
   }
 }

@@ -31,6 +31,7 @@ const (
 
 var verbose bool
 var currentFile string
+var terminalArgs []string
 
 type Scope struct {
 	Vars     map[string]string
@@ -121,6 +122,10 @@ func checkSyntaxError(val string, line int) {
 		fmt.Printf("%s:%d: %ssyntax error:%s missing terminating '}' for variable interpolation\n", currentFile, line, colorRed, colorReset)
 		os.Exit(1)
 	}
+	if val == "[SYNTAX_ERROR: MISSING_QUOTES]" {
+		fmt.Printf("%s:%d: %ssyntax error:%s string literals must be enclosed in quotes (e.g. \"text\")\n", currentFile, line, colorRed, colorReset)
+		os.Exit(1)
+	}
 }
 
 var rootScope = &Scope{
@@ -152,7 +157,13 @@ func main() {
 	default:
 		target := "."
 		if len(args) > 1 {
-			target = args[1]
+			if strings.HasPrefix(args[1], "-") {
+				target = "."
+				terminalArgs = args[1:]
+			} else {
+				target = args[1]
+				terminalArgs = args[2:]
+			}
 		}
 		runPatch(args[0], target)
 	}
@@ -256,8 +267,40 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 		case engine.RuleTypeBegin, engine.RuleTypeCreate, engine.RuleTypeGlobal:
 			applyRule(initialTarget, cb, rule, scope)
 			skipElse = false
+
+		case engine.RuleTypeArg:
+			val := getTerminalArg(target)
+			if rule.As != "" {
+				scope.Set(rule.As, val, rule.Line)
+			}
+			skipElse = false
 		}
 	}
+}
+
+func getTerminalArg(key string) string {
+	// If key is a number, it's a positional argument (1-indexed)
+	if idx, err := strconv.Atoi(key); err == nil {
+		if idx > 0 && idx <= len(terminalArgs) {
+			return terminalArgs[idx-1]
+		}
+		return ""
+	}
+
+	// Otherwise, it's a flag
+	for i := 0; i < len(terminalArgs); i++ {
+		arg := terminalArgs[i]
+		if arg == key {
+			if i+1 < len(terminalArgs) && !strings.HasPrefix(terminalArgs[i+1], "-") {
+				return terminalArgs[i+1]
+			}
+			return "true"
+		}
+		if strings.HasPrefix(arg, key+"=") {
+			return strings.TrimPrefix(arg, key+"=")
+		}
+	}
+	return ""
 }
 
 func evalCondition(cond string, scope *Scope, cb string) bool {
@@ -417,6 +460,11 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as string, line 
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
 				cmd.Run()
+			}
+		case "ARG":
+			val := getTerminalArg(target)
+			if as != "" {
+				scope.Set(as, val, line)
 			}
 		default:
 			fmt.Printf("%s:%d: %serror:%s unknown method '%s' for module '%s'\n", currentFile, line, colorRed, colorReset, method, moduleName)

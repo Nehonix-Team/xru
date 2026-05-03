@@ -44,10 +44,19 @@ Appends a value to an array at a specific path.
 Used for injecting raw code at specific markers in source files.
 
 ### `@*INJECT: <key>` / `@END`
-Injects code at a marker (e.g., `// xfpm: key`).
-- **Language Filtering**: Use `@TSINJECT`, `@GOINJECT`, etc., to only apply if the file extension matches.
-- **Marker Syntax**: Markers in source files should follow the `// --> {{key}}` pattern.
+Injects code at a dynamic marker within a source file. XRU uses a **Universal Marker Detection** system that is language-agnostic.
 
+- **Comment Styles**: Supports `//`, `#`, `--`, `/*`, `<!--`.
+- **Triggers**: Detects `-->`, `xru:`, `xfpm:`, or direct keys.
+- **Key Format**: Works with or without `{{}}` braces.
+
+#### Example Markers (Target Files)
+- `// --> {{imports}}`
+- `# xru: configuration`
+- `/* xfpm: style */`
+- `<!-- --> {{footer}}`
+
+#### Example Usage (XRU)
 ```xru
 #BEGIN: main.ts
   @TSINJECT: imports

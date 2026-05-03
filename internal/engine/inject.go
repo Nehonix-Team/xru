@@ -15,31 +15,28 @@ import (
 	"strings"
 )
 
-// InjectCode replaces every line containing `// xfpm: <key>` with code.
-// The match is whitespace-agnostic and works whether key has `{{}}` braces or not.
+// InjectCode replaces lines containing specific markers with the provided code block.
+// It supports multiple comment styles (//, #, --, /*, <!--) and triggers (--> , xru:, xfpm:).
 func InjectCode(content, key, code string) string {
 	escaped := regexp.QuoteMeta(key)
-	pattern := fmt.Sprintf(`(?m)^.*//\s*xfpm:\s*%s.*$`, escaped)
-	re := regexp.MustCompile(pattern)
-
-	// If the key has braces and we didn't match, try the bare inner name
-	if !re.MatchString(content) && strings.HasPrefix(key, "{{") && strings.HasSuffix(key, "}}") {
-		inner := key[2 : len(key)-2]
-		pattern = fmt.Sprintf(`(?m)^.*//\s*xfpm:\s*%s.*$`, regexp.QuoteMeta(inner))
-		re = regexp.MustCompile(pattern)
+	if strings.HasPrefix(key, "{{") && strings.HasSuffix(key, "}}") {
+		escaped = regexp.QuoteMeta(key[2 : len(key)-2])
 	}
+
+	// Pattern universel :
+	// 1. Détecte le début de ligne
+	// 2. Détecte un préfixe de commentaire (//, #, --, /*, <!--)
+	// 3. Détecte un déclencheur optionnel (--> , xru:, xfpm:)
+	// 4. Détecte la clé (avec ou sans accolades {{}})
+	pattern := fmt.Sprintf(`(?m)^.*(?://|#|--|/\*|<!--)\s*(?:-->|xru:|xfpm:)?\s*(?:\{\{)?%s(?:\}\})?.*$`, escaped)
+	re := regexp.MustCompile(pattern)
 
 	return re.ReplaceAllString(content, code)
 }
 
-// CleanOrphans removes any remaining `// xfpm:` markers from the content.
-// This is used as a final cleanup pass to ensure unselected features don't leave artifacts.
+// CleanOrphans removes any remaining injection markers from the content.
 func CleanOrphans(content string) string {
-	// Matches any line that contains the xfpm marker, with or without braces.
-	// It handles both:
-	//   - // xfpm: {{KEY}}
-	//   - // xfpm: KEY
-	// It also cleans the whole line and the trailing newline.
-	re := regexp.MustCompile(`(?m)^.*//\s*xfpm:\s*(\{\{)?([A-Z0-9_]+)(\}\})?.*$\n?`)
+	// Matches any universal marker line and its trailing newline.
+	re := regexp.MustCompile(`(?m)^.*(?://|#|--|/\*|<!--)\s*(?:-->|xru:|xfpm:)?\s*(?:\{\{)?[A-Z0-9_]+(?:\}\})?.*$\n?`)
 	return re.ReplaceAllString(content, "")
 }

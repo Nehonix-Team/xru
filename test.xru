@@ -37,7 +37,7 @@ U.LOG: "<cyan>[INFO]</> Traitement de <white>{app_name}</> dans <gray>{ROOT}</>\
 U.LOG: "\n<green>[SUCCESS]</> Transformation terminée pour {app_name}"
 
 // Ici {theme} n'existe plus (scope local au bloc #BEGIN)
-U.LOG: "<red>[EXPECTED ERROR]</> Scoped variable check: {theme}"
+U.LOG: "<red>[EXP ECTED ERROR]</> Scoped variable check: {theme}"
 
 U.LOG: "Attempting to inject script"
 

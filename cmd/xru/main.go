@@ -264,23 +264,32 @@ func evalCondition(cond string, scope *Scope, cb string) bool {
 	cond = engine.Interpolate(cond, scope)
 	cond = strings.Trim(cond, "\"' ")
 
+	negate := false
+	if strings.HasPrefix(cond, "!") {
+		negate = true
+		cond = strings.TrimSpace(cond[1:])
+	}
+
+	result := false
 	if strings.HasPrefix(cond, "exists(") && strings.HasSuffix(cond, ")") {
 		path := strings.Trim(cond[7:len(cond)-1], "\"' ")
 		absPath := filepath.Join(cb, path)
 		_, err := os.Stat(absPath)
-		return err == nil
-	}
-
-	if strings.Contains(cond, "==") {
+		result = err == nil
+	} else if strings.Contains(cond, "==") {
 		parts := strings.SplitN(cond, "==", 2)
-		return strings.Trim(parts[0], "\"' ") == strings.Trim(parts[1], "\"' ")
-	}
-	if strings.Contains(cond, "!=") {
+		result = strings.Trim(parts[0], "\"' ") == strings.Trim(parts[1], "\"' ")
+	} else if strings.Contains(cond, "!=") {
 		parts := strings.SplitN(cond, "!=", 2)
-		return strings.Trim(parts[0], "\"' ") != strings.Trim(parts[1], "\"' ")
+		result = strings.Trim(parts[0], "\"' ") != strings.Trim(parts[1], "\"' ")
+	} else {
+		result = cond == "true"
 	}
 
-	return cond == "true"
+	if negate {
+		return !result
+	}
+	return result
 }
 
 func applyRule(initialTarget, currentBase string, rule engine.Rule, parentScope *Scope) {

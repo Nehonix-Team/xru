@@ -23,6 +23,19 @@ func readFile(path string) ([]byte, error) {
 
 // Interpolate replaces {VAR} placeholders with values from a VarProvider.
 func Interpolate(s string, provider VarProvider) string {
+	// Detect unclosed braces first
+	inBrace := false
+	for i, r := range s {
+		if r == '{' {
+			inBrace = true
+		} else if r == '}' {
+			inBrace = false
+		}
+		if i == len(s)-1 && inBrace {
+			return "[SYNTAX_ERROR: UNCLOSED_BRACE]"
+		}
+	}
+
 	if provider == nil {
 		return s
 	}

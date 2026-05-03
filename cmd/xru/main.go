@@ -112,6 +112,17 @@ func colorify(s string) string {
 	return s
 }
 
+func checkSyntaxError(val string, line int) {
+	if val == "[SYNTAX_ERROR: UNCLOSED_QUOTE]" {
+		fmt.Printf("%s:%d: %serror:%s unclosed quote detected\n", currentFile, line, colorRed, colorReset)
+		os.Exit(1)
+	}
+	if val == "[SYNTAX_ERROR: UNCLOSED_BRACE]" {
+		fmt.Printf("%s:%d: %serror:%s unclosed brace '{' detected (missing '}')\n", currentFile, line, colorRed, colorReset)
+		os.Exit(1)
+	}
+}
+
 var rootScope = &Scope{
 	Vars:     make(map[string]string),
 	DefLines: make(map[string]int),
@@ -165,14 +176,17 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 
 	for _, rule := range rules {
 		target := engine.Interpolate(rule.Target, scope)
+		checkSyntaxError(target, rule.Line)
 
 		switch rule.Type {
 		case engine.RuleTypeVar:
 			val := engine.Interpolate(rule.Content, scope)
+			checkSyntaxError(val, rule.Line)
 			scope.Set(rule.Target, val, rule.Line)
 			skipElse = false
 
 		case engine.RuleTypeSelect:
+			checkSyntaxError(target, rule.Line)
 			if filepath.IsAbs(target) {
 				cb = target
 			} else {
@@ -223,7 +237,9 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 
 		case engine.RuleTypeModule:
 			parts := strings.SplitN(rule.Target, ".", 2)
-			executeModuleAction(scope, cb, parts[0], parts[1], rule.Content, rule.As, rule.Line)
+			content := engine.Interpolate(rule.Content, scope)
+			checkSyntaxError(content, rule.Line)
+			executeModuleAction(scope, cb, parts[0], parts[1], content, rule.As, rule.Line)
 			skipElse = false
 
 		case engine.RuleTypeInclude:

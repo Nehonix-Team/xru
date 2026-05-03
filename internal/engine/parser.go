@@ -293,15 +293,27 @@ func parseNew(src string) (*RuleFile, error) {
 func parseTarget(line string) (string, string) {
 	line = strings.TrimSpace(line)
 	inQuote := false
+	var quoteChar rune
 	idx := -1
-	for i := 0; i < len(line)-4; i++ {
-		if line[i] == '"' || line[i] == '\'' {
-			inQuote = !inQuote
+	for i, r := range line {
+		if r == '"' || r == '\'' {
+			if !inQuote {
+				inQuote = true
+				quoteChar = r
+			} else if r == quoteChar {
+				inQuote = false
+			}
 		}
-		if !inQuote && line[i:i+4] == " as " {
+		if !inQuote && i <= len(line)-4 && line[i:i+4] == " as " {
 			idx = i
 			break
 		}
+	}
+	// Validation: Si on finit la ligne avec un guillemet ouvert
+	if inQuote {
+		// On ne peut pas retourner d'erreur ici car la signature ne le permet pas encore,
+		// mais on peut marquer la cible comme invalide pour déclencher une erreur plus tard.
+		return "[SYNTAX_ERROR: UNCLOSED_QUOTE]", ""
 	}
 	target := line
 	as := ""
@@ -329,8 +341,13 @@ func parseVar(line string) (string, string, bool) {
 	}
 	name := strings.TrimSpace(line[4:idx])
 	val := strings.TrimSpace(line[idx+1:])
-	if (strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"")) ||
-		(strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'")) {
+	
+	// Check for unclosed quotes in the value
+	if strings.HasPrefix(val, "\"") || strings.HasPrefix(val, "'") {
+		quote := val[0]
+		if len(val) < 2 || val[len(val)-1] != quote {
+			return name, "[SYNTAX_ERROR: UNCLOSED_QUOTE]", true
+		}
 		val = val[1 : len(val)-1]
 	}
 	return name, val, true

@@ -44,6 +44,7 @@
           "patterns": [
             { "include": "#strings" },
             { "include": "#interpolation" },
+            { "include": "#barewords" },
             { "name": "entity.name.function.xru", "match": "\\bexists(?=\\()" },
             { "name": "keyword.operator.comparison.xru", "match": "==|!=" }
           ]
@@ -68,6 +69,7 @@
           "patterns": [
             { "include": "#interpolation" },
             { "include": "#strings" },
+            { "include": "#barewords" },
             {
               "match": "\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
               "captures": {
@@ -98,7 +100,7 @@
       "begin": "^\\s*(@TSINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -108,7 +110,7 @@
       "begin": "^\\s*(@JSINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -118,7 +120,7 @@
       "begin": "^\\s*(@GOINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -128,7 +130,7 @@
       "begin": "^\\s*(@JSONINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -138,7 +140,7 @@
       "begin": "^\\s*(@CSSINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -148,7 +150,7 @@
       "begin": "^\\s*(@HTMLINJECT):\\s*(.*)$",
       "beginCaptures": {
         "1": { "name": "keyword.control.scoping.xru" },
-        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
+        "2": { "patterns": [{ "include": "#strings" }, { "include": "#interpolation" }, { "include": "#barewords" }, { "name": "string.regexp.xru", "match": "/.*/" }] }
       },
       "end": "^\\s*(@END)\\s*$",
       "endCaptures": { "1": { "name": "keyword.control.scoping.xru" } },
@@ -220,6 +222,10 @@
           "match": "</?(red|green|yellow|blue|magenta|cyan|gray|white|/)>"
         }
       ]
+    },
+    "barewords": {
+      "match": "[a-zA-Z0-9_\\-\\./]+",
+      "name": "string.unquoted.path.xru"
     },
     "numbers": {
       "patterns": [{ "name": "constant.numeric.xru", "match": "\\b\\d+(\\.\\d+)?\\b" }]

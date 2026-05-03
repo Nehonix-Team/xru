@@ -50,11 +50,17 @@ Defines a transformation block for an existing file.
 ```
 
 #### `#CREATE:"<Path>" [as Alias]` / `#END`
-Creates a new file with the provided content.
+Generates a new file with the provided content. Supports interpolation and automatic dedenting.
+Use `--raw` to preserve exact script indentation in the output.
+
 ```xru
-#CREATE: "README.md"
-    # My Project
-    Created using XRU on {date}
+#CREATE: "src/index.ts"
+    console.log("Hello World");
+#END
+
+#CREATE: "raw_file.txt" --raw
+    This will keep its
+    leading spaces.
 #END
 ```
 

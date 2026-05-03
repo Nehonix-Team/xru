@@ -1,0 +1,8 @@
+#BEGIN: "sandbox/test_markers.txt"
+    @INJECT: marker1
+        Content 1
+    @END
+    @INJECT: marker2 --raw
+        Content 2
+    @END
+#END

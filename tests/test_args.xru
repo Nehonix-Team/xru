@@ -1,0 +1,14 @@
+#USE: sys as S
+#USE: utils as U
+
+S.ARG: "--mode" as m
+S.ARG: 1 as first
+
+U.LOG: "Mode (via module): <red>{m}</>"
+U.LOG: "First positional (via module): <red>{first}</>"
+
+#IF: "{m} == 'prod'"
+    U.LOG: "Running in <red>PRODUCTION</>"
+#ELSE
+    U.LOG: "Running in <green>DEFAULT</>"
+#END

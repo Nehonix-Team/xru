@@ -1,0 +1,37 @@
+// Module: Web Configuration
+#LOG: "--- [WEB] Configuration de l'interface ---"
+
+#SELECT: build
+
+// Création d'un fichier index avec injection
+#CREATE: index.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>XRU Demo</title>
+</head>
+<body>
+    // xfpm: APP_CONTENT
+</body>
+</html>
+#END
+
+// Injection de contenu
+#BEGIN: index.html
+@HTMLINJECT:{{APP_CONTENT}}
+    <h1>Propulsé par XyPriss XRU</h1>
+    <p>Transformation modulaire réussie.</p>
+@END
+#END
+
+// Mise à jour de la config
+#BEGIN: config.json
+  PUSH modules "web"
+  MERGE settings {
+    "theme": "dark",
+    "features": { "pwa": false }
+  }
+#END
+
+#SELECT: ..
+#LOG: "--- [WEB] Terminé ---"

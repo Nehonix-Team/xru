@@ -75,3 +75,56 @@ func InterpolateValue(v Value, provider VarProvider) Value {
 	}
 	return v
 }
+
+// Dedent removes the common leading whitespace from all lines in s.
+func Dedent(s string) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) == 0 {
+		return s
+	}
+
+	minIndent := -1
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		indent := 0
+		for _, r := range line {
+			if r == ' ' || r == '\t' {
+				indent++
+			} else {
+				break
+			}
+		}
+		if minIndent == -1 || indent < minIndent {
+			minIndent = indent
+		}
+	}
+
+	if minIndent <= 0 {
+		return strings.TrimSuffix(s, "\n")
+	}
+
+	var result []string
+	for _, line := range lines {
+		if len(line) >= minIndent {
+			// Check if the prefix is indeed indentation
+			isIndented := true
+			for i := 0; i < minIndent; i++ {
+				if line[i] != ' ' && line[i] != '\t' {
+					isIndented = false
+					break
+				}
+			}
+			if isIndented {
+				result = append(result, line[minIndent:])
+			} else {
+				result = append(result, strings.TrimSpace(line))
+			}
+		} else {
+			result = append(result, strings.TrimSpace(line))
+		}
+	}
+
+	return strings.Join(result, "\n")
+}

@@ -1,3 +1,14 @@
+#IF: !exists("sandbox")
+    U.LOG: "sandbox not found, creating..."
+    FS.MKDIR: "sandbox"
+#END
+
+#SELECT: "sandbox"
+
+let p = "auth.server.ts"
+
+#CREATE: "{p}"
+    @TSINJECT: ""
         import { MultiServerConfig } from "xypriss";
         import { xmsc } from "../configs/xms.config";
 
@@ -24,3 +35,6 @@
             enabled: false,
         },
         };
+    @END
+#END
+

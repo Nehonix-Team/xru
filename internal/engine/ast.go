@@ -62,6 +62,7 @@ type Rule struct {
 	Content  string
 	Actions  []Action
 	SubRules []Rule
+	Raw      bool
 	Line     int
 }
 
@@ -85,6 +86,7 @@ type InjectAction struct {
 	Lang string
 	Key  string
 	Code string
+	Raw  bool
 	Line int
 }
 

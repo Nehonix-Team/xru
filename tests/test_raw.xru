@@ -1,0 +1,9 @@
+#CREATE: "sandbox/test_raw.txt" --raw
+    This should be indented.
+    Keep the spaces.
+#END
+
+#CREATE: "sandbox/test_dedent.txt"
+    This should be dedented.
+    No spaces at start.
+#END

@@ -34,6 +34,7 @@ func parseNew(src string) (*RuleFile, error) {
 		path     string
 		buf      []string
 		line     int
+		raw      bool
 	}
 	var pending *pendingAction
 
@@ -44,7 +45,10 @@ func parseNew(src string) (*RuleFile, error) {
 		body := strings.Join(pending.buf, "\n")
 		var a Action
 		if pending.isInject {
-			a = InjectAction{Lang: pending.lang, Key: pending.key, Code: body, Line: pending.line}
+			if !pending.raw {
+				body = Dedent(body)
+			}
+			a = InjectAction{Lang: pending.lang, Key: pending.key, Code: body, Raw: pending.raw, Line: pending.line}
 		} else {
 			a = PatchAction{Op: pending.op, Path: pending.path, Value: ParseValue(body), Line: pending.line}
 		}
@@ -72,15 +76,15 @@ func parseNew(src string) (*RuleFile, error) {
 			
 			if strings.HasPrefix(directiveLine, "#BEGIN:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#BEGIN:"), true)
+				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#BEGIN:"), true)
 				rule := &Rule{Type: RuleTypeBegin, Target: target, As: as, Line: lineNum}
 				stack = append(stack, rule)
 				continue
 			}
 			if strings.HasPrefix(directiveLine, "#CREATE:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#CREATE:"), true)
-				rule := &Rule{Type: RuleTypeCreate, Target: target, As: as, Line: lineNum}
+				target, as, raw := parseTarget(strings.TrimPrefix(directiveLine, "#CREATE:"), true)
+				rule := &Rule{Type: RuleTypeCreate, Target: target, As: as, Raw: raw, Line: lineNum}
 				stack = append(stack, rule)
 				continue
 			}
@@ -130,7 +134,7 @@ func parseNew(src string) (*RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#SELECT:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#SELECT:"), true)
+				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#SELECT:"), true)
 				rule := Rule{Type: RuleTypeSelect, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
@@ -141,7 +145,7 @@ func parseNew(src string) (*RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#USE:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#USE:"), false)
+				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#USE:"), false)
 				rule := Rule{Type: RuleTypeUse, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
@@ -152,7 +156,7 @@ func parseNew(src string) (*RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#ARG:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#ARG:"), true)
+				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#ARG:"), true)
 				rule := Rule{Type: RuleTypeArg, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
@@ -163,7 +167,7 @@ func parseNew(src string) (*RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#INCLUDE:") {
 				commitPending()
-				target, as := parseTarget(strings.TrimPrefix(directiveLine, "#INCLUDE:"), true)
+				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#INCLUDE:"), true)
 				rule := Rule{Type: RuleTypeInclude, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
@@ -194,6 +198,9 @@ func parseNew(src string) (*RuleFile, error) {
 				if len(stack) > 0 {
 					rule := *stack[len(stack)-1]
 					stack = stack[:len(stack)-1]
+					if rule.Type == RuleTypeCreate && !rule.Raw {
+						rule.Content = Dedent(rule.Content)
+					}
 					if len(stack) > 0 {
 						stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
 					} else {
@@ -220,7 +227,7 @@ func parseNew(src string) (*RuleFile, error) {
 					callParts := strings.SplitN(call, ".", 2)
 					module := strings.TrimSpace(callParts[0])
 					method := strings.TrimSpace(callParts[1])
-					target, as := parseTarget(rest, true)
+					target, as, _ := parseTarget(rest, true)
 					if len(stack) > 0 {
 						stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, Rule{Type: RuleTypeModule, Target: module + "." + method, Content: target, As: as, Line: lineNum})
 					} else {
@@ -236,8 +243,17 @@ func parseNew(src string) (*RuleFile, error) {
 			tag := strings.TrimPrefix(trimmed, "@")
 			idx := strings.Index(tag, "INJECT:")
 			lang := tag[:idx]
-			key := strings.TrimSpace(tag[idx+len("INJECT:"):])
-			pending = &pendingAction{isInject: true, lang: lang, key: key, line: lineNum}
+			keyPart := strings.TrimSpace(tag[idx+len("INJECT:"):])
+			if (len(keyPart) >= 2 && keyPart[0] == '"' && keyPart[len(keyPart)-1] == '"') ||
+				(len(keyPart) >= 2 && keyPart[0] == '\'' && keyPart[len(keyPart)-1] == '\'') {
+				keyPart = keyPart[1 : len(keyPart)-1]
+			}
+			raw := false
+			if strings.HasSuffix(keyPart, " --raw") {
+				raw = true
+				keyPart = strings.TrimSpace(strings.TrimSuffix(keyPart, " --raw"))
+			}
+			pending = &pendingAction{isInject: true, lang: lang, key: keyPart, raw: raw, line: lineNum}
 			continue
 		}
 
@@ -266,6 +282,12 @@ func parseNew(src string) (*RuleFile, error) {
 			continue
 		}
 
+		// Enregistrement des lignes pour les actions multi-lignes
+		if pending != nil {
+			pending.buf = append(pending.buf, line)
+			continue
+		}
+
 		if trimmed == "" {
 			if len(stack) > 0 && stack[len(stack)-1].Type == RuleTypeCreate {
 				stack[len(stack)-1].Content += line + "\n"
@@ -275,15 +297,6 @@ func parseNew(src string) (*RuleFile, error) {
 
 		if len(stack) > 0 && stack[len(stack)-1].Type == RuleTypeCreate && !strings.HasPrefix(trimmed, "#END") {
 			stack[len(stack)-1].Content += line + "\n"
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "//") {
-			continue
-		}
-
-		if pending != nil {
-			pending.buf = append(pending.buf, line)
 			continue
 		}
 
@@ -309,8 +322,13 @@ func parseNew(src string) (*RuleFile, error) {
 	return rf, nil
 }
 
-func parseTarget(line string, strictQuotes bool) (string, string) {
+func parseTarget(line string, strictQuotes bool) (string, string, bool) {
 	line = strings.TrimSpace(line)
+	raw := false
+	if strings.HasSuffix(line, " --raw") {
+		raw = true
+		line = strings.TrimSpace(strings.TrimSuffix(line, " --raw"))
+	}
 	inQuote := false
 	var quoteChar rune
 	idx := -1
@@ -332,7 +350,7 @@ func parseTarget(line string, strictQuotes bool) (string, string) {
 	if inQuote {
 		// On ne peut pas retourner d'erreur ici car la signature ne le permet pas encore,
 		// mais on peut marquer la cible comme invalide pour déclencher une erreur plus tard.
-		return "[SYNTAX_ERROR: UNCLOSED_QUOTE]", ""
+		return "[SYNTAX_ERROR: UNCLOSED_QUOTE]", "", false
 	}
 	target := line
 	as := ""
@@ -356,11 +374,11 @@ func parseTarget(line string, strictQuotes bool) (string, string) {
 				}
 			}
 			if !isNumber && strictQuotes {
-				return "[SYNTAX_ERROR: MISSING_QUOTES]", ""
+				return "[SYNTAX_ERROR: MISSING_QUOTES]", "", false
 			}
 		}
 	}
-	return target, as
+	return target, as, raw
 }
 
 func parseVar(line string) (string, string, bool) {

@@ -354,6 +354,9 @@ func applyRule(initialTarget, currentBase string, rule engine.Rule, parentScope 
 		fullPath := filepath.Join(currentBase, target)
 		os.MkdirAll(filepath.Dir(fullPath), 0755)
 		content := engine.Interpolate(rule.Content, scope)
+		for _, action := range rule.Actions {
+			content = applyAction(content, action, filepath.Ext(fullPath), scope, currentBase)
+		}
 		os.WriteFile(fullPath, []byte(content), 0644)
 		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope)
 

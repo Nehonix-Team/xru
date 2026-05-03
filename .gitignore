@@ -22,3 +22,6 @@ private/
 
 # VS Code extension artifacts
 *.vsix
+
+# Temporary sandbox
+sandbox/

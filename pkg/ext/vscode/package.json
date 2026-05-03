@@ -2,7 +2,7 @@
   "name": "xru-syntax",
   "displayName": "XyPriss Rule Unit (XRU) Syntax",
   "description": "Syntax highlighting for XRU (.xru) transformation rules.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "nehonix",
   "main": "./extension.js",
   "activationEvents": [

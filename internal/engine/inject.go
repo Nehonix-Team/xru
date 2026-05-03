@@ -17,6 +17,9 @@ import (
 
 // InjectCode replaces lines containing specific markers or matching a regex with code.
 func InjectCode(content, key, code string) string {
+	if key == "" {
+		return code
+	}
 	var re *regexp.Regexp
 
 	// Si la clé est un Regex (ex: /pattern/)

@@ -1,0 +1,14 @@
+#CREATE: "sandbox/inject_test_2.ts"
+// marker1
+// marker2
+#END
+
+#BEGIN: "sandbox/inject_test_2.ts"
+    @TSINJECT: marker1
+        import { x } from "y";
+    @END
+
+    @TSINJECT: marker2 --raw
+            // Very indented
+    @END
+#END

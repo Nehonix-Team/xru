@@ -1,0 +1,54 @@
+#USE: Utils as U
+#USE: Sys as S
+#USE: FS
+
+let app_name = "XyPriss"
+let p = "apps"
+
+// 1. Test du module FS & Conditions
+#IF: !exists({p})
+  U.LOG: "<yellow>[FS]</> Creating lab directory: {p}"
+  FS.MKDIR: {p}
+#END
+
+#SELECT: {p} as ROOT
+U.LOG: "<cyan>[INFO]</> Lab ready at: <gray>{ROOT}</>"
+
+// 2. Création d'un fichier cobaye
+#CREATE: "main.ts"
+  import { init } from 'core';
+
+  // xru: imports
+  
+  init();
+  // marker_for_regex
+  console.log("Starting...");
+#END
+
+// 3. Test des Injections
+#BEGIN: main.ts
+  U.LOG: "<blue>[INJECT]</> Testing Universal Marker (xru: imports)"
+  @TSINJECT: imports
+    import { Logger } from 'logger';
+    import { Database } from 'db';
+  @END
+
+  U.LOG: "<blue>[INJECT]</> Testing Regex Marker (/^.*marker_for_regex.*$/)"
+  @TSINJECT: /^.*marker_for_regex.*$/
+    console.log("Entire line replaced via Regex!");
+  @END
+#END
+
+// 4. Finalisation
+FS.MOVE: main.ts -> index.ts
+U.LOG: "\n<green>[SUCCESS]</> Lab experiment finished for {app_name}"
+
+
+// 5. Verification
+S.EXEC: "cat index.ts" as FINAL_CODE
+U.LOG: "<magenta>[FINAL CODE]</>\n{FINAL_CODE}"
+
+@JSINJECT: test
+  const r =  /^.*marker_for_regex.*$/
+@END
+

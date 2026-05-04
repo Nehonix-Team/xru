@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"github.com/Nehonix-Team/xru/internal/compiler"
-	"github.com/Nehonix-Team/xru/internal/engine"
+	"github.com/Nehonix-Team/xru/internal/engine/parser"
 )
 
 // runBuild compile un fichier .xru en scripts shell (.sh) et PowerShell (.ps1).
 func runBuild(rulePath string) {
-	rf, _ := engine.ParseFile(rulePath)
+	rf, _ := parser.ParseFile(rulePath)
 	shScript, _ := compiler.CompileToSH(rf)
 	psScript, _ := compiler.CompileToPS1(rf)
 	base := strings.TrimSuffix(rulePath, filepath.Ext(rulePath))

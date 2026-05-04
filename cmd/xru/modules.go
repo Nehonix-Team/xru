@@ -10,13 +10,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Nehonix-Team/xru/internal/engine"
+	"github.com/Nehonix-Team/xru/internal/engine/util" 
 )
 
 // executeModuleAction exécute un appel de module (utils, sys, fs, etc.).
 func executeModuleAction(scope *Scope, cb, rulePath, mod, method, target, as string, line int) {
 	moduleName := resolveModuleName(scope, mod)
-	target = engine.Interpolate(target, scope)
+	target = util.Interpolate(target, scope)
 
 	switch strings.ToLower(moduleName) {
 	case "utils", "u":

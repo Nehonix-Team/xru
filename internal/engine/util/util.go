@@ -2,7 +2,7 @@
  * XFPM — XRU package internal utilities
  ***************************************************************************** */
 
-package utils
+package util
 
 import (
 	"encoding/json"

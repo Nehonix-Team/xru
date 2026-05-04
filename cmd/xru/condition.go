@@ -5,12 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Nehonix-Team/xru/internal/engine"
+	"github.com/Nehonix-Team/xru/internal/engine/util" 
 )
 
 // evalCondition évalue une condition interpolée et retourne true/false.
 func evalCondition(cond string, scope *Scope, cb string) bool {
-	cond = engine.Interpolate(cond, scope)
+	cond = util.Interpolate(cond, scope)
 	cond = strings.Trim(cond, "\"' ")
 
 	negate := false

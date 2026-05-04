@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Nehonix-Team/xru/internal/engine"
+	"github.com/Nehonix-Team/xru/internal/engine/parser"
 	"github.com/Nehonix-Team/xru/internal/utils"
 )
 
@@ -55,7 +55,7 @@ func runPatch(rulePath, targetDir string) {
 	currentFile = rulePath
 	absTarget, _ := filepath.Abs(targetDir)
 
-	rf, err := engine.ParseFile(rulePath)
+	rf, err := parser.ParseFile(rulePath)
 	if err != nil {
 		fmt.Printf("%sError: %v%s\n", colorRed, err, colorReset)
 		os.Exit(1)

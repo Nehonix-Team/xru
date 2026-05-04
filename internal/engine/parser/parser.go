@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/Nehonix-Team/xru/internal/engine/ast"
-	"github.com/Nehonix-Team/xru/internal/engine/utils"
+	"github.com/Nehonix-Team/xru/internal/engine/util"
 )
 
 // Parse converts .xru source text into a RuleFile AST.
@@ -41,7 +41,7 @@ func parseNew(src string) (*ast.RuleFile, error) {
 		var a ast.Action
 		if pending.isInject {
 			if !pending.raw {
-				body = utils.Dedent(body)
+				body = util.Dedent(body)
 			}
 			a = ast.InjectAction{Lang: pending.lang, Key: pending.key, Code: body, Raw: pending.raw, Line: pending.line}
 		} else {
@@ -221,7 +221,7 @@ func parseNew(src string) (*ast.RuleFile, error) {
 					rule := *stack[len(stack)-1]
 					stack = stack[:len(stack)-1]
 					if rule.Type == ast.RuleTypeCreate && !rule.Raw {
-						rule.Content = utils.Dedent(rule.Content)
+						rule.Content = util.Dedent(rule.Content)
 					}
 					if len(stack) > 0 {
 						stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)

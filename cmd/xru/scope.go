@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Nehonix-Team/xru/internal/engine"
+	"github.com/Nehonix-Team/xru/internal/engine/ast"
 )
 
 // Scope représente l'espace de variables d'une règle ou d'un bloc.
@@ -47,7 +47,7 @@ func (s *Scope) Get(name string) (interface{}, bool) {
 	for i := 1; i < len(parts); i++ {
 		prop := parts[i]
 		switch v := current.(type) {
-		case engine.Object:
+		case ast.Object:
 			if next, ok := v[prop]; ok {
 				current = next
 			} else {
@@ -92,7 +92,7 @@ func (s *Scope) RawGet(name string) (interface{}, bool) {
 	for i := 1; i < len(parts); i++ {
 		prop := parts[i]
 		switch v := current.(type) {
-		case engine.Object:
+		case ast.Object:
 			if next, ok := v[prop]; ok {
 				current = next
 			} else {

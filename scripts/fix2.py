@@ -13,18 +13,18 @@ def replace_in_file(filepath, replacements):
         f.write(content)
 
 # Fix util package in internal/engine/util
-replace_in_file("/home/idevo/Documents/projects/XyPriss/tools/xru/internal/engine/util/util.go", [
+replace_in_file("xru/internal/engine/util/util.go", [
     ("package utils", "package util")
 ])
 
 # Fix parser
-replace_in_file("/home/idevo/Documents/projects/XyPriss/tools/xru/internal/engine/parser/parser.go", [
+replace_in_file("xru/internal/engine/parser/parser.go", [
     ('"github.com/Nehonix-Team/xru/internal/engine/utils"', '"github.com/Nehonix-Team/xru/internal/engine/util"'),
     ('utils.Dedent', 'util.Dedent')
 ])
 
 # Fix cmd/xru
-directory = "/home/idevo/Documents/projects/XyPriss/tools/xru/cmd/xru"
+directory = "xru/cmd/xru"
 for filename in os.listdir(directory):
     if filename.endswith(".go"):
         filepath = os.path.join(directory, filename)

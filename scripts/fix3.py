@@ -1,6 +1,6 @@
 import os
 
-directory = "/home/idevo/Documents/projects/XyPriss/tools/xru/cmd/xru"
+directory = "xru/cmd/xru"
 
 def fix_file(filename, to_remove, to_add=None, replacements=None):
     filepath = os.path.join(directory, filename)

@@ -1,6 +1,6 @@
 import os
 
-directory = "/home/idevo/Documents/projects/XyPriss/tools/xru/cmd/xru"
+directory = "xru/cmd/xru"
 
 for filename in os.listdir(directory):
     if filename.endswith(".go"):

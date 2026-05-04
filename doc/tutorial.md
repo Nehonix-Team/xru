@@ -150,3 +150,45 @@ xru init.xru my-app-prod --env=prod
 | **S.EXEC** | Runs `git init` in the project directory. |
 | **U.LOG** | Provides colored feedback to the user. |
 | **Interpolation** | Dynamically injects `{PROJECT_NAME}`, `{ENV}`, and `{ROOT}`. |
+
+---
+
+## 5. Advanced: Compact Orchestration
+For complex architectures (like microservices), XRU allows merging data and templates into a single, high-density file using `#JSONVAR` and object iteration.
+
+### The Problem: Multi-file redundancy
+Usually, you would have a `.json` for data and multiple `.xru` for logic. For 5 servers, you might end up with many files.
+
+### The Solution: Compact single-file approach
+```xru
+#USE: fs as FS
+#SELECT: "./src/"
+
+// 1. EMBEDDED DATA
+#JSONVAR: SERVERS
+{
+  "auth": { "route": "/auth", "port": 8001 },
+  "main": { "route": "/api",  "port": 8002, "extra": "cors: true" }
+}
+#END
+
+// 2. DYNAMIC GENERATION
+#FOR: S in {SERVERS}
+    #CREATE: "servers/{S}.server.ts"
+        @TSINJECT: ""
+            export const {S}Server = {
+                id: "{S}",
+                port: {SERVERS.{S}.port},
+                route: "{SERVERS.{S}.route}",
+                {SERVERS.{S}.extra}
+            };
+        @END
+    #END
+#END
+```
+
+### Key Techniques used here:
+- **`#JSONVAR`**: Embeds structured data directly in the script.
+- **`#FOR: S in {SERVERS}`**: Iterates over object keys (`auth`, `main`).
+- **Dot notation**: Accesses nested properties like `{SERVERS.{S}.port}`.
+- **Automatic Induction**: Recursive interpolation allows using `{S}` to access `{SERVERS.{S}}`.

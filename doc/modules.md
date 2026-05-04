@@ -50,6 +50,7 @@ Cross-platform file and directory manipulation. Highly recommended over `S.EXEC`
 | `TOUCH` | `FS.TOUCH: <path>` | Creates an empty file or updates the timestamp of an existing one. |
 | `COPY` | `FS.COPY: <src> -> <dst>` | Copies a file from source to destination. |
 | `MOVE` | `FS.MOVE: <src> -> <dst>` | Moves/Renames a file or directory. |
+| `READ_JSON` | `FS.READ_JSON: <path> as Var` | Reads a JSON file and parses it as an object/list. |
 
 ### Examples
 ```xru

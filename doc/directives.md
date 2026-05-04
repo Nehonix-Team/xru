@@ -40,6 +40,27 @@ Reads an argument from the terminal command line.
 U.LOG: "Initializing {PROJECT_NAME} in {ENVIRONMENT} mode..."
 ```
 
+#### `#VAR: <VarName>` / `#END`
+Defines a multi-line variable block. The content is captured as a raw string and automatically dedented.
+- **Language Prefixes**: Supports `#TSVAR`, `#JSVAR`, `#JSONVAR`, etc., for VS Code syntax highlighting within the block.
+- **JSON Parsing**: Using `#JSONVAR` automatically parses the content as a JSON object instead of a string.
+
+```xru
+#TSVAR: SECURITY_CONFIG
+/** Security middleware configuration */
+security: {
+    honeypotTarpit: true,
+},
+#END
+
+#JSONVAR: APP_SETTINGS
+{
+  "version": "1.2.0",
+  "features": ["auth", "logging"]
+}
+#END
+```
+
 #### `#BEGIN:"<Path>" [as Alias]` / `#END`
 Defines a transformation block for an existing file.
 ```xru
@@ -101,20 +122,38 @@ Defines a conditional execution block.
 
 ## 3. Iteration & Modularity
 
-### `#FOR: <Variable> in <List>` / `#END`
-Iterates over an array structure. This is the primary tool for reducing code duplication in multi-server or multi-component architectures.
+### `#FOR: <Variable> in <List|Object>` / `#END`
+Iterates over an array or an object structure. 
+- **Array Iteration**: The variable represents the current item.
+- **Object Iteration**: The variable represents the current **key**. Access property values via `{OBJECT.{KEY}}`.
+- **Determinism**: Map keys are automatically sorted alphabetically to ensure consistent generation.
 - **Scope**: Each iteration creates a fresh sub-scope inheriting from the parent.
-- **Variables**: The iteration variable is available within the block via `{VAR}`.
 
 ```xru
+// Iterating over a list
 let SERVERS = ["auth", "main", "web"]
-
 #FOR: S in {SERVERS}
-    let ROUTE = "/{S}"
-    #IF: {S} == "main"
-        let ROUTE = "/api"
+    U.LOG: "Configuring server: {S}"
+#END
+
+// Iterating over an object (keys)
+#FOR: K in {CONFIG}
+    let SERVER_DESC = {CONFIG.{K}.description}
+    U.LOG: "Setting up {K}: {SERVER_DESC}"
+#END
+```
+
+### `#CALL: "<Path>"` / `#END`
+Invokes an external XRU file as a template or subroutine.
+- **Scoping**: Sub-rules inside the `#CALL` block are executed in the current scope *before* calling the template, allowing for dynamic parameter passing via `let`.
+- **Variable inheritance**: The called file inherits the current scope.
+
+```xru
+#FOR: S in {SERVERS}
+    #CALL: "server_template.xru"
+        let SERVER_NAME = "{S}"
+        let PORT = 8080
     #END
-    U.LOG: "Configuring {S} on {ROUTE}"
 #END
 ```
 

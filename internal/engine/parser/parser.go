@@ -139,6 +139,17 @@ func parseNew(src string) (*ast.RuleFile, error) {
 				}
 				continue
 			}
+			if strings.HasPrefix(directiveLine, "#LOG:") {
+				commitPending()
+				msg := strings.TrimPrefix(directiveLine, "#LOG:")
+				rule := ast.Rule{Type: ast.RuleTypeLog, Target: msg, Line: lineNum}
+				if len(stack) > 0 {
+					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
+				} else {
+					rf.Rules = append(rf.Rules, rule)
+				}
+				continue
+			}
 			if strings.HasPrefix(directiveLine, "#USE:") {
 				commitPending()
 				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#USE:"), false)

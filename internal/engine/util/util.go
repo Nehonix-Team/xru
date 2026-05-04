@@ -25,9 +25,9 @@ func Interpolate(s string, provider VarProvider) string {
 	// Detect unclosed braces first
 	inBrace := false
 	for i, r := range s {
-		if r == '{' {
+		if r == '{' && (i == 0 || s[i-1] != '\\') {
 			inBrace = true
-		} else if r == '}' {
+		} else if r == '}' && (i == 0 || s[i-1] != '\\') {
 			inBrace = false
 		}
 		if i == len(s)-1 && inBrace {
@@ -37,6 +37,7 @@ func Interpolate(s string, provider VarProvider) string {
 
 	// Handle escaping: \{ becomes {
 	s = strings.ReplaceAll(s, "\\{", "{")
+	s = strings.ReplaceAll(s, "\\}", "}")
 
 	if provider == nil {
 		return s

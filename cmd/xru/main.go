@@ -62,6 +62,9 @@ func runPatch(rulePath, targetDir string) {
 	}
 
 	rootScope := newRootScope()
-	executeRules(rf.Rules, absTarget, absTarget, rulePath, rootScope)
+	if verbose {
+		fmt.Printf("[DEBUG] Starting execution of %d top-level rules\n", len(rf.Rules))
+	}
+	executeRules(rf.Rules, absTarget, absTarget, rulePath, rootScope, nil, "")
 	rootScope.CheckUnused(currentFile)
 }

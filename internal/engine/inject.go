@@ -21,12 +21,12 @@ func InjectCode(content, key, code string) string {
 		return code
 	}
 	var re *regexp.Regexp
+	var pattern string
 
 	// Si la clé est un Regex (ex: /pattern/)
 	if strings.HasPrefix(key, "/") && strings.HasSuffix(key, "/") && len(key) > 2 {
-		pattern := key[1 : len(key)-1]
-		// On ajoute (?m) pour le support multi-ligne par défaut
-		re = regexp.MustCompile("(?m)" + pattern)
+		pattern = "(?m)" + key[1:len(key)-1]
+		re = regexp.MustCompile(pattern)
 	} else {
 		// Sinon, recherche par marqueur universel
 		escaped := regexp.QuoteMeta(key)
@@ -34,7 +34,7 @@ func InjectCode(content, key, code string) string {
 			escaped = regexp.QuoteMeta(key[2 : len(key)-2])
 		}
 		// Pattern universel avec support des commentaires et déclencheurs
-		pattern := fmt.Sprintf(`(?m)^.*(?://|#|--|/\*|<!--)\s*(?:-->|xru:|xfpm:)?\s*(?:\{\{)?%s(?:\}\})?.*$`, escaped)
+		pattern = fmt.Sprintf(`(?m)^.*(?://|#|--|/\*|<!--)\s*(?:-->|xru:|xfpm:|@[A-Z]+INJECT:)?\s*(?:\{\{)?%s(?:\}\})?.*$`, escaped)
 		re = regexp.MustCompile(pattern)
 	}
 

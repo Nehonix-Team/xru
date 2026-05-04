@@ -13,9 +13,6 @@ U.LOG: "<cyan>[INFO]</> Orchestrating in <yellow>{MODE}</> mode..."
 #SELECT: "./src/"
 
 let SERVERS = {}
-let SERVERS_CODE = ""
-let IMPORTS_CODE = ""
-let ROUTERS_CODE = ""
 
 // 1. DATA & LOGIC PRE-CALCULATION
 #IF: {MODE} == "xms"
@@ -28,18 +25,10 @@ let ROUTERS_CODE = ""
 #ELSE:
     #JSONVAR: SERVERS
     { "main": { "route": "/api", "desc": "Default Server", "body": "Standard instance." } }
+    #END
 #END
 
-// Pre-build server list for config injection
-let SERVERS_CODE = ""
-let IMPORTS_CODE = ""
-let ROUTERS_CODE = ""
-
-#FOR: S in {SERVERS}
-    let SERVERS_CODE = "{SERVERS_CODE}            {S}Server,\n"
-    let IMPORTS_CODE = "{IMPORTS_CODE}import { {S}Router } from \"../routes/{S}.route\";\n"
-    let ROUTERS_CODE = "{ROUTERS_CODE}router.use(\"{SERVERS.{S}.route}\", {S}Router);\n"
-#END
+// Pre-build logic is no longer needed thanks to Inception mode!
 
 // 2. CONFIGURATION & ROUTING
 #BEGIN: "configs/xypriss.config.ts"
@@ -48,7 +37,10 @@ let ROUTERS_CODE = ""
             multiServer: {
                 enabled: true,
                 servers: [
-{SERVERS_CODE}                ],
+                    <#FOR: S in {SERVERS}>
+                    {S}Server,
+                    <#END>
+                ],
             },
         @END
     #ELSE:
@@ -60,9 +52,15 @@ let ROUTERS_CODE = ""
 
 #BEGIN: "router/index.ts"
     @TSINJECT: ROUTERS_IMPORT
-{IMPORTS_CODE}    @END
+        <#FOR: S in {SERVERS}>
+        import { {S}Router } from "../routes/{S}.route";
+        <#END>
+    @END
     @TSINJECT: ROUTERS_USE
-{ROUTERS_CODE}    @END
+        <#FOR: S in {SERVERS}>
+        router.use("{SERVERS.{S}.route}", {S}Router);
+        <#END>
+    @END
 #END
 
 // 3. GENERATION

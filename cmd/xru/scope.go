@@ -14,6 +14,7 @@ type Scope struct {
 	Used     map[string]bool
 	Modules  map[string]string // Alias -> ModuleName
 	Parent   *Scope
+	Capture  *strings.Builder // Pour capturer les sorties LOG lors de l'inception
 }
 
 func (s *Scope) Get(name string) (interface{}, bool) {
@@ -28,6 +29,9 @@ func (s *Scope) Get(name string) (interface{}, bool) {
 			s.Used = make(map[string]bool)
 		}
 		s.Used[rootName] = true
+		if rootName == "SERVERS" {
+			fmt.Printf("[DEBUG] Scope %p: Marked 'SERVERS' as USED\n", s)
+		}
 		current = val
 		found = true
 	} else if s.Parent != nil {

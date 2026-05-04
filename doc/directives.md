@@ -11,6 +11,9 @@ Structural directives define the execution context, file targeting, and control 
 > **Indentation support**: Structural directives starting with `#` now support leading whitespace for better visual nesting. The `#` character marks the start of the directive regardless of its position on the line.
 
 ### Context & Scoping
+
+> [!IMPORTANT]
+> **Inception Mode**: Most content-driven directives (`#CREATE`, `#BEGIN`, `#GLOBAL`, `@INJECT`) support **Inception Mode**. This means you can embed nested XRU logic (loops, conditions) directly within the content using `<# ... >` tags.
 #### `#USE:<Module> [as Alias]`
 Mounts a module into the execution context.
 ```xru

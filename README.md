@@ -18,6 +18,16 @@ irm https://raw.githubusercontent.com/Nehonix-Team/xru/master/install.ps1 | iex
 
 ---
 
+## Key Features
+
+- **Structured Patching**: Precise manipulation of JSON, YAML, and source code while preserving formatting.
+- **Inception Mode**: Execute nested XRU logic (`#FOR`, `#IF`) directly within template blocks.
+- **Universal Injection**: Support for `@TSINJECT`, `@GOINJECT`, etc., with automatic language detection.
+- **Recursive Orchestration**: Nested action execution across file-targeting blocks.
+- **Strict Scoping**: Isolated execution environments for templates and loops.
+
+---
+
 ## Documentation
 
 The documentation is modularized for better maintainability:

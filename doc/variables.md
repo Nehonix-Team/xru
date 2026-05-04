@@ -97,5 +97,13 @@ U.LOG: "Connecting to {endpoint}"
 ```
 
 ### Undefined Variables
-Accessing an undefined variable triggers a fatal error injection: `[ERROR: UNDEFINED_VAR]`. This ensures that no invalid configuration is silently generated.
+### Literal Braces
+To include literal braces `{` or `}` in your output (e.g. in generated code) without triggering the interpolation engine, escape them with a backslash: `\{` and `\}`.
+The backslash will be removed in the final output.
+
+```xru
+#CREATE: "test.js"
+    const obj = \{ key: "{VALUE}" \};
+#END
+```
 

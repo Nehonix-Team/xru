@@ -73,31 +73,39 @@ Appends a value to an array at a specific path.
 Used for injecting raw code at specific markers in source files. XRU uses a **Universal Marker Detection** system.
 
 ### `@*INJECT: <key>` / `@END`
-Injects code at a dynamic marker. The prefix (`TS`, `JS`, `GO`, etc.) is optional but helps with syntax highlighting in some editors.
+Injects code at a dynamic marker. The prefix (`TS`, `JS`, `GO`, `HTML`, `CSS`, `JSON`, etc.) is optional but enables **Dynamic Language Injection** for syntax highlighting in supported editors.
 
-#### Example Markers (Target Files)
+#### Injection Logic
+1. The engine searches for a marker in the target file.
+2. The marker key can be prefixed with `xru:`, `xfpm:`, `@TSINJECT:`, or even just a keyword like `INJECT:`.
+3. If the marker is found, the content between the action and `@END` is injected.
+4. **Recursive Orchestration**: Actions inside `#BEGIN` or `#CREATE` are now executed recursively, allowing for nested injections.
+
+#### Marker Detection Examples (Target Files)
 ```typescript
-// --> {{imports}}
+// xru: ROUTERS_IMPORT
 import { base } from './base';
 
-/* xru: logic */
-const x = 10;
-
-# xfpm: config
-VERSION=1.0
+// @TSINJECT: ROUTERS_USE
+const app = express();
 ```
 
-#### Example Usage (XRU)
-```xru
-#BEGIN: "main.ts"
-  @TSINJECT: imports
-    import { Auth } from './auth';
-    import { Store } from './store';
-  @END
+#### Inception Integration
+You can use **Inception Tags** (`<# ... >`) inside an injection block to generate dynamic code:
 
-  @INJECT: logic
-    console.log("Injected logic running");
+```xru
+#BEGIN: "router/index.ts"
+  @TSINJECT: ROUTERS_USE
+    <#FOR: S in {SERVERS}>
+      router.use("/{S}", {S}Router);
+    <#END>
   @END
 #END
 ```
+
+---
+
+## 4. Output Capturing
+### `#LOG: <message>`
+Writes a message to the capture buffer. When used inside an **Inception Tag** `<# ... >`, the logged message is injected directly into the template output instead of being printed to the terminal.
 

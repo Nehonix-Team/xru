@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.8] - 2026-05-04
+fix(parser): support for single-line comments using //
+The parser now correctly ignores lines starting with //, allowing for better documentation within XRU scripts.
+
+### Added
+- **Comment Support**: Skip lines starting with `//` (ignoring leading whitespace).
+
 ## [0.1.7] - 2026-05-04
 feat(engine): implement compact orchestration and hardened execution
 Added support for native #JSONVAR blocks and object iteration (#FOR). The engine is now strict, halting on undefined or unused variables.

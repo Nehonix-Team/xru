@@ -68,6 +68,9 @@ func parseNew(src string) (*RuleFile, error) {
 	for i, line := range lines {
 		lineNum := i + 1
 		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
 
 		// Directives starting with # (allows leading whitespace for nesting)
 		if strings.HasPrefix(trimmed, "#") {

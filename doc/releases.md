@@ -1,5 +1,12 @@
 # XRU Release Notes
 
+## [v0.1.8] - 2026-05-04
+
+### Added
+- **Comment Support**: The parser now ignores lines starting with `//` (ignoring leading whitespace).
+
+---
+
 ## [v0.1.7] - 2026-05-04
 
 ### Added

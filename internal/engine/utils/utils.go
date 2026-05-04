@@ -2,14 +2,15 @@
  * XFPM — XRU package internal utilities
  ***************************************************************************** */
 
-package engine
+package utils
 
 import (
-	// "os"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/Nehonix-Team/xru/internal/engine/ast"
 )
 
 var varRegex = regexp.MustCompile(`\{[a-zA-Z0-9_\.]+\}`)
@@ -18,11 +19,6 @@ var varRegex = regexp.MustCompile(`\{[a-zA-Z0-9_\.]+\}`)
 type VarProvider interface {
 	Get(name string) (interface{}, bool)
 }
-
-// // readFile is the single I/O primitive used by the package.
-// func readFile(path string) ([]byte, error) {
-// 	return os.ReadFile(path)
-// }
 
 // Interpolate replaces {VAR} placeholders with values from a VarProvider.
 func Interpolate(s string, provider VarProvider) string {
@@ -81,26 +77,20 @@ func Interpolate(s string, provider VarProvider) string {
 					switch v := rawVal.(type) {
 					case string:
 						val = v
-					case Literal:
+					case ast.Literal:
 						val = string(v)
 					default:
-						// If it's a single var line and it's a complex object/array,
-						// we might want to preserve it if this is a nested pass.
-						// But for the final result, we stringify.
 						val = stringify(rawVal)
 					}
 				}
 
 				if val == "" {
-					// Skip this line entirely if it's empty to avoid blank lines
 					continue
 				}
 
 				interpolatedSomething = true
-				// Dedent the value first so its internal indentation is preserved relative to its first line
 				val = Dedent(val)
 
-				// Apply indentation to all lines of val
 				valLines := strings.Split(val, "\n")
 				for j := range valLines {
 					if valLines[j] != "" {
@@ -109,7 +99,6 @@ func Interpolate(s string, provider VarProvider) string {
 				}
 				nextResultLines = append(nextResultLines, valLines...)
 			} else {
-				// Normal interpolation for mixed lines
 				if varRegex.MatchString(line) {
 					interpolatedSomething = true
 				}
@@ -119,7 +108,7 @@ func Interpolate(s string, provider VarProvider) string {
 						switch v := rawVal.(type) {
 						case string:
 							return v
-						case Literal:
+						case ast.Literal:
 							return string(v)
 						default:
 							return stringify(rawVal)
@@ -144,9 +133,9 @@ func stringify(v interface{}) string {
 	switch val := v.(type) {
 	case string:
 		return val
-	case Literal:
+	case ast.Literal:
 		return string(val)
-	case Object, Array, map[string]interface{}, []interface{}:
+	case ast.Object, ast.Array, map[string]interface{}, []interface{}:
 		b, _ := json.MarshalIndent(v, "", "  ")
 		return string(b)
 	default:
@@ -162,18 +151,18 @@ func InterpolateValue(v interface{}, provider VarProvider) interface{} {
 	switch val := v.(type) {
 	case string:
 		return Interpolate(val, provider)
-	case Literal:
-		return Literal(Interpolate(string(val), provider))
-	case Object:
-		newObj := make(Object)
+	case ast.Literal:
+		return ast.Literal(Interpolate(string(val), provider))
+	case ast.Object:
+		newObj := make(ast.Object)
 		for k, v := range val {
-			newObj[k] = InterpolateValue(v, provider).(Value)
+			newObj[k] = InterpolateValue(v, provider).(ast.Value)
 		}
 		return newObj
-	case Array:
-		newArr := make(Array, len(val))
+	case ast.Array:
+		newArr := make(ast.Array, len(val))
 		for i, v := range val {
-			newArr[i] = InterpolateValue(v, provider).(Value)
+			newArr[i] = InterpolateValue(v, provider).(ast.Value)
 		}
 		return newArr
 	}
@@ -212,7 +201,6 @@ func Dedent(s string) string {
 	var result []string
 	for _, line := range lines {
 		if len(line) >= minIndent {
-			// Check if the prefix is indeed indentation
 			isIndented := true
 			for i := 0; i < minIndent; i++ {
 				if line[i] != ' ' && line[i] != '\t' {

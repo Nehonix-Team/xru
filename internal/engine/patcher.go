@@ -13,54 +13,56 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/Nehonix-Team/xru/internal/engine/ast"
 )
 
 // ApplyPatch applies a structured patch to a string content.
-func ApplyPatch(content string, op PatchOp, path string, patch Value) string {
+func ApplyPatch(content string, op ast.PatchOp, path string, patch ast.Value) string {
 	if path != "" {
 		switch op {
-		case PatchMerge, PatchSet:
+		case ast.PatchMerge, ast.PatchSet:
 			return mergeStructured(content, deepen(path, patch))
-		case PatchRM:
-			return removeStructured(content, deepen(path, Literal("")))
-		case PatchAppend, PatchPush:
+		case ast.PatchRM:
+			return removeStructured(content, deepen(path, ast.Literal("")))
+		case ast.PatchAppend, ast.PatchPush:
 			return appendStructured(content, deepen(path, patch))
 		}
 	}
 
 	switch op {
-	case PatchMerge:
-		if obj, ok := patch.(Object); ok {
+	case ast.PatchMerge:
+		if obj, ok := patch.(ast.Object); ok {
 			return mergeStructured(content, obj)
 		}
-	case PatchRM:
+	case ast.PatchRM:
 		return removeStructured(content, patch)
-	case PatchAppend:
-		if obj, ok := patch.(Object); ok {
+	case ast.PatchAppend:
+		if obj, ok := patch.(ast.Object); ok {
 			return appendStructured(content, obj)
 		}
-	case PatchRegex:
-		if obj, ok := patch.(Object); ok {
+	case ast.PatchRegex:
+		if obj, ok := patch.(ast.Object); ok {
 			return applyRegex(content, obj)
 		}
-	case PatchRPK:
-		if obj, ok := patch.(Object); ok {
+	case ast.PatchRPK:
+		if obj, ok := patch.(ast.Object); ok {
 			return renameKeyStructured(content, obj)
 		}
-	case PatchRPV:
-		if obj, ok := patch.(Object); ok {
+	case ast.PatchRPV:
+		if obj, ok := patch.(ast.Object); ok {
 			return mergeStructured(content, obj)
 		}
 	}
 	return content
 }
 
-func deepen(path string, val Value) Object {
+func deepen(path string, val ast.Value) ast.Object {
 	parts := strings.Split(path, ".")
-	res := make(Object)
+	res := make(ast.Object)
 	curr := res
 	for i := 0; i < len(parts)-1; i++ {
-		next := make(Object)
+		next := make(ast.Object)
 		curr[parts[i]] = next
 		curr = next
 	}
@@ -68,9 +70,9 @@ func deepen(path string, val Value) Object {
 	return res
 }
 
-func removeStructured(content string, patch Value) string {
+func removeStructured(content string, patch ast.Value) string {
 	switch p := patch.(type) {
-	case Object:
+	case ast.Object:
 		for k, v := range p {
 			// Look for key in content
 			keyPatternQuoted := fmt.Sprintf("%q:", k)
@@ -82,7 +84,7 @@ func removeStructured(content string, patch Value) string {
 			}
 
 			if start != -1 {
-				if nestedPatch, ok := v.(Object); ok {
+				if nestedPatch, ok := v.(ast.Object); ok {
 					// Recurse into object
 					openOff := strings.Index(content[start:], "{")
 					if openOff != -1 {
@@ -130,17 +132,17 @@ func removeStructured(content string, patch Value) string {
 				}
 			}
 		}
-	case Array:
+	case ast.Array:
 		for _, v := range p {
-			if s, ok := v.(Literal); ok {
-				content = removeStructured(content, Object{string(s): Literal("")})
+			if s, ok := v.(ast.Literal); ok {
+				content = removeStructured(content, ast.Object{string(s): ast.Literal("")})
 			}
 		}
 	}
 	return content
 }
 
-func mergeStructured(content string, patch Object) string {
+func mergeStructured(content string, patch ast.Object) string {
 	for k, v := range patch {
 		// Look for key in content
 		keyPatternQuoted := fmt.Sprintf("%q:", k)
@@ -153,7 +155,7 @@ func mergeStructured(content string, patch Object) string {
 
 		if start != -1 {
 			switch val := v.(type) {
-			case Object:
+			case ast.Object:
 				// Find opening brace
 				openOff := strings.Index(content[start:], "{")
 				if openOff != -1 {
@@ -194,7 +196,7 @@ func mergeStructured(content string, patch Object) string {
 	return content
 }
 
-func injectAtEnd(content, key string, value Value) string {
+func injectAtEnd(content, key string, value ast.Value) string {
 	// Find last }
 	pos := strings.LastIndex(content, "}")
 	if pos == -1 {
@@ -228,9 +230,9 @@ func injectAtEnd(content, key string, value Value) string {
 	return prefix + entry + "\n" + content[pos:]
 }
 
-func serialiseValue(v Value, indent string) string {
+func serialiseValue(v ast.Value, indent string) string {
 	switch val := v.(type) {
-	case Object:
+	case ast.Object:
 		if len(val) == 0 { return "{}" }
 		res := "{\n"
 		for k, v := range val {
@@ -238,7 +240,7 @@ func serialiseValue(v Value, indent string) string {
 		}
 		res += indent + "}"
 		return res
-	case Array:
+	case ast.Array:
 		if len(val) == 0 { return "[]" }
 		res := "[\n"
 		for _, v := range val {
@@ -246,7 +248,7 @@ func serialiseValue(v Value, indent string) string {
 		}
 		res += indent + "]"
 		return res
-	case Literal:
+	case ast.Literal:
 		s := string(val)
 		// Always quote strings to be safe, unless it's a number or boolean
 		if s == "true" || s == "false" || s == "null" {
@@ -264,7 +266,7 @@ func serialiseValue(v Value, indent string) string {
 	return ""
 }
 
-func appendStructured(content string, patch Object) string {
+func appendStructured(content string, patch ast.Object) string {
 	for k, v := range patch {
 		keyPatternQuoted := fmt.Sprintf("%q:", k)
 		keyPatternBare := k + ":"
@@ -311,9 +313,9 @@ func appendStructured(content string, patch Object) string {
 	return content
 }
 
-func applyRegex(content string, patch Object) string {
+func applyRegex(content string, patch ast.Object) string {
 	for k, v := range patch {
-		if val, ok := v.(Literal); ok {
+		if val, ok := v.(ast.Literal); ok {
 			re, err := regexp.Compile(k)
 			if err != nil {
 				continue
@@ -324,9 +326,9 @@ func applyRegex(content string, patch Object) string {
 	return content
 }
 
-func renameKeyStructured(content string, patch Object) string {
+func renameKeyStructured(content string, patch ast.Object) string {
 	for oldK, v := range patch {
-		if newK, ok := v.(Literal); ok {
+		if newK, ok := v.(ast.Literal); ok {
 			keyPatternQuoted := fmt.Sprintf("%q:", oldK)
 			keyPatternBare := oldK + ":"
 

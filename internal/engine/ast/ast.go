@@ -1,4 +1,4 @@
-package engine
+package ast
 
 // RuleFile is the top-level container for a .xru file.
 type RuleFile struct {
@@ -9,23 +9,23 @@ type RuleFile struct {
 type RuleType string
 
 const (
-	RuleTypeBegin  RuleType = "BEGIN"  // Transform an existing file
-	RuleTypeCreate RuleType = "CREATE" // Create a new file
-	RuleTypeSelect RuleType = "SELECT" // Define a target sandbox/directory
-	RuleTypeBreak  RuleType = "BREAK"  // Exit the program
-	RuleTypeLog    RuleType = "LOG"    // Display a message
-	RuleTypeIf      RuleType = "IF"      // Conditional block
-	RuleTypeElseIf  RuleType = "ELSEIF"  // Conditional alternative
-	RuleTypeElse    RuleType = "ELSE"    // Fallback block
-	RuleTypeInclude RuleType = "INCLUDE" // Include another rule file
-	RuleTypeExec    RuleType = "EXEC"    // Execute a shell command
-	RuleTypeGlobal  RuleType = "GLOBAL"  // Apply to all matching files
-	RuleTypeVar     RuleType = "VAR"     // Variable declaration
-	RuleTypeUse     RuleType = "USE"     // Load a module
-	RuleTypeModule  RuleType = "MODULE"  // Call a module method
-	RuleTypeArg     RuleType = "ARG"     // Read terminal argument
-	RuleTypeFor     RuleType = "FOR"     // Loop over a list
-	RuleTypeCall    RuleType = "CALL"    // Call a sub-rule
+	RuleTypeBegin    RuleType = "BEGIN"    // Transform an existing file
+	RuleTypeCreate   RuleType = "CREATE"   // Create a new file
+	RuleTypeSelect   RuleType = "SELECT"   // Define a target sandbox/directory
+	RuleTypeBreak    RuleType = "BREAK"    // Exit the program
+	RuleTypeLog      RuleType = "LOG"      // Display a message
+	RuleTypeIf       RuleType = "IF"       // Conditional block
+	RuleTypeElseIf   RuleType = "ELSEIF"   // Conditional alternative
+	RuleTypeElse     RuleType = "ELSE"     // Fallback block
+	RuleTypeInclude  RuleType = "INCLUDE"  // Include another rule file
+	RuleTypeExec     RuleType = "EXEC"     // Execute a shell command
+	RuleTypeGlobal   RuleType = "GLOBAL"   // Apply to all matching files
+	RuleTypeVar      RuleType = "VAR"      // Variable declaration
+	RuleTypeUse      RuleType = "USE"      // Load a module
+	RuleTypeModule   RuleType = "MODULE"   // Call a module method
+	RuleTypeArg      RuleType = "ARG"      // Read terminal argument
+	RuleTypeFor      RuleType = "FOR"      // Loop over a list
+	RuleTypeCall     RuleType = "CALL"     // Call a sub-rule
 	RuleTypeVarBlock RuleType = "VARBLOCK" // Multi-line variable
 )
 
@@ -49,12 +49,15 @@ type Value interface {
 }
 
 type Literal string
+
 func (Literal) IsValue() {}
 
 type Object map[string]Value
+
 func (Object) IsValue() {}
 
 type Array []Value
+
 func (Array) IsValue() {}
 
 // Rule represents a single transformation directive.

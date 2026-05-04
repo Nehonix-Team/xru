@@ -155,23 +155,25 @@ func stringify(v interface{}) string {
 }
 
 // InterpolateValue recursively interpolates strings inside structured values.
-func InterpolateValue(v Value, provider VarProvider) Value {
+func InterpolateValue(v interface{}, provider VarProvider) interface{} {
 	if provider == nil {
 		return v
 	}
 	switch val := v.(type) {
+	case string:
+		return Interpolate(val, provider)
 	case Literal:
 		return Literal(Interpolate(string(val), provider))
 	case Object:
 		newObj := make(Object)
 		for k, v := range val {
-			newObj[k] = InterpolateValue(v, provider)
+			newObj[k] = InterpolateValue(v, provider).(Value)
 		}
 		return newObj
 	case Array:
 		newArr := make(Array, len(val))
 		for i, v := range val {
-			newArr[i] = InterpolateValue(v, provider)
+			newArr[i] = InterpolateValue(v, provider).(Value)
 		}
 		return newArr
 	}

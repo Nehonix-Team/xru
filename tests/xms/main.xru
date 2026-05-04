@@ -1,0 +1,101 @@
+// --------------------------------------------------------------------------
+// XyPriss Multi-Server Orchestrator (Compact Edition)
+// --------------------------------------------------------------------------
+#USE: fs as FS
+#USE: utils as U
+
+#ARG: "--mode" as MODE
+#IF: {MODE} == ""
+    let MODE = "default"
+#END
+
+U.LOG: "<cyan>[INFO]</> Orchestrating in <yellow>{MODE}</> mode..."
+#SELECT: "./src/"
+
+let SERVERS = {}
+let SERVERS_CODE = ""
+let IMPORTS_CODE = ""
+let ROUTERS_CODE = ""
+
+// 1. DATA & LOGIC PRE-CALCULATION
+#IF: {MODE} == "xms"
+    #JSONVAR: SERVERS
+    {
+      "auth": { "route": "/auth", "desc": "Authentication Server", "body": "Auth instance logic." },
+      "main": { "route": "/api",  "desc": "Main API Server", "body": "Primary instance.", "extra": "security: { honeypotTarpit: true }," }
+    }
+    #END
+#ELSE:
+    #JSONVAR: SERVERS
+    { "main": { "route": "/api", "desc": "Default Server", "body": "Standard instance." } }
+#END
+
+// Pre-build server list for config injection
+let SERVERS_CODE = ""
+let IMPORTS_CODE = ""
+let ROUTERS_CODE = ""
+
+#FOR: S in {SERVERS}
+    let SERVERS_CODE = "{SERVERS_CODE}            {S}Server,\n"
+    let IMPORTS_CODE = "{IMPORTS_CODE}import { {S}Router } from \"../routes/{S}.route\";\n"
+    let ROUTERS_CODE = "{ROUTERS_CODE}router.use(\"{SERVERS.{S}.route}\", {S}Router);\n"
+#END
+
+// 2. CONFIGURATION & ROUTING
+#BEGIN: "configs/xypriss.config.ts"
+    #IF: {MODE} == "xms"
+        @TSINJECT: SERVER_CONFIG
+            multiServer: {
+                enabled: true,
+                servers: [
+{SERVERS_CODE}                ],
+            },
+        @END
+    #ELSE:
+        @TSINJECT: SERVER_CONFIG
+            server: { autoKillConflict: true, port: 8080, serviceName: "default" },
+        @END
+    #END
+#END
+
+#BEGIN: "router/index.ts"
+    @TSINJECT: ROUTERS_IMPORT
+{IMPORTS_CODE}    @END
+    @TSINJECT: ROUTERS_USE
+{ROUTERS_CODE}    @END
+#END
+
+// 3. GENERATION
+#IF: {MODE} == "xms"
+    #CREATE: "configs/xms.config.ts"
+        export const xmsc: any = __sys__.vars.get("xms_nodes");
+    #END
+
+    #FOR: S in {SERVERS}
+        #CREATE: "servers/{S}.server.ts"
+            import { MultiServerConfig } from "xypriss";
+            import { xmsc } from "../configs/xms.config";
+            /** {SERVERS.{S}.desc} */
+            export const {S}Server: MultiServerConfig = {
+                id: xmsc.{S}.id,
+                port: xmsc.{S}.port,
+                routePrefix: "{SERVERS.{S}.route}",
+                {SERVERS.{S}.extra}
+            };
+        #END
+
+        #CREATE: "routes/{S}.route.ts"
+            import { Router } from "xypriss";
+            export const {S}Router = Router();
+            {S}Router.get("/", (ctx) => { ctx.body = { message: "Welcome {S}", mode: "{MODE}" }; });
+        #END
+    #END
+#ELSE:
+    #CREATE: "routes/main.route.ts"
+        import { Router } from "xypriss";
+        export const mainRouter = Router();
+        mainRouter.get("/", (ctx) => { ctx.body = { message: "Default server" }; });
+    #END
+#END
+
+U.LOG: "<green>[SUCCESS]</> Orchestration complete."

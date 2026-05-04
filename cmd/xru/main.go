@@ -155,12 +155,20 @@ func (s *Scope) MarkUsed(name string) {
 
 
 func (s *Scope) Set(name string, val interface{}, line int) {
+	// Lexical update: if variable exists in any parent scope, update it there
+	curr := s
+	for curr != nil {
+		if _, ok := curr.Vars[name]; ok {
+			curr.Vars[name] = val
+			return
+		}
+		curr = curr.Parent
+	}
+
+	// Otherwise define in current scope
 	if s.Vars == nil {
 		s.Vars = make(map[string]interface{})
 		s.DefLines = make(map[string]int)
-	}
-	if verbose {
-		fmt.Printf("[DEBUG] Scope.Set: %s = %T (%v)\n", name, val, val)
 	}
 	s.Vars[name] = val
 	s.DefLines[name] = line
@@ -180,20 +188,18 @@ func (s *Scope) RegisterModule(alias, name string, line int) {
 	s.Modules[alias] = name
 }
 
-func (s *Scope) CheckUnused() {
-	if s.Vars == nil {
-		return
-	}
-	hasUnused := false
-	for name := range s.Vars {
-		if s.Used == nil || !s.Used[name] {
-			line := s.DefLines[name]
-			fmt.Printf("%s:%d: %serror:%s variable '%s' is defined but never used\n", currentFile, line, colorRed, colorReset, name)
-			hasUnused = true
+func (s *Scope) CheckUnused(file string) {
+	if verbose {
+		fmt.Printf("[DEBUG] CheckUnused for scope %p\n", s)
+		for name := range s.DefLines {
+			fmt.Printf("  - Variable '%s' defined. Used: %v\n", name, s.Used[name])
 		}
 	}
-	if hasUnused {
-		os.Exit(1)
+	for name, line := range s.DefLines {
+		if !s.Used[name] {
+			fmt.Printf("%s:%d: %serror:%s variable '%s' is defined but never used\n", file, line, colorRed, colorReset, name)
+			os.Exit(1)
+		}
 	}
 }
 
@@ -281,7 +287,7 @@ func runPatch(rulePath, targetDir string) {
 		os.Exit(1)
 	}
 	executeRules(rf.Rules, absTarget, absTarget, rulePath, rootScope)
-	rootScope.CheckUnused()
+	rootScope.CheckUnused(currentFile)
 }
 
 func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath string, scope *Scope) {
@@ -435,7 +441,7 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 			}
 			varName := strings.TrimSpace(parts[0])
 			listVal := engine.ParseValue(strings.TrimSpace(parts[1]))
-			listVal = engine.InterpolateValue(listVal, scope)
+			listVal = engine.InterpolateValue(listVal, scope).(engine.Value)
 
 			if arr, ok := listVal.(engine.Array); ok {
 				for _, item := range arr {
@@ -595,7 +601,7 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 		return engine.InjectCode(content, a.Key, code)
 	case engine.PatchAction:
 		path := engine.Interpolate(a.Path, scope)
-		val := engine.InterpolateValue(a.Value, scope)
+		val := engine.InterpolateValue(a.Value, scope).(engine.Value)
 		return engine.ApplyPatch(content, a.Op, path, val)
 	}
 	return content

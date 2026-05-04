@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.9] - 2026-05-04
+feat(engine): implement Inception mode and enhanced orchestration engine
+Huge update introducing "Inception" mode for nested XRU logic execution within template files, recursive action execution, and hardened orchestration logic.
+
+### Added
+- **Inception Mode**: Support for `<# ... >` tags within template blocks to execute nested XRU logic (FOR, IF, etc.).
+- **Recursive Orchestration**: Sub-actions are now correctly executed for #BEGIN, #CREATE, and #GLOBAL blocks.
+- **Capture Propagation**: Captured output (via #LOG) is now correctly propagated through nested scopes.
+- **Universal Inject Markers**: Expanded regex support for @TSINJECT, @GOINJECT and other dynamic markers.
+- **Hardened Interpolation**: Improved escaping logic to support literal braces in code blocks without breaking variable replacement.
+- **VS Code Extension (v0.5.0)**: Dynamic language injection based on file extensions and support for Inception tags.
+
+### Fixed
+- **Action Ordering**: Resolved issues where #ELSE actions would overwrite successful #IF actions.
+- **Context Leakage**: Fixed scope isolation between nested structural blocks.
+
 ## [0.1.8] - 2026-05-04
 fix(parser): support for single-line comments using //
 The parser now correctly ignores lines starting with //, allowing for better documentation within XRU scripts.

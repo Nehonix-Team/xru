@@ -3,10 +3,13 @@
   "name": "XyPriss Rule Unit",
   "patterns": [
     {
-      "include": "#comments"
+      "include": "#keywords"
     },
     {
       "include": "#inception"
+    },
+    {
+      "include": "#comments"
     },
     {
       "include": "#create_html"
@@ -21,25 +24,10 @@
       "include": "#create_ts"
     },
     {
-      "include": "#var_ts"
-    },
-    {
-      "include": "#var_js"
-    },
-    {
-      "include": "#var_json"
-    },
-    {
-      "include": "#var_generic"
-    },
-    {
       "include": "#create_css"
     },
     {
       "include": "#create_go"
-    },
-    {
-      "include": "#scoping"
     },
     {
       "include": "#modular_actions"
@@ -102,125 +90,15 @@
         }
       ]
     },
-    "scoping": {
+    "keywords": {
       "patterns": [
         {
-          "name": "keyword.control.scoping.if.xru",
-          "begin": "^\\s*#\\s*(IF|ELSEIF):",
-          "beginCaptures": {
-            "0": {
-              "name": "keyword.control.scoping.xru"
-            }
-          },
-          "end": "$",
-          "patterns": [
-            {
-              "name": "entity.name.function.method.xru",
-              "match": "\\bexists(?=\\()"
-            },
-            {
-              "name": "keyword.operator.comparison.xru",
-              "match": "==|!="
-            },
-            {
-              "include": "#strings"
-            },
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#barewords"
-            }
-          ]
+          "name": "keyword.control.xru",
+          "match": "#\\s*[A-Z]+\\b"
         },
         {
-          "name": "meta.directive.use.xru",
-          "match": "^\\s*(#\\s*USE):\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
-          "captures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            },
-            "2": {
-              "name": "entity.name.type.module.xru"
-            },
-            "3": {
-              "name": "keyword.control.scoping.xru"
-            },
-            "4": {
-              "name": "variable.other.alias.xru"
-            }
-          }
-        },
-        {
-          "name": "meta.directive.for.xru",
-          "begin": "^\\s*(#\\s*FOR):",
-          "beginCaptures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            }
-          },
-          "end": "$",
-          "patterns": [
-            {
-              "name": "keyword.control.scoping.xru",
-              "match": "\\bin\\b"
-            },
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#strings"
-            },
-            {
-              "include": "#variable_declaration"
-            },
-            {
-              "include": "#barewords"
-            }
-          ]
-        },
-        {
-          "name": "meta.directive.select.xru",
-          "begin": "^\\s*(#\\s*(?:SELECT|BEGIN|CREATE|INCLUDE|CALL)):",
-          "beginCaptures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            }
-          },
-          "end": "$",
-          "patterns": [
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#strings"
-            },
-            {
-              "name": "entity.name.filename.xru",
-              "match": "[a-zA-Z0-9_\\-][a-zA-Z0-9_\\-\\.]*\\.[a-zA-Z0-9]+"
-            },
-            {
-              "include": "#barewords"
-            },
-            {
-              "match": "\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-              "captures": {
-                "1": {
-                  "name": "keyword.control.scoping.xru"
-                },
-                "2": {
-                  "name": "variable.other.alias.xru"
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "keyword.control.scoping.xru",
-          "match": "^\\s*#\\s*(GLOBAL|ELSE|END)\\b:?"
-        },
-        {
-          "include": "#inception"
+          "name": "keyword.control.xru",
+          "match": "#\\s*END\\b"
         }
       ]
     },
@@ -600,6 +478,12 @@
           "include": "#inception"
         },
         {
+          "include": "#interpolation"
+        },
+        {
+          "include": "#strings"
+        },
+        {
           "include": "text.html.basic"
         }
       ]
@@ -623,6 +507,12 @@
       "patterns": [
         {
           "include": "#inception"
+        },
+        {
+          "include": "#interpolation"
+        },
+        {
+          "include": "#strings"
         },
         {
           "include": "source.json"
@@ -650,6 +540,12 @@
           "include": "#inception"
         },
         {
+          "include": "#interpolation"
+        },
+        {
+          "include": "#strings"
+        },
+        {
           "include": "source.js"
         }
       ]
@@ -673,6 +569,12 @@
       "patterns": [
         {
           "include": "#inception"
+        },
+        {
+          "include": "#interpolation"
+        },
+        {
+          "include": "#strings"
         },
         {
           "include": "source.ts"
@@ -700,6 +602,12 @@
           "include": "#inception"
         },
         {
+          "include": "#interpolation"
+        },
+        {
+          "include": "#strings"
+        },
+        {
           "include": "source.css"
         }
       ]
@@ -723,6 +631,12 @@
       "patterns": [
         {
           "include": "#inception"
+        },
+        {
+          "include": "#interpolation"
+        },
+        {
+          "include": "#strings"
         },
         {
           "include": "source.go"
@@ -893,10 +807,13 @@
       },
       "patterns": [
         {
-          "include": "#scoping"
+          "include": "#keywords"
         },
         {
           "include": "#interpolation"
+        },
+        {
+          "include": "#strings"
         }
       ]
     }

@@ -1,0 +1,12 @@
+{
+  "auth": {
+    "route": "/auth",
+    "desc": "Authentication Server Configuration",
+    "body": "Defines the operational parameters for the isolated authentication instance."
+  },
+  "main": {
+    "route": "/api",
+    "desc": "Main API Server Configuration",
+    "body": "Defines the operational parameters for the primary API service instance.\n* Includes advanced security configurations such as honeypot tarpits to \n* mitigate automated scanning and bot activity."
+  }
+}

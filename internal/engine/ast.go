@@ -26,6 +26,7 @@ const (
 	RuleTypeArg     RuleType = "ARG"     // Read terminal argument
 	RuleTypeFor     RuleType = "FOR"     // Loop over a list
 	RuleTypeCall    RuleType = "CALL"    // Call a sub-rule
+	RuleTypeVarBlock RuleType = "VARBLOCK" // Multi-line variable
 )
 
 // PatchOp defines the type of patch operation.
@@ -59,6 +60,7 @@ func (Array) IsValue() {}
 // Rule represents a single transformation directive.
 type Rule struct {
 	Type     RuleType
+	Command  string // Original directive command (e.g. JSONVAR)
 	Target   string
 	As       string // Captured variable name
 	Content  string

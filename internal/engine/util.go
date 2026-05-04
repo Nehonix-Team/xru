@@ -6,15 +6,17 @@ package engine
 
 import (
 	// "os"
+	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 )
 
-var varRegex = regexp.MustCompile(`\{[a-zA-Z_][a-zA-Z0-9_]*\}`)
+var varRegex = regexp.MustCompile(`\{[a-zA-Z0-9_\.]+\}`)
 
 // VarProvider is an interface for looking up variables and tracking usage.
 type VarProvider interface {
-	Get(name string) (string, bool)
+	Get(name string) (interface{}, bool)
 }
 
 // // readFile is the single I/O primitive used by the package.
@@ -44,61 +46,112 @@ func Interpolate(s string, provider VarProvider) string {
 		return s
 	}
 
-	lines := strings.Split(s, "\n")
-	var resultLines []string
+	resultLines := strings.Split(s, "\n")
+	// Recursive interpolation (max 10 levels) to support {A.{B}}
+	for pass := 0; pass < 10; pass++ {
+		interpolatedSomething := false
+		var nextResultLines []string
 
-	for _, line := range lines {
-		// Detect if this line only contains a single {VAR} (after indentation)
-		trimmed := strings.TrimSpace(line)
-		matches := varRegex.FindAllString(trimmed, -1)
-		isOnlyVar := len(matches) == 1 && matches[0] == trimmed
+		for _, line := range resultLines {
+			// Detect if this line only contains a single {VAR} (after indentation)
+			trimmed := strings.TrimSpace(line)
+			matches := varRegex.FindAllString(trimmed, -1)
+			isOnlyVar := len(matches) == 1 && matches[0] == trimmed
 
-		if isOnlyVar {
-			indent := ""
-			for _, r := range line {
-				if r == ' ' || r == '\t' {
-					indent += string(r)
+			if isOnlyVar {
+				indent := ""
+				for _, r := range line {
+					if r == ' ' || r == '\t' {
+						indent += string(r)
+					} else {
+						break
+					}
+				}
+
+				name := trimmed[1 : len(trimmed)-1]
+				rawVal, ok := provider.Get(name)
+				if !ok {
+					rawVal = "[ERROR: UNDEFINED_" + name + "]"
+				}
+
+				val := ""
+				if rawVal == nil {
+					val = ""
 				} else {
-					break
+					switch v := rawVal.(type) {
+					case string:
+						val = v
+					case Literal:
+						val = string(v)
+					default:
+						// If it's a single var line and it's a complex object/array,
+						// we might want to preserve it if this is a nested pass.
+						// But for the final result, we stringify.
+						val = stringify(rawVal)
+					}
 				}
-			}
 
-			name := trimmed[1 : len(trimmed)-1]
-			val, ok := provider.Get(name)
-			if !ok {
-				val = "[ERROR: UNDEFINED_VAR]"
-			}
-
-			if val == "" {
-				// Skip this line entirely if it's empty to avoid blank lines
-				continue
-			}
-
-			// Dedent the value first so its internal indentation is preserved relative to its first line
-			val = Dedent(val)
-
-			// Apply indentation to all lines of val
-			valLines := strings.Split(val, "\n")
-			for j := range valLines {
-				if valLines[j] != "" {
-					valLines[j] = indent + valLines[j]
+				if val == "" {
+					// Skip this line entirely if it's empty to avoid blank lines
+					continue
 				}
-			}
-			resultLines = append(resultLines, valLines...)
-		} else {
-			// Normal interpolation for mixed lines
-			interpolated := varRegex.ReplaceAllStringFunc(line, func(m string) string {
-				name := m[1 : len(m)-1]
-				if val, ok := provider.Get(name); ok {
-					return val
+
+				interpolatedSomething = true
+				// Dedent the value first so its internal indentation is preserved relative to its first line
+				val = Dedent(val)
+
+				// Apply indentation to all lines of val
+				valLines := strings.Split(val, "\n")
+				for j := range valLines {
+					if valLines[j] != "" {
+						valLines[j] = indent + valLines[j]
+					}
 				}
-				return "[ERROR: UNDEFINED_VAR]"
-			})
-			resultLines = append(resultLines, interpolated)
+				nextResultLines = append(nextResultLines, valLines...)
+			} else {
+				// Normal interpolation for mixed lines
+				if varRegex.MatchString(line) {
+					interpolatedSomething = true
+				}
+				interpolated := varRegex.ReplaceAllStringFunc(line, func(m string) string {
+					name := m[1 : len(m)-1]
+					if rawVal, ok := provider.Get(name); ok {
+						switch v := rawVal.(type) {
+						case string:
+							return v
+						case Literal:
+							return string(v)
+						default:
+							return stringify(rawVal)
+						}
+					}
+					return "[ERROR: UNDEFINED_" + name + "]"
+				})
+				nextResultLines = append(nextResultLines, interpolated)
+			}
+		}
+
+		resultLines = nextResultLines
+		if !interpolatedSomething {
+			break
 		}
 	}
 
 	return strings.Join(resultLines, "\n")
+}
+
+func stringify(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case Literal:
+		return string(val)
+	case Object, Array, map[string]interface{}, []interface{}:
+		b, _ := json.MarshalIndent(v, "", "  ")
+		return string(b)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 // InterpolateValue recursively interpolates strings inside structured values.

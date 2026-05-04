@@ -18,6 +18,18 @@
       "include": "#create_ts"
     },
     {
+      "include": "#var_ts"
+    },
+    {
+      "include": "#var_js"
+    },
+    {
+      "include": "#var_json"
+    },
+    {
+      "include": "#var_generic"
+    },
+    {
       "include": "#create_css"
     },
     {
@@ -723,7 +735,7 @@
     "interpolation": {
       "patterns": [
         {
-          "match": "(\\{)([a-zA-Z_][a-zA-Z0-9_]*)(\\})",
+          "match": "(\\{)([a-zA-Z0-9_\\.]+)(\\})",
           "captures": {
             "1": {
               "name": "punctuation.definition.variable.xru"
@@ -745,6 +757,98 @@
           "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+\\b"
         }
       ]
+    },
+    "var_ts": {
+      "begin": "^\\s*(#TSVAR):\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        },
+        "2": {
+          "name": "variable.other.xru"
+        }
+      },
+      "end": "^\\s*(#END)\\s*$",
+      "endCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.ts"
+        },
+        {
+          "include": "#interpolation"
+        }
+      ]
+    },
+    "var_js": {
+      "begin": "^\\s*(#JSVAR):\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        },
+        "2": {
+          "name": "variable.other.xru"
+        }
+      },
+      "end": "^\\s*(#END)\\s*$",
+      "endCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.js"
+        },
+        {
+          "include": "#interpolation"
+        }
+      ]
+    },
+    "var_json": {
+      "begin": "^\\s*(#JSONVAR):\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        },
+        "2": {
+          "name": "variable.other.xru"
+        }
+      },
+      "end": "^\\s*(#END)\\s*$",
+      "endCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.json"
+        },
+        {
+          "include": "#interpolation"
+        }
+      ]
+    },
+    "var_generic": {
+      "begin": "^\\s*(#VAR):\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        },
+        "2": {
+          "name": "variable.other.xru"
+        }
+      },
+      "end": "^\\s*(#END)\\s*$",
+      "endCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        }
+      }
     }
   },
   "scopeName": "source.xru"

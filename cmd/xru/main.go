@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -34,31 +36,131 @@ var currentFile string
 var terminalArgs []string
 
 type Scope struct {
-	Vars     map[string]string
+	Vars     map[string]interface{}
 	DefLines map[string]int
 	Used     map[string]bool
 	Modules  map[string]string // Alias -> ModuleName
 	Parent   *Scope
 }
 
-func (s *Scope) Get(name string) (string, bool) {
-	if val, ok := s.Vars[name]; ok {
+func (s *Scope) Get(name string) (interface{}, bool) {
+	// Handle path resolution (e.g. USER.name)
+	parts := strings.Split(name, ".")
+	rootName := parts[0]
+
+	var current interface{}
+	found := false
+
+	if val, ok := s.Vars[rootName]; ok {
 		if s.Used == nil {
 			s.Used = make(map[string]bool)
 		}
-		s.Used[name] = true
-		return val, true
+		s.Used[rootName] = true
+		current = val
+		found = true
+	} else if s.Parent != nil {
+		raw, ok := s.Parent.Get(rootName) // Now this returns interface{}
+		if ok {
+			// Mark as used in parent too
+			s.Parent.MarkUsed(rootName)
+			current = raw
+			found = true
+		}
 	}
-	if s.Parent != nil {
-		return s.Parent.Get(name)
+
+	if !found {
+		return "", false
 	}
-	return "", false
+
+	// Navigate through properties
+	for i := 1; i < len(parts); i++ {
+		prop := parts[i]
+		switch v := current.(type) {
+		case engine.Object:
+			if next, ok := v[prop]; ok {
+				current = next
+			} else {
+				return nil, false
+			}
+		case map[string]interface{}:
+			if next, ok := v[prop]; ok {
+				current = next
+			} else {
+				return nil, false
+			}
+		default:
+			return nil, false
+		}
+	}
+
+	return current, true
 }
 
-func (s *Scope) Set(name, val string, line int) {
+func (s *Scope) RawGet(name string) (interface{} , bool) {
+	// Handle path resolution (e.g. USER.name)
+	parts := strings.Split(name, ".")
+	rootName := parts[0]
+
+	var current interface{}
+	found := false
+
+	if val, ok := s.Vars[rootName]; ok {
+		current = val
+		found = true
+	} else if s.Parent != nil {
+		raw, ok := s.Parent.RawGet(rootName)
+		if ok {
+			current = raw
+			found = true
+		}
+	}
+
+	if !found {
+		return nil, false
+	}
+
+	// Navigate through properties
+	for i := 1; i < len(parts); i++ {
+		prop := parts[i]
+		switch v := current.(type) {
+		case engine.Object:
+			if next, ok := v[prop]; ok {
+				current = next
+			} else {
+				return nil, false
+			}
+		case map[string]interface{}:
+			if next, ok := v[prop]; ok {
+				current = next
+			} else {
+				return nil, false
+			}
+		default:
+			return nil, false
+		}
+	}
+
+	return current, true
+}
+
+func (s *Scope) MarkUsed(name string) {
+	if s.Used == nil {
+		s.Used = make(map[string]bool)
+	}
+	s.Used[name] = true
+	if s.Parent != nil {
+		s.Parent.MarkUsed(name)
+	}
+}
+
+
+func (s *Scope) Set(name string, val interface{}, line int) {
 	if s.Vars == nil {
-		s.Vars = make(map[string]string)
+		s.Vars = make(map[string]interface{})
 		s.DefLines = make(map[string]int)
+	}
+	if verbose {
+		fmt.Printf("[DEBUG] Scope.Set: %s = %T (%v)\n", name, val, val)
 	}
 	s.Vars[name] = val
 	s.DefLines[name] = line
@@ -82,11 +184,16 @@ func (s *Scope) CheckUnused() {
 	if s.Vars == nil {
 		return
 	}
+	hasUnused := false
 	for name := range s.Vars {
 		if s.Used == nil || !s.Used[name] {
 			line := s.DefLines[name]
-			fmt.Printf("%s:%d: %swarning:%s variable '%s' is defined but never used\n", currentFile, line, colorYellow, colorReset, name)
+			fmt.Printf("%s:%d: %serror:%s variable '%s' is defined but never used\n", currentFile, line, colorRed, colorReset, name)
+			hasUnused = true
 		}
+	}
+	if hasUnused {
+		os.Exit(1)
 	}
 }
 
@@ -110,22 +217,22 @@ func colorify(s string) string {
 }
 
 func checkSyntaxError(val string, line int) {
-	if val == "[SYNTAX_ERROR: UNCLOSED_QUOTE]" {
-		fmt.Printf("%s:%d: %ssyntax error:%s missing terminating '\"' or \"'\" character\n", currentFile, line, colorRed, colorReset)
-		os.Exit(1)
-	}
-	if val == "[SYNTAX_ERROR: UNCLOSED_BRACE]" {
-		fmt.Printf("%s:%d: %ssyntax error:%s missing terminating '}' for variable interpolation\n", currentFile, line, colorRed, colorReset)
-		os.Exit(1)
-	}
-	if val == "[SYNTAX_ERROR: MISSING_QUOTES]" {
-		fmt.Printf("%s:%d: %ssyntax error:%s string literals must be enclosed in quotes (e.g. \"text\")\n", currentFile, line, colorRed, colorReset)
+	if strings.HasPrefix(val, "[SYNTAX_ERROR:") || strings.HasPrefix(val, "[ERROR:") {
+		msg := val
+		if val == "[SYNTAX_ERROR: UNCLOSED_QUOTE]" {
+			msg = "missing terminating '\"' or \"'\" character"
+		} else if val == "[SYNTAX_ERROR: UNCLOSED_BRACE]" {
+			msg = "missing terminating '}' for variable interpolation"
+		} else if val == "[SYNTAX_ERROR: MISSING_QUOTES]" {
+			msg = "string literals must be enclosed in quotes (e.g. \"text\")"
+		}
+		fmt.Printf("%s:%d: %serror:%s %s\n", currentFile, line, colorRed, colorReset, msg)
 		os.Exit(1)
 	}
 }
 
 var rootScope = &Scope{
-	Vars:     make(map[string]string),
+	Vars:     make(map[string]interface{}),
 	DefLines: make(map[string]int),
 	Used:     make(map[string]bool),
 	Modules:  make(map[string]string),
@@ -187,9 +294,43 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 
 		switch rule.Type {
 		case engine.RuleTypeVar:
+			trimmed := strings.TrimSpace(rule.Content)
+			// Try to resolve as a raw object/value first
+			if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
+				name := trimmed[1 : len(trimmed)-1]
+				// Manually resolve nested variables for the name (like {CONFIG.{S}})
+				for strings.Contains(name, "{") {
+					name = engine.Interpolate(name, scope)
+				}
+				
+				if val, ok := scope.Get(name); ok {
+					scope.Set(rule.Target, val, rule.Line)
+					skipElse = false
+					continue
+				}
+			}
+
+			// Fallback to string interpolation
 			val := engine.Interpolate(rule.Content, scope)
 			checkSyntaxError(val, rule.Line)
 			scope.Set(rule.Target, unescape(val), rule.Line)
+			skipElse = false
+
+		case engine.RuleTypeVarBlock:
+			content := engine.Interpolate(rule.Content, scope)
+			content = engine.Dedent(content)
+			
+			var val interface{} = content
+			if strings.HasPrefix(rule.Command, "JSON") {
+				var parsed interface{}
+				if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+					fmt.Printf("%s:%d: %serror:%s failed to parse JSON in #%s: %v\n", currentFile, rule.Line, colorRed, colorReset, rule.Command, err)
+					os.Exit(1)
+				}
+				val = parsed
+			}
+			
+			scope.Set(rule.Target, val, rule.Line)
 			skipElse = false
 
 		case engine.RuleTypeSelect:
@@ -246,7 +387,7 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 			parts := strings.SplitN(rule.Target, ".", 2)
 			content := engine.Interpolate(rule.Content, scope)
 			checkSyntaxError(content, rule.Line)
-			executeModuleAction(scope, cb, parts[0], parts[1], content, rule.As, rule.Line)
+			executeModuleAction(scope, cb, rulePath, parts[0], parts[1], content, rule.As, rule.Line)
 			skipElse = false
 
 		case engine.RuleTypeInclude:
@@ -299,9 +440,18 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 			if arr, ok := listVal.(engine.Array); ok {
 				for _, item := range arr {
 					child := &Scope{Parent: scope}
-					if lit, ok := item.(engine.Literal); ok {
-						child.Set(varName, string(lit), rule.Line)
-					}
+					child.Set(varName, item, rule.Line)
+					executeRules(rule.SubRules, initialTarget, cb, rulePath, child)
+				}
+			} else if obj, ok := listVal.(engine.Object); ok {
+				var keys []string
+				for k := range obj {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					child := &Scope{Parent: scope}
+					child.Set(varName, engine.Literal(k), rule.Line)
 					executeRules(rule.SubRules, initialTarget, cb, rulePath, child)
 				}
 			}
@@ -369,7 +519,7 @@ func evalCondition(cond string, scope *Scope, cb string) bool {
 
 func applyRule(initialTarget, currentBase string, rule engine.Rule, parentScope *Scope) {
 	scope := &Scope{
-		Vars:     make(map[string]string),
+		Vars:     make(map[string]interface{}),
 		DefLines: make(map[string]int),
 		Used:     make(map[string]bool),
 		Modules:  parentScope.Modules,
@@ -387,7 +537,7 @@ func applyRule(initialTarget, currentBase string, rule engine.Rule, parentScope 
 		os.MkdirAll(filepath.Dir(fullPath), 0755)
 		content := engine.Interpolate(rule.Content, scope)
 		for _, action := range rule.Actions {
-			content = applyAction(content, action, filepath.Ext(fullPath), scope, currentBase)
+			content = applyAction(content, action, filepath.Ext(fullPath), scope, currentBase, currentFile)
 		}
 		os.WriteFile(fullPath, []byte(content), 0644)
 		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope)
@@ -400,7 +550,7 @@ func applyRule(initialTarget, currentBase string, rule engine.Rule, parentScope 
 		}
 		content := string(data)
 		for _, action := range rule.Actions {
-			content = applyAction(content, action, filepath.Ext(fullPath), scope, currentBase)
+			content = applyAction(content, action, filepath.Ext(fullPath), scope, currentBase, currentFile)
 		}
 		os.WriteFile(fullPath, []byte(content), 0644)
 		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope)
@@ -414,7 +564,7 @@ func applyRule(initialTarget, currentBase string, rule engine.Rule, parentScope 
 			content := string(data)
 			original := content
 			for _, action := range rule.Actions {
-				content = applyAction(content, action, filepath.Ext(path), scope, currentBase)
+				content = applyAction(content, action, filepath.Ext(path), scope, currentBase, currentFile)
 			}
 			if content != original {
 				os.WriteFile(path, []byte(content), info.Mode())
@@ -425,14 +575,14 @@ func applyRule(initialTarget, currentBase string, rule engine.Rule, parentScope 
 	}
 }
 
-func applyAction(content string, action engine.Action, fileExt string, scope *Scope, cb string) string {
+func applyAction(content string, action engine.Action, fileExt string, scope *Scope, cb string, rulePath string) string {
 	switch a := action.(type) {
 	case engine.VarAction:
 		val := engine.Interpolate(a.Value, scope)
 		scope.Set(a.Name, unescape(val), a.Line)
 		return content
 	case engine.ModuleAction:
-		executeModuleAction(scope, cb, a.Module, a.Method, a.Target, a.As, a.Line)
+		executeModuleAction(scope, cb, rulePath, a.Module, a.Method, a.Target, a.As, a.Line)
 		return content
 	case engine.InjectAction:
 		if a.Lang != "" {
@@ -441,6 +591,7 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 			}
 		}
 		code := engine.Interpolate(a.Code, scope)
+		checkSyntaxError(code, a.Line)
 		return engine.InjectCode(content, a.Key, code)
 	case engine.PatchAction:
 		path := engine.Interpolate(a.Path, scope)
@@ -450,7 +601,7 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 	return content
 }
 
-func executeModuleAction(scope *Scope, cb, mod, method, target, as string, line int) {
+func executeModuleAction(scope *Scope, cb, rulePath, mod, method, target, as string, line int) {
 	moduleName := mod
 	if scope.Modules != nil {
 		if val, ok := scope.Modules[mod]; ok {
@@ -532,6 +683,26 @@ func executeModuleAction(scope *Scope, cb, mod, method, target, as string, line 
 				// Simple copy (file only for now)
 				input, _ := os.ReadFile(src)
 				os.WriteFile(dst, input, 0644)
+			}
+		case "READ_JSON":
+			fullPath := filepath.Join(cb, target)
+			data, err := os.ReadFile(fullPath)
+			if err != nil {
+				// Try relative to the script
+				fullPath = filepath.Join(filepath.Dir(rulePath), target)
+				data, err = os.ReadFile(fullPath)
+			}
+			if err != nil {
+				fmt.Printf("%s:%d: %serror:%s could not read file '%s' (tried in %s and %s)\n", currentFile, line, colorRed, colorReset, target, cb, filepath.Dir(rulePath))
+				os.Exit(1)
+			}
+			var parsed interface{}
+			if err := json.Unmarshal(data, &parsed); err != nil {
+				fmt.Printf("%s:%d: %serror:%s could not parse JSON in '%s': %v\n", currentFile, line, colorRed, colorReset, target, err)
+				os.Exit(1)
+			}
+			if as != "" {
+				scope.Set(as, parsed, line)
 			}
 		default:
 			fmt.Printf("%s:%d: %serror:%s unknown method '%s' for module '%s'\n", currentFile, line, colorRed, colorReset, method, moduleName)

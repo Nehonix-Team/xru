@@ -1,0 +1,44 @@
+#USE: fs as FS
+#SELECT: "./src/"
+
+#JSONVAR: CONFIG
+{
+  "auth": {
+    "route": "/auth",
+    "desc": "Authentication Server Configuration",
+    "body": "Defines the operational parameters for the isolated authentication instance."
+  },
+  "main": {
+    "route": "/api",
+    "desc": "Main API Server Configuration",
+    "body": "Defines the operational parameters for the primary API service instance.",
+    "extra": "security: { honeypotTarpit: true },"
+  }
+}
+#END
+
+#FOR: S in {CONFIG}
+    #CREATE: "servers/{S}.server.ts"
+        @TSINJECT: ""
+            import { MultiServerConfig } from "xypriss";
+            import { xmsc } from "../configs/xms.config";
+
+            /**
+            * {CONFIG.{S}.desc}
+            * 
+            * {CONFIG.{S}.body}
+            */
+            export const {S}Server: MultiServerConfig = {
+                id: xmsc.{S}.id,
+                port: xmsc.{S}.port,
+                routePrefix: "{CONFIG.{S}.route}",
+                
+                {CONFIG.{S}.extra}
+
+                cluster: {
+                    enabled: false,
+                },
+            };
+        @END
+    #END
+#END

@@ -1,0 +1,14 @@
+#TSVAR: MAIN_EXTRA
+/** Security middleware configuration */
+security: {
+    /** 
+    * Activates a tarpit mechanism for suspected bot traffic.
+    * Intentionally slows down response times for identified malicious actors 
+    * to consume their resources and discourage further attacks.
+    */
+    honeypotTarpit: true,
+},
+#END
+
+#VAR: AUTH_EXTRA
+#END

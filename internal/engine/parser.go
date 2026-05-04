@@ -172,6 +172,19 @@ func parseNew(src string) (*RuleFile, error) {
 				stack = append(stack, rule)
 				continue
 			}
+			// Handle #VAR: name or #TSVAR: name
+			if strings.HasSuffix(strings.Split(directiveLine, ":")[0], "VAR") {
+				commitPending()
+				cmdParts := strings.Split(directiveLine, ":")
+				cmdName := strings.TrimPrefix(strings.TrimSpace(cmdParts[0]), "#")
+				parts := strings.SplitN(directiveLine, ":", 2)
+				if len(parts) == 2 {
+					name := strings.TrimSpace(parts[1])
+					rule := &Rule{Type: RuleTypeVarBlock, Command: cmdName, Target: name, Line: lineNum}
+					stack = append(stack, rule)
+					continue
+				}
+			}
 			if strings.HasPrefix(directiveLine, "#INCLUDE:") {
 				commitPending()
 				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#INCLUDE:"), true)
@@ -308,13 +321,13 @@ func parseNew(src string) (*RuleFile, error) {
 		}
 
 		if trimmed == "" {
-			if len(stack) > 0 && stack[len(stack)-1].Type == RuleTypeCreate {
+			if len(stack) > 0 && (stack[len(stack)-1].Type == RuleTypeCreate || stack[len(stack)-1].Type == RuleTypeVarBlock) {
 				stack[len(stack)-1].Content += line + "\n"
 			}
 			continue
 		}
 
-		if len(stack) > 0 && stack[len(stack)-1].Type == RuleTypeCreate && !strings.HasPrefix(trimmed, "#END") {
+		if len(stack) > 0 && (stack[len(stack)-1].Type == RuleTypeCreate || stack[len(stack)-1].Type == RuleTypeVarBlock) && !strings.HasPrefix(trimmed, "#END") {
 			stack[len(stack)-1].Content += line + "\n"
 			continue
 		}

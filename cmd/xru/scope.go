@@ -30,7 +30,9 @@ func (s *Scope) Get(name string) (interface{}, bool) {
 		}
 		s.Used[rootName] = true
 		if rootName == "SERVERS" {
-			fmt.Printf("[DEBUG] Scope %p: Marked 'SERVERS' as USED\n", s)
+			if verbose {
+				fmt.Printf("[DEBUG] Scope %p: Marked 'SERVERS' as USED\n", s)
+			}
 		}
 		current = val
 		found = true
@@ -176,10 +178,30 @@ func (s *Scope) CheckUnused(file string) {
 }
 
 func newRootScope() *Scope {
-	return &Scope{
+	s := &Scope{
 		Vars:     make(map[string]interface{}),
 		DefLines: make(map[string]int),
 		Used:     make(map[string]bool),
 		Modules:  make(map[string]string),
 	}
+
+	// Injection des arguments de terminal (--arg NAME=VAL)
+	for i := 0; i < len(terminalArgs); i++ {
+		if terminalArgs[i] == "--arg" && i+1 < len(terminalArgs) {
+			expr := terminalArgs[i+1]
+			parts := strings.SplitN(expr, "=", 2)
+			if len(parts) == 2 {
+				name := strings.TrimSpace(parts[0])
+				val := strings.TrimSpace(parts[1])
+				s.Vars[name] = val
+				s.Used[name] = false // Sera marqué utilisé lors du Get
+				if verbose {
+					fmt.Printf("[DEBUG] Injected terminal arg: %s=%s\n", name, val)
+				}
+			}
+			i++ // Skip the value
+		}
+	}
+
+	return s
 }

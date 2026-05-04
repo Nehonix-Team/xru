@@ -1,0 +1,5 @@
+#FOR: S in {SERVERS}
+#LOG: 
+#LOG: router.use("\{SERVERS.\{S\}.route\}", \{S\}Router);
+#LOG: 
+#END

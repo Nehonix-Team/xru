@@ -15,14 +15,13 @@ const (
 )
 
 func colorify(s string) string {
-	s = strings.ReplaceAll(s, "<red>", colorRed)
-	s = strings.ReplaceAll(s, "<green>", colorGreen)
-	s = strings.ReplaceAll(s, "<yellow>", colorYellow)
-	s = strings.ReplaceAll(s, "<blue>", colorBlue)
-	s = strings.ReplaceAll(s, "<magenta>", colorMagenta)
-	s = strings.ReplaceAll(s, "<cyan>", colorCyan)
-	s = strings.ReplaceAll(s, "<gray>", colorGray)
-	s = strings.ReplaceAll(s, "<white>", colorWhite)
+	tags := []string{"red", "green", "yellow", "blue", "magenta", "cyan", "gray", "white"}
+	colors := []string{colorRed, colorGreen, colorYellow, colorBlue, colorMagenta, colorCyan, colorGray, colorWhite}
+
+	for i, tag := range tags {
+		s = strings.ReplaceAll(s, "<"+tag+">", colors[i])
+		s = strings.ReplaceAll(s, "</"+tag+">", colorReset)
+	}
 	s = strings.ReplaceAll(s, "</>", colorReset)
 	return s
 }

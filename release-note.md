@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-05-04
+feat(orchestrator): unified orchestration and advanced CLI arguments
+A major milestone introducing the "Unified Orchestrator" pattern, allowing single-script management for multiple project modes (Default/XMS). This version also stabilizes CLI argument passing and enhances regex-based cleanup routines.
+
+### Added
+- **Unified Orchestrator**: Support for multi-mode orchestration within a single `.xru` script using dynamic arguments and conditional logic.
+- **CLI Arguments**: Implementation of `--arg NAME=VAL` support in the binary to pass variables directly to rules.
+- **Object Reference resolution**: Added support for `{DATA.{MODE}}` syntax to resolve nested objects directly into variables.
+- **Smart Whitespace Control**: Improved Inception tag processing to prevent unwanted blank lines and preserve intentional indentation.
+- **Regex Deletion**: Enhanced `@INJECT` with multiline regex support for safe cleanup of environment and configuration files.
+
+### Improved
+- **Developer Experience**: Added comprehensive English documentation/comments to standard orchestration templates.
+- **Engine Stability**: Better error reporting for undefined/unused variables during complex orchestration.
+
 ## [0.1.9] - 2026-05-04
 feat(engine): implement Inception mode and enhanced orchestration engine
 Huge update introducing "Inception" mode for nested XRU logic execution within template files, recursive action execution, and hardened orchestration logic.

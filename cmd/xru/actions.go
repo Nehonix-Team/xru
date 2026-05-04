@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"github.com/Nehonix-Team/xru/internal/engine/ast"
 	"github.com/Nehonix-Team/xru/internal/engine"
@@ -28,7 +27,7 @@ func applyAction(content string, action ast.Action, fileExt string, scope *Scope
 		}
 		code := processInception(a.Code, scope)
 		checkSyntaxError(code, a.Line)
-		return engine.InjectCode(content, a.Key, code)
+		return engine.InjectCode(content, a.Key, code, a.Raw)
 
 	case ast.PatchAction:
 		path := util.Interpolate(a.Path, scope)
@@ -42,69 +41,105 @@ func applyAction(content string, action ast.Action, fileExt string, scope *Scope
 	return content
 }
 
-// processInception traite les blocs <# ... > et les variables {VAR} dans le texte.
 func processInception(src string, scope *Scope) string {
-	if verbose {
-		fmt.Printf("[DEBUG] processInception on source (len %d)\n", len(src))
-	}
 	if !strings.Contains(src, "<#") {
 		return util.Interpolate(src, scope)
 	}
 
-	// On transforme le texte en un script XRU virtuel
-	// Les parties de texte deviennent des #LOG: "..."
-	// Les parties <#... > deviennent des directives réelles.
-	
 	virtualScript := ""
-	lines := strings.Split(src, "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.Contains(trimmed, "<#") && strings.Contains(trimmed, ">") {
-			// On sépare le texte avant, la directive, et le texte après
-			start := strings.Index(line, "<#")
-			end := strings.Index(line, ">")
-			before := line[:start]
-			directive := line[start+2 : end]
-			after := line[end+1:]
-			
-			before = strings.ReplaceAll(before, "{", "\\{")
-			before = strings.ReplaceAll(before, "}", "\\}")
-			after = strings.ReplaceAll(after, "{", "\\{")
-			after = strings.ReplaceAll(after, "}", "\\}")
-			
-			if strings.TrimSpace(before) != "" {
-				virtualScript += "#LOG: " + before + "\n"
+	remaining := src
+	
+	for {
+		startIdx := strings.Index(remaining, "<#")
+		if startIdx == -1 {
+			break
+		}
+
+		// Check if tag is on a line by itself (only preceded by whitespace since last newline)
+		isLineStart := true
+		for i := startIdx - 1; i >= 0; i-- {
+			if remaining[i] == '\n' {
+				break
 			}
-			virtualScript += "#" + strings.TrimSpace(directive) + "\n"
-			if strings.TrimSpace(after) != "" {
-				virtualScript += "#LOG: " + after + "\n"
+			if remaining[i] != ' ' && remaining[i] != '\t' {
+				isLineStart = false
+				break
 			}
-		} else {
-			// Texte pur : on échappe les accolades pour éviter les erreurs d'interpolation
-			// sur du code (ex: JS/TS) tout en gardant la possibilité d'utiliser {VAR}
-			// si elles sont bien formées. 
-			// Mais pour l'instant, on va être radical: on échappe tout ce qui n'est pas <#
-			// et on laisse Interpolate gérer les variables s'il y en a.
-			// En fait, le plus simple est de ne PAS échapper si c'est une variable valide.
-			// Mais pour corriger le crash immédiat:
-			line = strings.ReplaceAll(line, "{", "\\{")
-			line = strings.ReplaceAll(line, "}", "\\}")
-			virtualScript += "#LOG: " + line + "\n"
+		}
+
+		// Text before tag
+		text := remaining[:startIdx]
+		if isLineStart {
+			lastNL := strings.LastIndex(text, "\n")
+			if lastNL == -1 {
+				text = ""
+			} else {
+				text = text[:lastNL+1]
+			}
+		}
+
+		if text != "" {
+			lines := strings.Split(text, "\n")
+			for i, l := range lines {
+				if i == len(lines)-1 && l == "" {
+					break
+				}
+				virtualScript += "#LOG: " + l + "\n"
+			}
+		}
+
+		// Find end of tag
+		remaining = remaining[startIdx+2:]
+		endIdx := strings.Index(remaining, ">")
+		if endIdx == -1 {
+			remaining = "<#" + remaining
+			break
+		}
+
+		directive := strings.TrimSpace(remaining[:endIdx])
+		virtualScript += "#" + directive + "\n"
+		remaining = remaining[endIdx+1:]
+
+		// If it was on a line by itself, consume the trailing newline
+		if isLineStart {
+			trimLen := 0
+			for i := 0; i < len(remaining); i++ {
+				if remaining[i] == ' ' || remaining[i] == '\t' {
+					trimLen++
+				} else if remaining[i] == '\r' && i+1 < len(remaining) && remaining[i+1] == '\n' {
+					trimLen += 2
+					break
+				} else if remaining[i] == '\n' {
+					trimLen++
+					break
+				} else {
+					break
+				}
+			}
+			remaining = remaining[trimLen:]
 		}
 	}
 
+	if remaining != "" {
+		lines := strings.Split(remaining, "\n")
+		for i, l := range lines {
+			if i == len(lines)-1 && l == "" && len(lines) > 1 {
+				break
+			}
+			virtualScript += "#LOG: " + l + "\n"
+		}
+	}
 
-	// On parse ce script virtuel
 	rf, err := parser.Parse(virtualScript)
 	if err != nil {
 		return "[INCEPTION_ERROR: " + err.Error() + "]"
 	}
-	// On l'exécute avec capture
+	
 	capture := &strings.Builder{}
 	childScope := &Scope{
-		Vars:     scope.Vars,
-		DefLines: scope.DefLines,
-		Used:     scope.Used,
+		Vars:     make(map[string]interface{}),
+		DefLines: make(map[string]int),
+		Used:     make(map[string]bool),
 		Modules:  scope.Modules,
 		Parent:   scope,
 		Capture:  capture,

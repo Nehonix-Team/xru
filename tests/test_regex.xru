@@ -1,0 +1,4 @@
+#BEGIN: "xypriss.config.jsonc"
+    @INJECT: /(?s)[ \t]*"xms_nodes":\s*\{.*?"main":\s*\{[^\}]*\},\s*\},\r?\n?/
+    @END
+#END

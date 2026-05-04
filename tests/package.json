@@ -1,0 +1,23 @@
+{
+  "name": "{{NAME}}",
+  "version": "{{VERSION}}",
+  "description": "{{DESCRIPTION}}",
+  "author": "{{AUTHOR}}",
+  "type": "module",
+  "scripts": {
+    "build": "xfpm exec tsc",
+    "dev": "xfpm exec fileonix --script src/server.ts",
+    "start": "xfpm run src/server.ts",
+    "audit": "xfpm audit -w"
+  },
+  "dependencies": {
+    "fileonix": "^1.0.5"
+  },
+  "devDependencies": {
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "xypriss": ">=9.10.11"
+  }
+}

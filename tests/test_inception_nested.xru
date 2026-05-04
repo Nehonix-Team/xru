@@ -1,0 +1,10 @@
+let S = "auth"
+let SERVERS = { "auth": { "route": "/auth" } }
+
+#CREATE: "test_inception.ts"
+<#IF: {S} == "auth">
+  Auth mode
+<#ELSE>
+  Other mode
+<#END>
+#END

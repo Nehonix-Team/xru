@@ -10,7 +10,8 @@ import (
 
 	"github.com/Nehonix-Team/xru/internal/engine/ast"
 	"github.com/Nehonix-Team/xru/internal/engine/parser"
-	"github.com/Nehonix-Team/xru/internal/engine/util" 
+	"github.com/Nehonix-Team/xru/internal/engine/util"
+	"github.com/Nehonix-Team/xru/internal/engine"
 )
 
 func executeActions(rule *ast.Rule, content *string, scope *Scope, fileExt, cb, rulePath string) {
@@ -31,7 +32,6 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 			fmt.Printf("[DEBUG] Executing rule type: %s at line %d (content context: %v)\n", rule.Type, rule.Line, content != nil)
 		}
 		target := util.Interpolate(rule.Target, scope)
-		checkSyntaxError(target, rule.Line)
 
 		switch rule.Type {
 		case ast.RuleTypeVar:
@@ -58,7 +58,7 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 
 		case ast.RuleTypeVarBlock:
 			executeActions(&rule, content, scope, fileExt, cb, rulePath)
-			content := util.Interpolate(rule.Content, scope)
+			content := processInception(rule.Content, scope)
 			content = util.Dedent(content)
 
 			var val interface{} = content
@@ -196,16 +196,18 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 			skipElse = false
 
 		case ast.RuleTypeFor:
-			line := util.Interpolate(rule.Target, scope)
-			parts := strings.SplitN(line, " in ", 2)
+			parts := strings.SplitN(rule.Target, " in ", 2)
 			if len(parts) != 2 {
 				fmt.Printf("%s:%d: %serror:%s invalid FOR syntax. Expected '#FOR: var in [list]'\n",
 					currentFile, rule.Line, colorRed, colorReset)
 				os.Exit(1)
 			}
 			varName := strings.TrimSpace(parts[0])
-			listVal := parser.ParseValue(strings.TrimSpace(parts[1]))
-			listVal = util.InterpolateValue(listVal, scope).(ast.Value)
+			
+			// Si on a directement un {VAR}, InterpolateValue va retourner l'objet brut
+			listValStr := strings.TrimSpace(parts[1])
+			var listVal interface{} = ast.Literal(listValStr)
+			listVal = util.InterpolateValue(listVal, scope)
 
 			if arr, ok := listVal.(ast.Array); ok {
 				for _, item := range arr {
@@ -218,9 +220,36 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 					}
 					executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt)
 				}
+			} else if arrRaw, ok := listVal.([]interface{}); ok {
+				for _, item := range arrRaw {
+					child := &Scope{Parent: scope, Capture: scope.Capture}
+					child.Set(varName, item, rule.Line)
+					if content != nil {
+						for _, action := range rule.Actions {
+							*content = applyAction(*content, action, fileExt, child, cb, rulePath)
+						}
+					}
+					executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt)
+				}
 			} else if obj, ok := listVal.(ast.Object); ok {
 				var keys []string
 				for k := range obj {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					child := &Scope{Parent: scope, Capture: scope.Capture}
+					child.Set(varName, ast.Literal(k), rule.Line)
+					if content != nil {
+						for _, action := range rule.Actions {
+							*content = applyAction(*content, action, fileExt, child, cb, rulePath)
+						}
+					}
+					executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt)
+				}
+			} else if objRaw, ok := listVal.(map[string]interface{}); ok {
+				var keys []string
+				for k := range objRaw {
 					keys = append(keys, k)
 				}
 				sort.Strings(keys)
@@ -260,13 +289,14 @@ func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope
 	case ast.RuleTypeCreate:
 		fullPath := filepath.Join(currentBase, target)
 		os.MkdirAll(filepath.Dir(fullPath), 0755)
-		content := util.Interpolate(rule.Content, scope)
+		content := processInception(rule.Content, scope)
 		ext := filepath.Ext(fullPath)
 		
 		// Exécution récursive des règles et actions
 		executeActions(&rule, &content, scope, ext, currentBase, currentFile)
 		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope, &content, ext)
 		
+		content = engine.CleanOrphans(content)
 		os.WriteFile(fullPath, []byte(content), 0644)
 
 	case ast.RuleTypeBegin:
@@ -284,6 +314,7 @@ func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope
 		executeActions(&rule, &content, scope, ext, currentBase, currentFile)
 		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope, &content, ext)
 		
+		content = engine.CleanOrphans(content)
 		os.WriteFile(fullPath, []byte(content), 0644)
 
 	case ast.RuleTypeGlobal:
@@ -299,6 +330,7 @@ func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope
 			executeActions(&rule, &content, scope, ext, currentBase, currentFile)
 			executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope, &content, ext)
 			
+			content = engine.CleanOrphans(content)
 			if content != string(data) {
 				os.WriteFile(path, []byte(content), info.Mode())
 			}

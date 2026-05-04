@@ -1,0 +1,45 @@
+// --------------------------------------------------------------------------
+// XyPriss Default Server Orchestrator
+// --------------------------------------------------------------------------
+#USE: fs as FS
+#USE: utils as U
+
+U.LOG: "<cyan>[INFO]</> Orchestrating in <yellow>Default</> mode..."
+
+#SELECT: "./src/"
+
+// 1. DATA DEFINITION
+#JSONVAR: SERVERS
+{ 
+  "main": { "route": "/api", "desc": "Default Server", "body": "Standard instance." } 
+}
+#END
+
+// 2. CONFIGURATION & ROUTING
+#BEGIN: "configs/xypriss.config.ts"
+    @TSINJECT: SERVER_CONFIG
+        server: { autoKillConflict: true, port: 8080, serviceName: "default" },
+    @END
+#END
+
+#BEGIN: "router/index.ts"
+    @TSINJECT: ROUTERS_IMPORT
+        <#FOR: S in {SERVERS}>
+            import { {S}Router } from "../routes/{S}.route";
+        <#END>
+    @END
+    @TSINJECT: ROUTERS_USE
+        <#FOR: S in {SERVERS}>
+            router.use("{SERVERS.{S}.route}", {S}Router);
+        <#END>
+    @END
+#END
+
+// 3. GENERATION
+#CREATE: "routes/main.route.ts"
+    import { Router } from "xypriss";
+    export const mainRouter = Router();
+    mainRouter.get("/", (ctx) => { ctx.body = { message: "Default server" }; });
+#END
+
+U.LOG: "<green>[SUCCESS]</> Default Orchestration complete."

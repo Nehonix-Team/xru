@@ -1,0 +1,71 @@
+// --------------------------------------------------------------------------
+// XyPriss Multi-Server (XMS) Orchestrator
+// --------------------------------------------------------------------------
+#USE: fs as FS
+#USE: utils as U
+
+U.LOG: "<cyan>[INFO]</> Orchestrating in <yellow>XMS</> mode..."
+
+#SELECT: "./src/"
+
+// 1. DATA DEFINITION
+#JSONVAR: SERVERS
+{
+  "auth": { "route": "/auth", "desc": "Authentication Server", "body": "Auth instance logic." },
+  "main": { "route": "/api",  "desc": "Main API Server", "body": "Primary instance.", "extra": "security: { honeypotTarpit: true }," }
+}
+#END
+
+// 2. CONFIGURATION & ROUTING
+#BEGIN: "configs/xypriss.config.ts"
+    @TSINJECT: SERVER_CONFIG
+        multiServer: {
+            enabled: true,
+            servers: [
+                <#FOR: S in {SERVERS}>
+                {S}Server,
+                <#END>
+            ],
+        },
+    @END
+#END
+
+#BEGIN: "router/index.ts"
+    @TSINJECT: ROUTERS_IMPORT
+        <#FOR: S in {SERVERS}>
+            import { {S}Router } from "../routes/{S}.route";
+        <#END>
+    @END
+    @TSINJECT: ROUTERS_USE
+        <#FOR: S in {SERVERS}>
+            router.use("{SERVERS.{S}.route}", {S}Router);
+        <#END>
+    @END
+#END
+
+// 3. GENERATION
+#CREATE: "configs/xms.config.ts"
+    export const xmsc: any = __sys__.vars.get("xms_nodes");
+#END
+
+#FOR: S in {SERVERS}
+    #CREATE: "servers/{S}.server.ts"
+        import { MultiServerConfig } from "xypriss";
+        import { xmsc } from "../configs/xms.config";
+        /** {SERVERS.{S}.desc} */
+        export const {S}Server: MultiServerConfig = {
+            id: xmsc.{S}.id,
+            port: xmsc.{S}.port,
+            routePrefix: "{SERVERS.{S}.route}",
+            {SERVERS.{S}.extra}
+        };
+    #END
+
+    #CREATE: "routes/{S}.route.ts"
+        import { Router } from "xypriss";
+        export const {S}Router = Router();
+        {S}Router.get("/", (ctx) => { ctx.body = { message: "Welcome {S}", mode: "XMS" }; });
+    #END
+#END
+
+U.LOG: "<green>[SUCCESS]</> XMS Orchestration complete."

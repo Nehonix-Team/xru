@@ -22,40 +22,22 @@ type VarProvider interface {
 
 // Interpolate replaces {VAR} placeholders with values from a VarProvider.
 func Interpolate(s string, provider VarProvider) string {
-	// Detect unclosed braces first
-	inBrace := false
-	for i, r := range s {
-		if r == '{' && (i == 0 || s[i-1] != '\\') {
-			inBrace = true
-		} else if r == '}' && (i == 0 || s[i-1] != '\\') {
-			inBrace = false
-		}
-		if i == len(s)-1 && inBrace {
-			return "[SYNTAX_ERROR: UNCLOSED_BRACE]"
-		}
-	}
-
-	// Handle escaping: \{ becomes {
-	s = strings.ReplaceAll(s, "\\{", "{")
-	s = strings.ReplaceAll(s, "\\}", "}")
-
 	if provider == nil {
-		return s
+		return strings.ReplaceAll(strings.ReplaceAll(s, "\\{", "{"), "\\}", "}")
 	}
 
 	resultLines := strings.Split(s, "\n")
-	// Recursive interpolation (max 10 levels) to support {A.{B}}
 	for pass := 0; pass < 10; pass++ {
 		interpolatedSomething := false
 		var nextResultLines []string
 
 		for _, line := range resultLines {
-			// Detect if this line only contains a single {VAR} (after indentation)
 			trimmed := strings.TrimSpace(line)
 			matches := varRegex.FindAllString(trimmed, -1)
 			isOnlyVar := len(matches) == 1 && matches[0] == trimmed
 
 			if isOnlyVar {
+				// Get indentation
 				indent := ""
 				for _, r := range line {
 					if r == ' ' || r == '\t' {
@@ -71,53 +53,43 @@ func Interpolate(s string, provider VarProvider) string {
 					rawVal = "[ERROR: UNDEFINED_" + name + "]"
 				}
 
-				val := ""
 				if rawVal == nil {
-					val = ""
-				} else {
-					switch v := rawVal.(type) {
-					case string:
-						val = v
-					case ast.Literal:
-						val = string(v)
-					default:
-						val = stringify(rawVal)
-					}
-				}
-
-				if val == "" {
+					nextResultLines = append(nextResultLines, "")
+					interpolatedSomething = true
 					continue
 				}
 
-				interpolatedSomething = true
-				val = Dedent(val)
-
-				valLines := strings.Split(val, "\n")
-				for j := range valLines {
-					if valLines[j] != "" {
-						valLines[j] = indent + valLines[j]
-					}
+				val := fmt.Sprint(rawVal)
+				lines := strings.Split(val, "\n")
+				for _, l := range lines {
+					nextResultLines = append(nextResultLines, indent+l)
 				}
-				nextResultLines = append(nextResultLines, valLines...)
+				interpolatedSomething = true
 			} else {
-				if varRegex.MatchString(line) {
+				// Inline interpolation
+				safety := 0
+				for {
+					safety++
+					if safety > 100 {
+						break
+					}
+					match := varRegex.FindStringIndex(line)
+					if match == nil {
+						break
+					}
+					start, end := match[0], match[1]
+
+					name := line[start+1 : end-1]
+					rawVal, ok := provider.Get(name)
+					if !ok {
+						rawVal = "[ERROR: UNDEFINED_" + name + "]"
+					}
+					
+					replacement := fmt.Sprint(rawVal)
+					line = line[:start] + replacement + line[end:]
 					interpolatedSomething = true
 				}
-				interpolated := varRegex.ReplaceAllStringFunc(line, func(m string) string {
-					name := m[1 : len(m)-1]
-					if rawVal, ok := provider.Get(name); ok {
-						switch v := rawVal.(type) {
-						case string:
-							return v
-						case ast.Literal:
-							return string(v)
-						default:
-							return stringify(rawVal)
-						}
-					}
-					return "[ERROR: UNDEFINED_" + name + "]"
-				})
-				nextResultLines = append(nextResultLines, interpolated)
+				nextResultLines = append(nextResultLines, line)
 			}
 		}
 
@@ -127,7 +99,10 @@ func Interpolate(s string, provider VarProvider) string {
 		}
 	}
 
-	return strings.Join(resultLines, "\n")
+	final := strings.Join(resultLines, "\n")
+	final = strings.ReplaceAll(final, "\\{", "{")
+	final = strings.ReplaceAll(final, "\\}", "}")
+	return final
 }
 
 func stringify(v interface{}) string {
@@ -151,9 +126,28 @@ func InterpolateValue(v interface{}, provider VarProvider) interface{} {
 	}
 	switch val := v.(type) {
 	case string:
+		trimmed := strings.TrimSpace(val)
+		if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
+			name := trimmed[1 : len(trimmed)-1]
+			if !strings.ContainsAny(name, "{} ") {
+				if obj, ok := provider.Get(name); ok {
+					return obj
+				}
+			}
+		}
 		return Interpolate(val, provider)
 	case ast.Literal:
-		return ast.Literal(Interpolate(string(val), provider))
+		valStr := string(val)
+		trimmed := strings.TrimSpace(valStr)
+		if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
+			name := trimmed[1 : len(trimmed)-1]
+			if !strings.ContainsAny(name, "{} ") {
+				if obj, ok := provider.Get(name); ok {
+					return obj
+				}
+			}
+		}
+		return ast.Literal(Interpolate(valStr, provider))
 	case ast.Object:
 		newObj := make(ast.Object)
 		for k, v := range val {

@@ -43,13 +43,62 @@ func Interpolate(s string, provider VarProvider) string {
 	if provider == nil {
 		return s
 	}
-	return varRegex.ReplaceAllStringFunc(s, func(m string) string {
-		name := m[1 : len(m)-1]
-		if val, ok := provider.Get(name); ok {
-			return val
+
+	lines := strings.Split(s, "\n")
+	var resultLines []string
+
+	for _, line := range lines {
+		// Detect if this line only contains a single {VAR} (after indentation)
+		trimmed := strings.TrimSpace(line)
+		matches := varRegex.FindAllString(trimmed, -1)
+		isOnlyVar := len(matches) == 1 && matches[0] == trimmed
+
+		if isOnlyVar {
+			indent := ""
+			for _, r := range line {
+				if r == ' ' || r == '\t' {
+					indent += string(r)
+				} else {
+					break
+				}
+			}
+
+			name := trimmed[1 : len(trimmed)-1]
+			val, ok := provider.Get(name)
+			if !ok {
+				val = "[ERROR: UNDEFINED_VAR]"
+			}
+
+			if val == "" {
+				// Skip this line entirely if it's empty to avoid blank lines
+				continue
+			}
+
+			// Dedent the value first so its internal indentation is preserved relative to its first line
+			val = Dedent(val)
+
+			// Apply indentation to all lines of val
+			valLines := strings.Split(val, "\n")
+			for j := range valLines {
+				if valLines[j] != "" {
+					valLines[j] = indent + valLines[j]
+				}
+			}
+			resultLines = append(resultLines, valLines...)
+		} else {
+			// Normal interpolation for mixed lines
+			interpolated := varRegex.ReplaceAllStringFunc(line, func(m string) string {
+				name := m[1 : len(m)-1]
+				if val, ok := provider.Get(name); ok {
+					return val
+				}
+				return "[ERROR: UNDEFINED_VAR]"
+			})
+			resultLines = append(resultLines, interpolated)
 		}
-		return "[ERROR: UNDEFINED_VAR]"
-	})
+	}
+
+	return strings.Join(resultLines, "\n")
 }
 
 // InterpolateValue recursively interpolates strings inside structured values.

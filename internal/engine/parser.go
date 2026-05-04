@@ -183,6 +183,13 @@ func parseNew(src string) (*RuleFile, error) {
 				}
 				continue
 			}
+			if strings.HasPrefix(directiveLine, "#CALL:") {
+				commitPending()
+				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#CALL:"), true)
+				rule := &Rule{Type: RuleTypeCall, Target: target, As: as, Line: lineNum}
+				stack = append(stack, rule)
+				continue
+			}
 			if strings.HasPrefix(directiveLine, "#GLOBAL:") {
 				commitPending()
 				target := strings.TrimSpace(strings.TrimPrefix(directiveLine, "#GLOBAL:"))

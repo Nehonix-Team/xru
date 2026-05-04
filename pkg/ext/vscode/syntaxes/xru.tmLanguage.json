@@ -166,7 +166,7 @@
         },
         {
           "name": "meta.directive.select.xru",
-          "begin": "^\\s*(#\\s*(?:SELECT|BEGIN|CREATE|INCLUDE)):",
+          "begin": "^\\s*(#\\s*(?:SELECT|BEGIN|CREATE|INCLUDE|CALL)):",
           "beginCaptures": {
             "1": {
               "name": "keyword.control.scoping.xru"

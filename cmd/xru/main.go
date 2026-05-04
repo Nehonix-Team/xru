@@ -260,6 +260,20 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 			}
 			skipElse = false
 
+		case engine.RuleTypeCall:
+			includePath := target
+			// Execute sub-rules (contextual arguments)
+			executeRules(rule.SubRules, initialTarget, cb, rulePath, scope)
+
+			if !filepath.IsAbs(includePath) {
+				includePath = filepath.Join(filepath.Dir(rulePath), includePath)
+			}
+			irf, err := engine.ParseFile(includePath)
+			if err == nil {
+				executeRules(irf.Rules, initialTarget, cb, includePath, scope)
+			}
+			skipElse = false
+
 		case engine.RuleTypeBegin, engine.RuleTypeCreate, engine.RuleTypeGlobal:
 			applyRule(initialTarget, cb, rule, scope)
 			skipElse = false

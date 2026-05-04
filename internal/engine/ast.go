@@ -25,6 +25,7 @@ const (
 	RuleTypeModule  RuleType = "MODULE"  // Call a module method
 	RuleTypeArg     RuleType = "ARG"     // Read terminal argument
 	RuleTypeFor     RuleType = "FOR"     // Loop over a list
+	RuleTypeCall    RuleType = "CALL"    // Call a sub-rule
 )
 
 // PatchOp defines the type of patch operation.

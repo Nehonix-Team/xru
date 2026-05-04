@@ -26,6 +26,10 @@
         "extensions": [
           ".xru"
         ],
+        "icon": {
+          "dark": "./assets/xru-dark.svg",
+          "light": "./assets/xru-light.svg"
+        },
         "configuration": "./language-configuration.json"
       }
     ],
@@ -54,7 +58,6 @@
         "path": "./snippets/xru.code-snippets"
       }
     ],
-
     "problemMatchers": [
       {
         "name": "xru",
@@ -73,5 +76,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/Nehonix-Team/xru"
+  },
+  "scripts": {
+    "build:ext": "bash ./build.sh"
   }
 }

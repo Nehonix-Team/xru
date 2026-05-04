@@ -8,8 +8,7 @@ let SERVERS = ["auth", "main"]
 
 #FOR: S in {SERVERS}
     #CALL: "template.xru"
-        let SERVER = {CONFIG.{S}}
-        
+        let SERVER = {CONFIG.{S}}        
         let SERVER_NAME = "{S}"
         let SERVER_VAR = "{S}Server"
         let SERVER_ROUTE = {SERVER.route}

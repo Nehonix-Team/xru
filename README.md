@@ -76,7 +76,16 @@ xru patch.xru .
 
 ## VS Code Support
 
-For syntax highlighting, install the XRU extension located in `pkg/ext/vscode`. The XRU engine supports both direct execution and **standalone compilation** into native shell scripts.
+For syntax highlighting, install the XRU extension. To build and install it locally:
+
+1. Navigate to the extension directory: `cd pkg/ext/vscode`
+2. Ensure you have [XFPM](https://github.com/Nehonix-Team/XFPM#installation) installed.
+3. Run the build command:
+   ```bash
+   xfpm run build:ext
+   ```
+
+The XRU engine supports both direct execution and **standalone compilation** into native shell scripts.
 
 ---
 

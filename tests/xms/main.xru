@@ -54,12 +54,12 @@ let SERVERS = {}
 #BEGIN: "router/index.ts"
     @TSINJECT: ROUTERS_IMPORT
         <#FOR: S in {SERVERS}>
-        import { {S}Router } from "../routes/{S}.route";
+            import { {S}Router } from "../routes/{S}.route";
         <#END>
     @END
     @TSINJECT: ROUTERS_USE
         <#FOR: S in {SERVERS}>
-        router.use("{SERVERS.{S}.route}", {S}Router);
+            router.use("{SERVERS.{S}.route}", {S}Router);
         <#END>
     @END
 #END

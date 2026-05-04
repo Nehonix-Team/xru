@@ -48,6 +48,9 @@
       "include": "#modular_actions"
     },
     {
+      "include": "#functions"
+    },
+    {
       "include": "#actions_generic"
     },
     {
@@ -233,21 +236,6 @@
         }
       ]
     },
-    "modular_actions": {
-      "patterns": [
-        {
-          "match": "([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*):",
-          "captures": {
-            "1": {
-              "name": "variable.other.object.xru"
-            },
-            "2": {
-              "name": "entity.name.function.method.xru"
-            }
-          }
-        }
-      ]
-    },
     "injections": {
       "patterns": [
         {
@@ -330,9 +318,6 @@
         },
         {
           "include": "#injections"
-        },
-        {
-          "include": "#modular_actions"
         },
         {
           "include": "source.ts"
@@ -600,6 +585,46 @@
         }
       ]
     },
+    "base_rules": {
+      "patterns": [
+        {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
+          "include": "#modular_actions"
+        },
+        {
+          "include": "#functions"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#interpolation"
+        }
+      ]
+    },
+    "modular_actions": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*)(?=:)",
+          "captures": {
+            "1": {
+              "name": "variable.other.object.xru"
+            },
+            "2": {
+              "name": "entity.name.function.method.xru"
+            }
+          }
+        }
+      ]
+    },
     "create_html": {
       "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.html)(?:\"|')?$",
       "beginCaptures": {
@@ -618,19 +643,7 @@
       },
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "#strings"
-        },
-        {
-          "include": "#interpolation"
+          "include": "#base_rules"
         },
         {
           "include": "text.html.basic"
@@ -655,19 +668,7 @@
       },
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "#strings"
-        },
-        {
-          "include": "#interpolation"
+          "include": "#base_rules"
         },
         {
           "include": "source.json"
@@ -692,19 +693,7 @@
       },
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "#strings"
-        },
-        {
-          "include": "#interpolation"
+          "include": "#base_rules"
         },
         {
           "include": "source.js"
@@ -729,19 +718,7 @@
       },
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "#strings"
-        },
-        {
-          "include": "#interpolation"
+          "include": "#base_rules"
         },
         {
           "include": "source.ts"
@@ -766,19 +743,7 @@
       },
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "#strings"
-        },
-        {
-          "include": "#interpolation"
+          "include": "#base_rules"
         },
         {
           "include": "source.css"
@@ -803,19 +768,7 @@
       },
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "#strings"
-        },
-        {
-          "include": "#interpolation"
+          "include": "#base_rules"
         },
         {
           "include": "source.go"
@@ -896,19 +849,10 @@
       },
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
+          "include": "#base_rules"
         },
         {
           "include": "source.ts"
-        },
-        {
-          "include": "#interpolation"
         }
       ]
     },
@@ -930,19 +874,10 @@
       },
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
+          "include": "#base_rules"
         },
         {
           "include": "source.js"
-        },
-        {
-          "include": "#interpolation"
         }
       ]
     },
@@ -964,19 +899,10 @@
       },
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
+          "include": "#base_rules"
         },
         {
           "include": "source.json"
-        },
-        {
-          "include": "#interpolation"
         }
       ]
     },
@@ -999,6 +925,9 @@
     },
     "scoping_inner": {
       "patterns": [
+        {
+          "include": "#modular_actions"
+        },
         {
           "name": "keyword.control.scoping.if.xru",
           "begin": "\\b(IF|ELSEIF):",
@@ -1055,9 +984,6 @@
               "include": "#barewords"
             }
           ]
-        },
-        {
-          "include": "#modular_actions"
         },
         {
           "name": "keyword.control.scoping.xru",

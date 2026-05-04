@@ -42,28 +42,10 @@
       "include": "#scoping"
     },
     {
+      "include": "#injections"
+    },
+    {
       "include": "#modular_actions"
-    },
-    {
-      "include": "#functions"
-    },
-    {
-      "include": "#inject_ts"
-    },
-    {
-      "include": "#inject_js"
-    },
-    {
-      "include": "#inject_go"
-    },
-    {
-      "include": "#inject_json"
-    },
-    {
-      "include": "#inject_css"
-    },
-    {
-      "include": "#inject_html"
     },
     {
       "include": "#actions_generic"
@@ -220,22 +202,94 @@
           "match": "^\\s*#\\s*(GLOBAL|ELSE|END)\\b:?"
         },
         {
+          "name": "meta.directive.generic.xru",
+          "begin": "^\\s*(#\\s*[A-Z][A-Z0-9]*)\\b:?",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.scoping.xru"
+            }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#interpolation"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#variable_capture"
+            },
+            {
+              "include": "#barewords"
+            }
+          ]
+        },
+        {
           "include": "#inception"
         }
       ]
     },
-    "modular_actions": {
+    "injections": {
       "patterns": [
         {
-          "match": "^\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*):",
-          "captures": {
-            "1": {
-              "name": "variable.other.object.xru"
+          "include": "#inject_ts"
+        },
+        {
+          "include": "#inject_js"
+        },
+        {
+          "include": "#inject_go"
+        },
+        {
+          "include": "#inject_json"
+        },
+        {
+          "include": "#inject_css"
+        },
+        {
+          "include": "#inject_html"
+        },
+        {
+          "include": "#inject_generic"
+        }
+      ]
+    },
+    "inject_generic": {
+      "begin": "^\\s*(@INJECT):\\s*(.*)$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#strings"
             },
-            "2": {
-              "name": "entity.name.function.method.xru"
+            {
+              "include": "#interpolation"
+            },
+            {
+              "include": "#barewords"
             }
-          }
+          ]
+        }
+      },
+      "end": "^\\s*(@END)\\s*$",
+      "endCaptures": {
+        "1": {
+          "name": "keyword.control.scoping.xru"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
         }
       ]
     },
@@ -274,6 +328,12 @@
           "include": "#inception"
         },
         {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
           "include": "source.ts"
         }
       ]
@@ -309,6 +369,15 @@
         }
       },
       "patterns": [
+        {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
         {
           "include": "source.js"
         }
@@ -346,6 +415,15 @@
       },
       "patterns": [
         {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
           "include": "source.go"
         }
       ]
@@ -381,6 +459,15 @@
         }
       },
       "patterns": [
+        {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
         {
           "include": "source.json"
         }
@@ -418,6 +505,15 @@
       },
       "patterns": [
         {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
           "include": "source.css"
         }
       ]
@@ -453,6 +549,15 @@
         }
       },
       "patterns": [
+        {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
         {
           "include": "text.html.basic"
         }
@@ -580,13 +685,13 @@
       ]
     },
     "create_html": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?(.*\\.html)(?:\"|')?$",
+      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.html)(?:\"|')?$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
         },
         "2": {
-          "name": "entity.name.filename.xru"
+          "name": "string.quoted.double.xru"
         }
       },
       "end": "^\\s*#END",
@@ -598,6 +703,18 @@
       "patterns": [
         {
           "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#interpolation"
         },
         {
           "include": "text.html.basic"
@@ -605,13 +722,13 @@
       ]
     },
     "create_json": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?(.*\\.json)(?:\"|')?$",
+      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.json)(?:\"|')?$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
         },
         "2": {
-          "name": "entity.name.filename.xru"
+          "name": "string.quoted.double.xru"
         }
       },
       "end": "^\\s*#END",
@@ -623,6 +740,18 @@
       "patterns": [
         {
           "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#interpolation"
         },
         {
           "include": "source.json"
@@ -630,13 +759,13 @@
       ]
     },
     "create_js": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?(.*\\.js)(?:\"|')?$",
+      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.js)(?:\"|')?$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
         },
         "2": {
-          "name": "entity.name.filename.xru"
+          "name": "string.quoted.double.xru"
         }
       },
       "end": "^\\s*#END",
@@ -648,6 +777,18 @@
       "patterns": [
         {
           "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#interpolation"
         },
         {
           "include": "source.js"
@@ -655,13 +796,13 @@
       ]
     },
     "create_ts": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?(.*\\.ts)(?:\"|')?$",
+      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.ts)(?:\"|')?$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
         },
         "2": {
-          "name": "entity.name.filename.xru"
+          "name": "string.quoted.double.xru"
         }
       },
       "end": "^\\s*#END",
@@ -673,6 +814,18 @@
       "patterns": [
         {
           "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#interpolation"
         },
         {
           "include": "source.ts"
@@ -680,13 +833,13 @@
       ]
     },
     "create_css": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?(.*\\.css)(?:\"|')?$",
+      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.css)(?:\"|')?$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
         },
         "2": {
-          "name": "entity.name.filename.xru"
+          "name": "string.quoted.double.xru"
         }
       },
       "end": "^\\s*#END",
@@ -698,6 +851,18 @@
       "patterns": [
         {
           "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#interpolation"
         },
         {
           "include": "source.css"
@@ -705,13 +870,13 @@
       ]
     },
     "create_go": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?(.*\\.go)(?:\"|')?$",
+      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.go)(?:\"|')?$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
         },
         "2": {
-          "name": "entity.name.filename.xru"
+          "name": "string.quoted.double.xru"
         }
       },
       "end": "^\\s*#END",
@@ -723,6 +888,18 @@
       "patterns": [
         {
           "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#interpolation"
         },
         {
           "include": "source.go"
@@ -803,6 +980,15 @@
       },
       "patterns": [
         {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
           "include": "source.ts"
         },
         {
@@ -827,6 +1013,15 @@
         }
       },
       "patterns": [
+        {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
         {
           "include": "source.js"
         },
@@ -853,6 +1048,15 @@
       },
       "patterns": [
         {
+          "include": "#inception"
+        },
+        {
+          "include": "#scoping"
+        },
+        {
+          "include": "#injections"
+        },
+        {
           "include": "source.json"
         },
         {
@@ -877,10 +1081,75 @@
         }
       }
     },
+    "scoping_inner": {
+      "patterns": [
+        {
+          "name": "keyword.control.scoping.if.xru",
+          "begin": "#\\s*(IF|ELSEIF):",
+          "beginCaptures": {
+            "0": {
+              "name": "keyword.control.scoping.xru"
+            }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "name": "entity.name.function.method.xru",
+              "match": "\\bexists(?=\\()"
+            },
+            {
+              "name": "keyword.operator.comparison.xru",
+              "match": "==|!="
+            },
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#interpolation"
+            },
+            {
+              "include": "#barewords"
+            }
+          ]
+        },
+        {
+          "name": "meta.directive.for.xru",
+          "begin": "(#\\s*FOR):",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.scoping.xru"
+            }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "name": "keyword.control.scoping.xru",
+              "match": "\\bin\\b"
+            },
+            {
+              "include": "#interpolation"
+            },
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#variable_declaration"
+            },
+            {
+              "include": "#barewords"
+            }
+          ]
+        },
+        {
+          "name": "keyword.control.scoping.xru",
+          "match": "#\\s*(GLOBAL|ELSE|END)\\b:?"
+        }
+      ]
+    },
     "inception": {
       "name": "meta.embedded.xru.inception",
-      "begin": "<#",
-      "end": ">",
+      "begin": "<#(?!END>)",
+      "end": "<#END>",
       "beginCaptures": {
         "0": {
           "name": "punctuation.definition.tag.xru"
@@ -893,7 +1162,10 @@
       },
       "patterns": [
         {
-          "include": "#scoping"
+          "include": "#scoping_inner"
+        },
+        {
+          "include": "#strings"
         },
         {
           "include": "#interpolation"

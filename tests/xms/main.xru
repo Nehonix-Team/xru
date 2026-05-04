@@ -10,6 +10,7 @@
 #END
 
 U.LOG: "<cyan>[INFO]</> Orchestrating in <yellow>{MODE}</> mode..."
+
 #SELECT: "./src/"
 
 let SERVERS = {}
@@ -64,7 +65,7 @@ let SERVERS = {}
 #END
 
 // 3. GENERATION
-#IF: {MODE} == "xms"
+#IF: {MODE} == "xms"s
     #CREATE: "configs/xms.config.ts"
         export const xmsc: any = __sys__.vars.get("xms_nodes");
     #END

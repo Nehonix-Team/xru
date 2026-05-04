@@ -12,6 +12,19 @@ Variables can be explicitly declared within any scope.
 let project_name = "XyPriss"
 let port = 8080
 U.LOG: "Configuring {project_name} on port {port}"
+
+# -- Variables support re-assignment
+let ROUTE = "/v1"
+#IF: {IS_PROD}
+    let ROUTE = "/api"
+#END
+```
+
+### Escaping Support
+Values assigned with `let` support standard escape sequences like `\n` (newline) and `\t` (tab). This is particularly useful for injecting formatted code blocks.
+```xru
+let COMMENT = "/**\n * Multi-line comment\n */"
+```
 ```
 
 ### Implicit Capture: `as`
@@ -54,6 +67,19 @@ Conditional blocks **Share the Current Scope**.
     let env = "development"
 #END
 U.LOG: "Environment is {env}" // 'env' is accessible here
+```
+
+### Loop Scopes (`#FOR`)
+Iteration blocks create a **Fresh Sub-Scope** for every iteration.
+- Variables defined in one iteration do **not** leak into the next.
+- The iteration variable (`S` in the example below) is local to the current loop step.
+
+```xru
+#FOR: S in ["a", "b"]
+    let TEMP = "{S}_temp"
+#END
+// TEMP is NOT accessible here
+```
 ```
 
 ### Usage Tracking

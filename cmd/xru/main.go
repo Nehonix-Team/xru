@@ -60,10 +60,6 @@ func (s *Scope) Set(name, val string, line int) {
 		s.Vars = make(map[string]string)
 		s.DefLines = make(map[string]int)
 	}
-	if _, ok := s.Vars[name]; ok {
-		fmt.Printf("%s:%d: %serror:%s variable '%s' already defined in this scope\n", currentFile, line, colorRed, colorReset, name)
-		os.Exit(1)
-	}
 	s.Vars[name] = val
 	s.DefLines[name] = line
 }
@@ -193,7 +189,7 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 		case engine.RuleTypeVar:
 			val := engine.Interpolate(rule.Content, scope)
 			checkSyntaxError(val, rule.Line)
-			scope.Set(rule.Target, val, rule.Line)
+			scope.Set(rule.Target, unescape(val), rule.Line)
 			skipElse = false
 
 		case engine.RuleTypeSelect:
@@ -272,6 +268,28 @@ func executeRules(rules []engine.Rule, initialTarget, currentBase, rulePath stri
 			val := getTerminalArg(target)
 			if rule.As != "" {
 				scope.Set(rule.As, val, rule.Line)
+			}
+			skipElse = false
+
+		case engine.RuleTypeFor:
+			line := engine.Interpolate(rule.Target, scope)
+			parts := strings.SplitN(line, " in ", 2)
+			if len(parts) != 2 {
+				fmt.Printf("%s:%d: %serror:%s invalid FOR syntax. Expected '#FOR: var in [list]'\n", currentFile, rule.Line, colorRed, colorReset)
+				os.Exit(1)
+			}
+			varName := strings.TrimSpace(parts[0])
+			listVal := engine.ParseValue(strings.TrimSpace(parts[1]))
+			listVal = engine.InterpolateValue(listVal, scope)
+
+			if arr, ok := listVal.(engine.Array); ok {
+				for _, item := range arr {
+					child := &Scope{Parent: scope}
+					if lit, ok := item.(engine.Literal); ok {
+						child.Set(varName, string(lit), rule.Line)
+					}
+					executeRules(rule.SubRules, initialTarget, cb, rulePath, child)
+				}
 			}
 			skipElse = false
 		}
@@ -397,7 +415,7 @@ func applyAction(content string, action engine.Action, fileExt string, scope *Sc
 	switch a := action.(type) {
 	case engine.VarAction:
 		val := engine.Interpolate(a.Value, scope)
-		scope.Set(a.Name, val, a.Line)
+		scope.Set(a.Name, unescape(val), a.Line)
 		return content
 	case engine.ModuleAction:
 		executeModuleAction(scope, cb, a.Module, a.Method, a.Target, a.As, a.Line)

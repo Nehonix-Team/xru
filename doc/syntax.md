@@ -7,22 +7,16 @@ The XRU (XyPriss Rule Unit) engine is a **Structured Text Patcher** designed to 
 ## 1. Syntax Foundations
 
 ### Structural Layout
-- **Column-0 Rule**: Every directive starting with `#` must have its anchor (`#`) at the very first character of the line.
-- **Nesting Visualization**: To improve readability in nested blocks, spaces are allowed **after** the `#` character.
+- **Indentation Support**: Structural directives starting with `#` now support leading whitespace. This allows for standard indentation practices to visualize nesting.
 
 #### Correct Usage
 ```xru
 #USE: utils
 #IF: exists("config.json")
-#  BEGIN: "config.json"
-     SET theme "dark"
-#  END
+    #BEGIN: "config.json"
+        SET theme "dark"
+    #END
 #END
-```
-
-#### Invalid Usage (Will trigger syntax error)
-```xru
-  #IF: exists("config.json")  // ERROR: Must start at column 0
 ```
 
 ### Strict Quoting Policy

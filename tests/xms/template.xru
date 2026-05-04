@@ -1,0 +1,31 @@
+#CREATE: "servers/{SERVER_NAME}.server.ts"
+    @TSINJECT: ""
+        import { MultiServerConfig } from "xypriss";
+        import { xmsc } from "../configs/xms.config";
+
+        /**
+        * {SERVER_DESC_TITLE}
+        * 
+        * {SERVER_DESC_BODY}
+        */
+        export const {SERVER_VAR}: MultiServerConfig = {
+        /** Unique identifier for the {SERVER_NAME} service instance */
+        id: xmsc.{SERVER_NAME}.id,
+        /** Network port assignment */
+        port: xmsc.{SERVER_NAME}.port,
+        /** URL path scope for this server instance */
+        routePrefix: "{SERVER_ROUTE}",
+        
+        {SERVER_EXTRA}
+
+        /** Horizontal scaling configuration */
+        cluster: {
+            /** 
+            * Indicates whether the server should run in a multi-process cluster mode.
+            * Recommendation: Enable in production environments for high availability. 
+            */
+            enabled: false,
+        },
+        };
+    @END
+#END

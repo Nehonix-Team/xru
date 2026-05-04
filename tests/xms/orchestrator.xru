@@ -1,0 +1,22 @@
+#SELECT: "./src/"
+
+let SERVERS = ["auth", "main"]
+
+#FOR: S in {SERVERS}
+    let SERVER_NAME = "{S}"
+    let SERVER_VAR = "{S}Server"
+    let SERVER_ROUTE = "/{S}"
+
+    let SERVER_DESC_TITLE = "{S} Server Configuration"
+    let SERVER_DESC_BODY = "Defines the operational parameters for the isolated {S} instance."
+    let SERVER_EXTRA = ""
+
+    #IF: {S} == "main"
+        let SERVER_ROUTE = "/api"
+        let SERVER_DESC_TITLE = "Main API Server Configuration"
+        let SERVER_DESC_BODY = "Defines the operational parameters for the primary API service instance.\n        * Includes advanced security configurations such as honeypot tarpits to \n        * mitigate automated scanning and bot activity."
+        let SERVER_EXTRA = "/** Security middleware configuration */\n        security: {\n            /** \n            * Activates a tarpit mechanism for suspected bot traffic.\n            * Intentionally slows down response times for identified malicious actors \n            * to consume their resources and discourage further attacks.\n            */\n            honeypotTarpit: true,\n        },"
+    #END
+
+    #INCLUDE: "template.xru"
+#END

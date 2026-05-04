@@ -91,7 +91,7 @@
       "patterns": [
         {
           "name": "keyword.control.scoping.if.xru",
-          "begin": "^#\\s*(IF|ELSEIF):",
+          "begin": "^\\s*#\\s*(IF|ELSEIF):",
           "beginCaptures": {
             "0": {
               "name": "keyword.control.scoping.xru"
@@ -120,7 +120,7 @@
         },
         {
           "name": "meta.directive.use.xru",
-          "match": "^(#\\s*USE):\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
+          "match": "^\\s*(#\\s*USE):\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
           "captures": {
             "1": {
               "name": "keyword.control.scoping.xru"
@@ -137,8 +137,36 @@
           }
         },
         {
+          "name": "meta.directive.for.xru",
+          "begin": "^\\s*(#\\s*FOR):",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.scoping.xru"
+            }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "name": "keyword.control.scoping.xru",
+              "match": "\\bin\\b"
+            },
+            {
+              "include": "#interpolation"
+            },
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#variable_declaration"
+            },
+            {
+              "include": "#barewords"
+            }
+          ]
+        },
+        {
           "name": "meta.directive.select.xru",
-          "begin": "^(#\\s*(?:SELECT|BEGIN|CREATE|INCLUDE)):",
+          "begin": "^\\s*(#\\s*(?:SELECT|BEGIN|CREATE|INCLUDE)):",
           "beginCaptures": {
             "1": {
               "name": "keyword.control.scoping.xru"
@@ -174,7 +202,7 @@
         },
         {
           "name": "keyword.control.scoping.xru",
-          "match": "^#\\s*(GLOBAL|ELSE|END)\\b:?"
+          "match": "^\\s*#\\s*(GLOBAL|ELSE|END)\\b:?"
         }
       ]
     },
@@ -413,7 +441,7 @@
       "patterns": [
         {
           "name": "keyword.control.scoping.if.xru",
-          "begin": "^#\\s*(IF|ELSEIF):",
+          "begin": "^\\s*#\\s*(IF|ELSEIF):",
           "beginCaptures": {
             "0": {
               "name": "keyword.control.scoping.xru"
@@ -422,7 +450,7 @@
         },
         {
           "name": "keyword.control.action.inject.xru",
-          "match": "^@[A-Z]*INJECT:",
+          "match": "^\\s*@[A-Z]*INJECT:",
           "captures": {
             "0": {
               "name": "entity.name.tag.xru"
@@ -431,7 +459,7 @@
         },
         {
           "name": "keyword.control.action.end.xru",
-          "match": "^@END$",
+          "match": "^\\s*@END$",
           "captures": {
             "0": {
               "name": "entity.name.tag.xru"
@@ -531,7 +559,7 @@
       ]
     },
     "create_html": {
-      "begin": "^(#CREATE:)\\s*(.*\\.html)$",
+      "begin": "^\\s*(#CREATE:)\\s*(.*\\.html)$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
@@ -540,7 +568,7 @@
           "name": "entity.name.filename.xru"
         }
       },
-      "end": "^#END",
+      "end": "^\\s*#END",
       "endCaptures": {
         "0": {
           "name": "keyword.control.scoping.end.xru"
@@ -553,7 +581,7 @@
       ]
     },
     "create_json": {
-      "begin": "^(#CREATE:)\\s*(.*\\.json)$",
+      "begin": "^\\s*(#CREATE:)\\s*(.*\\.json)$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
@@ -562,7 +590,7 @@
           "name": "entity.name.filename.xru"
         }
       },
-      "end": "^#END",
+      "end": "^\\s*#END",
       "endCaptures": {
         "0": {
           "name": "keyword.control.scoping.end.xru"
@@ -575,7 +603,7 @@
       ]
     },
     "create_js": {
-      "begin": "^(#CREATE:)\\s*(.*\\.js)$",
+      "begin": "^\\s*(#CREATE:)\\s*(.*\\.js)$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
@@ -584,7 +612,7 @@
           "name": "entity.name.filename.xru"
         }
       },
-      "end": "^#END",
+      "end": "^\\s*#END",
       "endCaptures": {
         "0": {
           "name": "keyword.control.scoping.end.xru"
@@ -597,7 +625,7 @@
       ]
     },
     "create_ts": {
-      "begin": "^(#CREATE:)\\s*(.*\\.ts)$",
+      "begin": "^\\s*(#CREATE:)\\s*(.*\\.ts)$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
@@ -606,7 +634,7 @@
           "name": "entity.name.filename.xru"
         }
       },
-      "end": "^#END",
+      "end": "^\\s*#END",
       "endCaptures": {
         "0": {
           "name": "keyword.control.scoping.end.xru"
@@ -619,7 +647,7 @@
       ]
     },
     "create_css": {
-      "begin": "^(#CREATE:)\\s*(.*\\.css)$",
+      "begin": "^\\s*(#CREATE:)\\s*(.*\\.css)$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
@@ -628,7 +656,7 @@
           "name": "entity.name.filename.xru"
         }
       },
-      "end": "^#END",
+      "end": "^\\s*#END",
       "endCaptures": {
         "0": {
           "name": "keyword.control.scoping.end.xru"
@@ -641,7 +669,7 @@
       ]
     },
     "create_go": {
-      "begin": "^(#CREATE:)\\s*(.*\\.go)$",
+      "begin": "^\\s*(#CREATE:)\\s*(.*\\.go)$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.scoping.xru"
@@ -650,7 +678,7 @@
           "name": "entity.name.filename.xru"
         }
       },
-      "end": "^#END",
+      "end": "^\\s*#END",
       "endCaptures": {
         "0": {
           "name": "keyword.control.scoping.end.xru"

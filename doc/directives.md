@@ -7,8 +7,8 @@ The XRU language architecture is divided into two distinct functional layers: **
 ## 1. Structural Directives
 Structural directives define the execution context, file targeting, and control flow. 
 
-> [!IMPORTANT]
-> **Column-0 Rule**: All structural directives starting with `#` must be positioned at the very beginning of the line (Column 0). However, spaces are allowed after the `#` character to visualize nesting (e.g., `#  IF:`).
+> [!NOTE]
+> **Indentation support**: Structural directives starting with `#` now support leading whitespace for better visual nesting. The `#` character marks the start of the directive regardless of its position on the line.
 
 ### Context & Scoping
 #### `#USE:<Module> [as Alias]`
@@ -99,7 +99,38 @@ Defines a conditional execution block.
 
 ---
 
-## 3. Logic Operations
+## 3. Iteration & Modularity
+
+### `#FOR: <Variable> in <List>` / `#END`
+Iterates over an array structure. This is the primary tool for reducing code duplication in multi-server or multi-component architectures.
+- **Scope**: Each iteration creates a fresh sub-scope inheriting from the parent.
+- **Variables**: The iteration variable is available within the block via `{VAR}`.
+
+```xru
+let SERVERS = ["auth", "main", "web"]
+
+#FOR: S in {SERVERS}
+    let ROUTE = "/{S}"
+    #IF: {S} == "main"
+        let ROUTE = "/api"
+    #END
+    U.LOG: "Configuring {S} on {ROUTE}"
+#END
+```
+
+### `#INCLUDE: "<Path>"`
+Embeds the content of another XRU file at the current position. 
+- **Variable inheritance**: The included file has access to all variables defined in the current scope.
+- **Recursive usage**: Included files can contain further `#INCLUDE` directives.
+
+```xru
+let PROJECT_NAME = "MyProject"
+#INCLUDE: "common_setup.xru"
+```
+
+---
+
+## 4. Logic Operations
 Logic operations handle system interaction, diagnostics, and file manipulation. They are organized into **Modules**.
 
 See [Standard Modules](modules.md) for a complete reference of available modules and actions (Utils, Sys, FS).

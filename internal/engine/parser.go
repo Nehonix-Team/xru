@@ -69,10 +69,10 @@ func parseNew(src string) (*RuleFile, error) {
 		lineNum := i + 1
 		trimmed := strings.TrimSpace(line)
 
-		// STRICT MODE: Directives starting with # MUST be at column 0
-		if strings.HasPrefix(line, "#") {
+		// Directives starting with # (allows leading whitespace for nesting)
+		if strings.HasPrefix(trimmed, "#") {
 			// Allow spaces after # for nesting visualization: #  IF
-			directiveLine := "#" + strings.TrimSpace(line[1:])
+			directiveLine := "#" + strings.TrimSpace(trimmed[1:])
 			
 			if strings.HasPrefix(directiveLine, "#BEGIN:") {
 				commitPending()
@@ -163,6 +163,13 @@ func parseNew(src string) (*RuleFile, error) {
 				} else {
 					rf.Rules = append(rf.Rules, rule)
 				}
+				continue
+			}
+			if strings.HasPrefix(directiveLine, "#FOR:") {
+				commitPending()
+				line := strings.TrimSpace(strings.TrimPrefix(directiveLine, "#FOR:"))
+				rule := &Rule{Type: RuleTypeFor, Target: line, Line: lineNum}
+				stack = append(stack, rule)
 				continue
 			}
 			if strings.HasPrefix(directiveLine, "#INCLUDE:") {
@@ -267,7 +274,12 @@ func parseNew(src string) (*RuleFile, error) {
 		if name, val, ok := parseVar(trimmed); ok {
 			commitPending()
 			if len(stack) > 0 {
-				stack[len(stack)-1].Actions = append(stack[len(stack)-1].Actions, VarAction{Name: name, Value: val, Line: lineNum})
+				last := stack[len(stack)-1]
+				if last.Type == RuleTypeBegin || last.Type == RuleTypeCreate {
+					last.Actions = append(last.Actions, VarAction{Name: name, Value: val, Line: lineNum})
+				} else {
+					last.SubRules = append(last.SubRules, Rule{Type: RuleTypeVar, Target: name, Content: val, Line: lineNum})
+				}
 			} else {
 				rf.Rules = append(rf.Rules, Rule{Type: RuleTypeVar, Target: name, Content: val, Line: lineNum})
 			}

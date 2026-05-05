@@ -30,6 +30,7 @@ Low-level system interactions and shell execution.
 | :--- | :--- | :--- |
 | `EXEC` | `S.EXEC: <cmd> [as Var]` | Executes a shell command within the current sandbox. Capture output with `as`. |
 | `ARG` | `S.ARG: <key> as Var` | Reads a terminal argument. Key can be a flag (e.g. `"--mode"`) or an index (e.g. `1`). |
+| `GET` | `S.GET: <prop> as Var` | Retrieves a system property (`OS`, `ARCH`, `USER`, `CWD`). |
 
 ### Examples
 ```xru

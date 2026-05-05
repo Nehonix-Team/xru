@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ## [0.2.2] - 2026-05-05
+feat(orchestrator): fix unified orchestration and regex patching
+This release addresses critical issues in the argument handling and regex-based file patching systems.
+
+### Fixed
+- **#ARG Defaults**: Fixed a bug where default values were ignored if terminal arguments were missing.
+- **Regex Patching (~~)**: Improved parsing of `~~ /re/ -> repl` syntax and fixed optional colon handling.
+- **Type Safety**: Resolved an interface conversion panic when interpolating complex objects in rules.
+- **Bare-word Args**: Argument names in `#ARG` no longer require mandatory quotes.
+
+## [0.2.1] - 2026-05-05
 refactor(library): transform XRU into a reusable Go library
 Refactored the core orchestration engine into a public package (`pkg/engine`), allowing other Go tools (like XFPM) to integrate XRU logic directly.
 

@@ -56,7 +56,7 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 				if err := checkSyntaxError(val, rule.Line, r); err != nil {
 					return err
 				}
-				scope.Set(rule.Target, unescape(val), rule.Line)
+				scope.Set(rule.Target, ast.Literal(unescape(val)), rule.Line)
 
 		case ast.RuleTypeVarBlock:
 			executeActions(&rule, content, scope, fileExt, cb, rulePath, r)
@@ -95,7 +95,7 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 					r.CurrentFile, rule.Line, cb)
 			}
 			if rule.As != "" {
-				scope.Set(rule.As, cb, rule.Line)
+				scope.Set(rule.As, ast.Literal(cb), rule.Line)
 			}
 			skipElse = false
 
@@ -201,10 +201,32 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 
 		case ast.RuleTypeArg:
 			executeActions(&rule, content, scope, fileExt, cb, rulePath, r)
-			val := getTerminalArg(target, r)
+			// On cherche l'argument dans le terminal avec le nom brut (sans interpolation)
+			val := getTerminalArg(rule.Target, r)
+			dest := rule.Target
+
 			if rule.As != "" {
-				scope.Set(rule.As, val, rule.Line)
+				// Si l'argument est absent du terminal
+				if val == "" {
+					// Si rule.As est entre guillemets, c'est une valeur par défaut
+					if (strings.HasPrefix(rule.As, "\"") && strings.HasSuffix(rule.As, "\"")) ||
+						(strings.HasPrefix(rule.As, "'") && strings.HasSuffix(rule.As, "'")) {
+						val = rule.As[1 : len(rule.As)-1]
+					} else {
+						// Sinon c'est un alias (on change le nom de destination)
+						dest = rule.As
+					}
+				} else {
+					// Si l'argument est présent, et que rule.As n'est pas une valeur par défaut, c'est un alias
+					if !((strings.HasPrefix(rule.As, "\"") && strings.HasSuffix(rule.As, "\"")) ||
+						(strings.HasPrefix(rule.As, "'") && strings.HasSuffix(rule.As, "'"))) {
+						dest = rule.As
+					}
+				}
 			}
+			// On interpole la valeur finale (au cas où la valeur par défaut contient des {VAR})
+			val = util.Interpolate(val, scope)
+			scope.Set(dest, ast.Literal(val), rule.Line)
 			skipElse = false
 
 		case ast.RuleTypeLog:
@@ -312,7 +334,7 @@ func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope
 
 	target := util.Interpolate(rule.Target, scope)
 	if rule.As != "" {
-		scope.Set(rule.As, target, rule.Line)
+		scope.Set(rule.As, ast.Literal(target), rule.Line)
 	}
 
 	switch rule.Type {

@@ -45,7 +45,30 @@ func parseNew(src string) (*ast.RuleFile, error) {
 			}
 			a = ast.InjectAction{Lang: pending.lang, Key: pending.key, Code: body, Raw: pending.raw, Line: pending.line}
 		} else {
-			a = ast.PatchAction{Op: pending.op, Path: pending.path, Value: ParseValue(body), Line: pending.line}
+			val := ParseValue(body)
+			// Special handling for Regex patches using the '~~: /re/ -> repl' syntax
+			if pending.op == ast.PatchRegex {
+				obj := make(ast.Object)
+				lines := strings.Split(body, "\n")
+				for _, l := range lines {
+					l = strings.TrimSpace(l)
+					if l == "" { continue }
+					if strings.Contains(l, " -> ") {
+						parts := strings.SplitN(l, " -> ", 2)
+						re := strings.TrimSpace(parts[0])
+						repl := strings.TrimSpace(parts[1])
+						// Trim potential slashes /re/
+						if strings.HasPrefix(re, "/") && strings.HasSuffix(re, "/") && len(re) >= 2 {
+							re = re[1 : len(re)-1]
+						}
+						obj[re] = ast.Literal(repl)
+					}
+				}
+				if len(obj) > 0 {
+					val = obj
+				}
+			}
+			a = ast.PatchAction{Op: pending.op, Path: pending.path, Value: val, Line: pending.line}
 		}
 
 		if len(stack) > 0 {
@@ -163,7 +186,7 @@ func parseNew(src string) (*ast.RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#ARG:") {
 				commitPending()
-				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#ARG:"), true)
+				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#ARG:"), false)
 				rule := ast.Rule{Type: ast.RuleTypeArg, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)

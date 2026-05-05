@@ -85,11 +85,26 @@ func parseVar(line string) (string, string, bool) {
 }
 
 func parseActionLine(line string) (ast.PatchOp, string, string, bool) {
-	if strings.HasPrefix(line, "++") { return ast.PatchMerge, "", strings.TrimSpace(line[2:]), true }
-	if strings.HasPrefix(line, "--") { return ast.PatchRM, "", strings.TrimSpace(line[2:]), true }
-	if strings.HasPrefix(line, ">>") { return ast.PatchRPK, "", strings.TrimSpace(line[2:]), true }
-	if strings.HasPrefix(line, "<<") { return ast.PatchAppend, "", strings.TrimSpace(line[2:]), true }
-	if strings.HasPrefix(line, "~~") { return ast.PatchRegex, "", strings.TrimSpace(line[2:]), true }
+	prefixes := []struct {
+		p  string
+		op ast.PatchOp
+	}{
+		{"++", ast.PatchMerge},
+		{"--", ast.PatchRM},
+		{">>", ast.PatchRPK},
+		{"<<", ast.PatchAppend},
+		{"~~", ast.PatchRegex},
+	}
+	for _, pref := range prefixes {
+		if strings.HasPrefix(line, pref.p) {
+			rest := strings.TrimSpace(line[len(pref.p):])
+			// Trim leading colon if present (e.g., ~~: /regex/ -> repl)
+			if strings.HasPrefix(rest, ":") {
+				rest = strings.TrimSpace(rest[1:])
+			}
+			return pref.op, "", rest, true
+		}
+	}
 	if strings.HasPrefix(line, "&") {
 		parts := strings.SplitN(line[1:], ":", 2)
 		opStr := strings.ToLower(parts[0])

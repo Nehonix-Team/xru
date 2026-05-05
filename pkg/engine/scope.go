@@ -192,7 +192,7 @@ func NewRootScope(r *Runner) *Scope {
 			if len(parts) == 2 {
 				name := strings.TrimSpace(parts[0])
 				val := strings.TrimSpace(parts[1])
-				s.Vars[name] = val
+				s.Vars[name] = ast.Literal(val)
 				s.Used[name] = false // Sera marqué utilisé lors du Get
 				if r.Verbose {
 					fmt.Printf("[DEBUG] Injected terminal arg: %s=%s\n", name, val)

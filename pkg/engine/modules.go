@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Nehonix-Team/xru/internal/engine/ast"
 	"github.com/Nehonix-Team/xru/internal/engine/util" 
 )
 
@@ -51,7 +52,7 @@ func execUtilsModule(scope *Scope, cb, method, target, as string, line int, r *R
 			fmt.Printf("%s\n", msg)
 		}
 		if as != "" {
-			scope.Set(as, target, line)
+			scope.Set(as, ast.Literal(target), line)
 		}
 		return nil
 	case "BREAK", "EXIT":
@@ -66,7 +67,7 @@ func execUtilsModule(scope *Scope, cb, method, target, as string, line int, r *R
 	case "ARG", "ARGS":
 		val := getTerminalArg(target, r)
 		if as != "" {
-			scope.Set(as, val, line)
+			scope.Set(as, ast.Literal(val), line)
 		}
 		return nil
 	default:
@@ -88,7 +89,7 @@ func execSysModule(scope *Scope, cb, method, target, as string, line int, r *Run
 		cmd.Dir = cb
 		if as != "" {
 			out, _ := cmd.Output()
-			scope.Set(as, strings.TrimSpace(string(out)), line)
+			scope.Set(as, ast.Literal(strings.TrimSpace(string(out))), line)
 		} else {
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
@@ -98,7 +99,7 @@ func execSysModule(scope *Scope, cb, method, target, as string, line int, r *Run
 	case "ARG":
 		val := getTerminalArg(target, r)
 		if as != "" {
-			scope.Set(as, val, line)
+			scope.Set(as, ast.Literal(val), line)
 		}
 		return nil
 	default:

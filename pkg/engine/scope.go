@@ -1,8 +1,7 @@
-package main
+package engine
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"github.com/Nehonix-Team/xru/internal/engine/ast"
 )
@@ -15,6 +14,7 @@ type Scope struct {
 	Modules  map[string]string // Alias -> ModuleName
 	Parent   *Scope
 	Capture  *strings.Builder // Pour capturer les sorties LOG lors de l'inception
+	Runner   *Runner
 }
 
 func (s *Scope) Get(name string) (interface{}, bool) {
@@ -30,7 +30,7 @@ func (s *Scope) Get(name string) (interface{}, bool) {
 		}
 		s.Used[rootName] = true
 		if rootName == "SERVERS" {
-			if verbose {
+			if s.Runner.Verbose {
 				fmt.Printf("[DEBUG] Scope %p: Marked 'SERVERS' as USED\n", s)
 			}
 		}
@@ -146,23 +146,22 @@ func (s *Scope) Set(name string, val interface{}, line int) {
 	s.DefLines[name] = line
 }
 
-func (s *Scope) RegisterModule(alias, name string, line int) {
+func (s *Scope) RegisterModule(alias, name string, line int) error {
 	if s.Modules == nil {
 		s.Modules = make(map[string]string)
 	}
 	if existing, ok := s.Modules[alias]; ok {
 		if existing == name {
-			return
+			return nil
 		}
-		fmt.Printf("%s:%d: %serror:%s module alias '%s' already defined in this scope (points to '%s')\n",
-			currentFile, line, colorRed, colorReset, alias, existing)
-		os.Exit(1)
+		return fmt.Errorf("module alias '%s' already defined in this scope (points to '%s')", alias, existing)
 	}
 	s.Modules[alias] = name
+	return nil
 }
 
-func (s *Scope) CheckUnused(file string) {
-	if verbose {
+func (s *Scope) CheckUnused(file string) error {
+	if s.Runner.Verbose {
 		fmt.Printf("[DEBUG] CheckUnused for scope %p\n", s)
 		for name := range s.DefLines {
 			fmt.Printf("  - Variable '%s' defined. Used: %v\n", name, s.Used[name])
@@ -170,32 +169,32 @@ func (s *Scope) CheckUnused(file string) {
 	}
 	for name, line := range s.DefLines {
 		if !s.Used[name] {
-			fmt.Printf("%s:%d: %serror:%s variable '%s' is defined but never used\n",
-				file, line, colorRed, colorReset, name)
-			os.Exit(1)
+			return fmt.Errorf("%s:%d: variable '%s' is defined but never used", file, line, name)
 		}
 	}
+	return nil
 }
 
-func newRootScope() *Scope {
+func NewRootScope(r *Runner) *Scope {
 	s := &Scope{
 		Vars:     make(map[string]interface{}),
 		DefLines: make(map[string]int),
 		Used:     make(map[string]bool),
 		Modules:  make(map[string]string),
+		Runner:   r,
 	}
 
 	// Injection des arguments de terminal (--arg NAME=VAL)
-	for i := 0; i < len(terminalArgs); i++ {
-		if terminalArgs[i] == "--arg" && i+1 < len(terminalArgs) {
-			expr := terminalArgs[i+1]
+	for i := 0; i < len(r.TerminalArgs); i++ {
+		if r.TerminalArgs[i] == "--arg" && i+1 < len(r.TerminalArgs) {
+			expr := r.TerminalArgs[i+1]
 			parts := strings.SplitN(expr, "=", 2)
 			if len(parts) == 2 {
 				name := strings.TrimSpace(parts[0])
 				val := strings.TrimSpace(parts[1])
 				s.Vars[name] = val
 				s.Used[name] = false // Sera marqué utilisé lors du Get
-				if verbose {
+				if r.Verbose {
 					fmt.Printf("[DEBUG] Injected terminal arg: %s=%s\n", name, val)
 				}
 			}

@@ -1,14 +1,9 @@
-package main
+package engine
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
-
-var currentFile string
-var verbose bool
-var terminalArgs []string
 
 func unescape(s string) string {
 	s = strings.ReplaceAll(s, "\\n", "\n")
@@ -16,9 +11,9 @@ func unescape(s string) string {
 	return s
 }
 
-func checkSyntaxError(val string, line int) {
+func checkSyntaxError(val string, line int, r *Runner) error {
 	if !strings.HasPrefix(val, "[SYNTAX_ERROR:") && !strings.HasPrefix(val, "[ERROR:") {
-		return
+		return nil
 	}
 	msg := val
 	switch val {
@@ -29,6 +24,6 @@ func checkSyntaxError(val string, line int) {
 	case "[SYNTAX_ERROR: MISSING_QUOTES]":
 		msg = "string literals must be enclosed in quotes (e.g. \"text\")"
 	}
-	fmt.Printf("%s:%d: %serror:%s %s\n", currentFile, line, colorRed, colorReset, msg)
-	os.Exit(1)
+	return fmt.Errorf("%s:%d: %s", r.CurrentFile, line, msg)
 }
+

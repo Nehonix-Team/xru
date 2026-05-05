@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 )
 
 // evalCondition évalue une condition interpolée et retourne true/false.
-func evalCondition(cond string, scope *Scope, cb string) bool {
+func evalCondition(cond string, scope *Scope, cb string, r *Runner) bool {
 	cond = util.Interpolate(cond, scope)
 	cond = strings.Trim(cond, "\"' ")
 
@@ -44,3 +44,4 @@ func evalRaw(cond, cb string) bool {
 	}
 	return cond == "true"
 }
+

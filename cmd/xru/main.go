@@ -4,17 +4,15 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/Nehonix-Team/xru/internal/engine/parser"
 	"github.com/Nehonix-Team/xru/internal/utils"
+	"github.com/Nehonix-Team/xru/pkg/engine"
 )
 
 func main() {
 	v := flag.Bool("v", false, "Enable verbose output")
 	flag.Parse()
-	verbose = *v
 	args := flag.Args()
 
 	if len(args) < 1 {
@@ -33,8 +31,14 @@ func main() {
 		runBuild(args[1])
 	default:
 		target, tArgs := parseRunArgs(args)
-		terminalArgs = tArgs
-		runPatch(args[0], target)
+		runner := engine.NewRunner()
+		runner.Verbose = *v
+		runner.TerminalArgs = tArgs
+		
+		if err := runner.Run(args[0], target); err != nil {
+			fmt.Printf("%serror:%s %v\n", engine.ColorRed, engine.ColorReset, err)
+			os.Exit(1)
+		}
 	}
 }
 
@@ -51,20 +55,3 @@ func parseRunArgs(args []string) (target string, tArgs []string) {
 	return
 }
 
-func runPatch(rulePath, targetDir string) {
-	currentFile = rulePath
-	absTarget, _ := filepath.Abs(targetDir)
-
-	rf, err := parser.ParseFile(rulePath)
-	if err != nil {
-		fmt.Printf("%sError: %v%s\n", colorRed, err, colorReset)
-		os.Exit(1)
-	}
-
-	rootScope := newRootScope()
-	if verbose {
-		fmt.Printf("[DEBUG] Starting execution of %d top-level rules\n", len(rf.Rules))
-	}
-	executeRules(rf.Rules, absTarget, absTarget, rulePath, rootScope, nil, "")
-	rootScope.CheckUnused(currentFile)
-}

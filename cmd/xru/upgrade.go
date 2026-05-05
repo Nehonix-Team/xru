@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+
+	"github.com/Nehonix-Team/xru/pkg/engine"
 )
 
 // handleUpgrade télécharge et remplace le binaire xru par la dernière version.
@@ -28,14 +30,14 @@ func handleUpgrade() {
 
 	out, err := os.Create(tmpPath)
 	if err != nil {
-		fmt.Printf("%serror:%s could not create temp file: %v\n", colorRed, colorReset, err)
+		fmt.Printf("%serror:%s could not create temp file: %v\n", engine.ColorRed, engine.ColorReset, err)
 		os.Exit(1)
 	}
 	defer out.Close()
 
 	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Printf("%serror:%s could not download upgrade: %v\n", colorRed, colorReset, err)
+		fmt.Printf("%serror:%s could not download upgrade: %v\n", engine.ColorRed, engine.ColorReset, err)
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
@@ -44,3 +46,4 @@ func handleUpgrade() {
 	os.Chmod(tmpPath, 0755)
 	os.Rename(tmpPath, executablePath)
 }
+

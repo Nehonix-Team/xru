@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"strings"
@@ -10,7 +10,7 @@ import (
 )
 
 // applyAction applique une action (inject, patch, var, module) au contenu d'un fichier.
-func applyAction(content string, action ast.Action, fileExt string, scope *Scope, cb string, rulePath string) string {
+func applyAction(content string, action ast.Action, fileExt string, scope *Scope, cb string, rulePath string, r *Runner) string {
 	switch a := action.(type) {
 	case ast.VarAction:
 		val := util.Interpolate(a.Value, scope)
@@ -18,15 +18,15 @@ func applyAction(content string, action ast.Action, fileExt string, scope *Scope
 		return content
 
 	case ast.ModuleAction:
-		executeModuleAction(scope, cb, rulePath, a.Module, a.Method, a.Target, a.As, a.Line)
+		executeModuleAction(scope, cb, rulePath, a.Module, a.Method, a.Target, a.As, a.Line, r)
 		return content
 
 	case ast.InjectAction:
 		if a.Lang != "" && "."+strings.ToLower(a.Lang) != fileExt {
 			return content
 		}
-		code := processInception(a.Code, scope)
-		checkSyntaxError(code, a.Line)
+		code := processInception(a.Code, scope, r)
+		checkSyntaxError(code, a.Line, r)
 		return engine.InjectCode(content, a.Key, code, a.Raw)
 
 	case ast.PatchAction:
@@ -34,14 +34,14 @@ func applyAction(content string, action ast.Action, fileExt string, scope *Scope
 		val := util.InterpolateValue(a.Value, scope).(ast.Value)
 		// Si la valeur est un Literal (string), on lui applique aussi l'inception
 		if lit, ok := val.(ast.Literal); ok {
-			val = ast.Literal(processInception(string(lit), scope))
+			val = ast.Literal(processInception(string(lit), scope, r))
 		}
 		return patcher.ApplyPatch(content, a.Op, path, val)
 	}
 	return content
 }
 
-func processInception(src string, scope *Scope) string {
+func processInception(src string, scope *Scope, r *Runner) string {
 	if !strings.Contains(src, "<#") {
 		return util.Interpolate(src, scope)
 	}
@@ -143,9 +143,11 @@ func processInception(src string, scope *Scope) string {
 		Modules:  scope.Modules,
 		Parent:   scope,
 		Capture:  capture,
+		Runner:   r,
 	}
 
-	executeRules(rf.Rules, "", "", "", childScope, nil, "")
+	executeRules(rf.Rules, "", "", "", childScope, nil, "", r)
 	
 	return strings.TrimSuffix(capture.String(), "\n")
 }
+

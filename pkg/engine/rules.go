@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"encoding/json"
@@ -14,28 +14,28 @@ import (
 	"github.com/Nehonix-Team/xru/internal/engine"
 )
 
-func executeActions(rule *ast.Rule, content *string, scope *Scope, fileExt, cb, rulePath string) {
+func executeActions(rule *ast.Rule, content *string, scope *Scope, fileExt, cb, rulePath string, r *Runner) {
 	if content != nil {
 		for _, action := range rule.Actions {
-			*content = applyAction(*content, action, fileExt, scope, cb, rulePath)
+			*content = applyAction(*content, action, fileExt, scope, cb, rulePath, r)
 		}
 	}
 }
 
 // executeRules parcourt et exécute une liste de règles dans le scope donné.
-func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string, scope *Scope, content *string, fileExt string) {
+func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string, scope *Scope, content *string, fileExt string, r *Runner) error {
 	cb := currentBase
 	skipElse := false
 
 	for _, rule := range rules {
-		if verbose {
+		if r.Verbose {
 			fmt.Printf("[DEBUG] Executing rule type: %s at line %d (content context: %v)\n", rule.Type, rule.Line, content != nil)
 		}
 		target := util.Interpolate(rule.Target, scope)
 
 		switch rule.Type {
 		case ast.RuleTypeVar:
-			executeActions(&rule, content, scope, fileExt, cb, rulePath)
+			executeActions(&rule, content, scope, fileExt, cb, rulePath, r)
 			// Puis la logique spécifique
 				skipElse = false
 				trimmed := strings.TrimSpace(rule.Content)
@@ -53,21 +53,22 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 				}
 
 				val := util.Interpolate(rule.Content, scope)
-				checkSyntaxError(val, rule.Line)
+				if err := checkSyntaxError(val, rule.Line, r); err != nil {
+					return err
+				}
 				scope.Set(rule.Target, unescape(val), rule.Line)
 
 		case ast.RuleTypeVarBlock:
-			executeActions(&rule, content, scope, fileExt, cb, rulePath)
-			content := processInception(rule.Content, scope)
+			executeActions(&rule, content, scope, fileExt, cb, rulePath, r)
+			content := processInception(rule.Content, scope, r)
 			content = util.Dedent(content)
 
 			var val interface{} = content
 			if strings.HasPrefix(rule.Command, "JSON") {
 				var parsed interface{}
 				if err := json.Unmarshal([]byte(content), &parsed); err != nil {
-					fmt.Printf("%s:%d: %serror:%s failed to parse JSON in #%s: %v\n",
-						currentFile, rule.Line, colorRed, colorReset, rule.Command, err)
-					os.Exit(1)
+					return fmt.Errorf("%s:%d: failed to parse JSON in #%s: %v",
+						r.CurrentFile, rule.Line, rule.Command, err)
 				}
 				val = parsed
 			}
@@ -75,8 +76,10 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 			skipElse = false
 
 		case ast.RuleTypeSelect:
-			executeActions(&rule, content, scope, fileExt, cb, rulePath)
-			checkSyntaxError(target, rule.Line)
+			executeActions(&rule, content, scope, fileExt, cb, rulePath, r)
+			if err := checkSyntaxError(target, rule.Line, r); err != nil {
+				return err
+			}
 			if filepath.IsAbs(target) {
 				cb = target
 			} else {
@@ -84,14 +87,12 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 			}
 			info, err := os.Stat(cb)
 			if os.IsNotExist(err) {
-				fmt.Printf("%s:%d: %serror:%s directory '%s' does not exist\n",
-					currentFile, rule.Line, colorRed, colorReset, cb)
-				os.Exit(1)
+				return fmt.Errorf("%s:%d: directory '%s' does not exist",
+					r.CurrentFile, rule.Line, cb)
 			}
 			if !info.IsDir() {
-				fmt.Printf("%s:%d: %serror:%s path '%s' is a file, but SELECT requires a directory\n",
-					currentFile, rule.Line, colorRed, colorReset, cb)
-				os.Exit(1)
+				return fmt.Errorf("%s:%d: path '%s' is a file, but SELECT requires a directory",
+					r.CurrentFile, rule.Line, cb)
 			}
 			if rule.As != "" {
 				scope.Set(rule.As, cb, rule.Line)
@@ -99,26 +100,30 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 			skipElse = false
 
 		case ast.RuleTypeIf:
-			if evalCondition(rule.Target, scope, cb) {
+			if evalCondition(rule.Target, scope, cb, r) {
 				if content != nil {
 					for _, action := range rule.Actions {
-						*content = applyAction(*content, action, fileExt, scope, cb, rulePath)
+						*content = applyAction(*content, action, fileExt, scope, cb, rulePath, r)
 					}
 				}
-				executeRules(rule.SubRules, initialTarget, cb, rulePath, scope, content, fileExt)
+				if err := executeRules(rule.SubRules, initialTarget, cb, rulePath, scope, content, fileExt, r); err != nil {
+					return err
+				}
 				skipElse = true
 			} else {
 				skipElse = false
 			}
 
 		case ast.RuleTypeElseIf:
-			if !skipElse && evalCondition(rule.Target, scope, cb) {
+			if !skipElse && evalCondition(rule.Target, scope, cb, r) {
 				if content != nil {
 					for _, action := range rule.Actions {
-						*content = applyAction(*content, action, fileExt, scope, cb, rulePath)
+						*content = applyAction(*content, action, fileExt, scope, cb, rulePath, r)
 					}
 				}
-				executeRules(rule.SubRules, initialTarget, cb, rulePath, scope, content, fileExt)
+				if err := executeRules(rule.SubRules, initialTarget, cb, rulePath, scope, content, fileExt, r); err != nil {
+					return err
+				}
 				skipElse = true
 			}
 
@@ -126,29 +131,37 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 			if !skipElse {
 				if content != nil {
 					for _, action := range rule.Actions {
-						*content = applyAction(*content, action, fileExt, scope, cb, rulePath)
+						*content = applyAction(*content, action, fileExt, scope, cb, rulePath, r)
 					}
 				}
-				executeRules(rule.SubRules, initialTarget, cb, rulePath, scope, content, fileExt)
+				if err := executeRules(rule.SubRules, initialTarget, cb, rulePath, scope, content, fileExt, r); err != nil {
+					return err
+				}
 			}
 			skipElse = false
 
 		case ast.RuleTypeUse:
-			executeActions(&rule, content, scope, fileExt, cb, rulePath)
+			executeActions(&rule, content, scope, fileExt, cb, rulePath, r)
 			name := util.Interpolate(rule.Target, scope)
 			alias := rule.As
 			if alias == "" {
 				alias = name
 			}
-			scope.RegisterModule(alias, name, rule.Line)
+			if err := scope.RegisterModule(alias, name, rule.Line); err != nil {
+				return fmt.Errorf("%s:%d: %v", r.CurrentFile, rule.Line, err)
+			}
 			skipElse = false
 
 		case ast.RuleTypeModule:
-			executeActions(&rule, content, scope, fileExt, cb, rulePath)
+			executeActions(&rule, content, scope, fileExt, cb, rulePath, r)
 			parts := strings.SplitN(rule.Target, ".", 2)
 			content := util.Interpolate(rule.Content, scope)
-			checkSyntaxError(content, rule.Line)
-			executeModuleAction(scope, cb, rulePath, parts[0], parts[1], content, rule.As, rule.Line)
+			if err := checkSyntaxError(content, rule.Line, r); err != nil {
+				return err
+			}
+			if err := executeModuleAction(scope, cb, rulePath, parts[0], parts[1], content, rule.As, rule.Line, r); err != nil {
+				return err
+			}
 			skipElse = false
 
 		case ast.RuleTypeInclude:
@@ -158,29 +171,37 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 			}
 			irf, err := parser.ParseFile(includePath)
 			if err == nil {
-				executeRules(irf.Rules, initialTarget, cb, includePath, scope, content, fileExt)
+				if err := executeRules(irf.Rules, initialTarget, cb, includePath, scope, content, fileExt, r); err != nil {
+					return err
+				}
 			}
 			skipElse = false
 
 		case ast.RuleTypeCall:
 			includePath := target
-			executeRules(rule.SubRules, initialTarget, cb, rulePath, scope, content, fileExt)
+			if err := executeRules(rule.SubRules, initialTarget, cb, rulePath, scope, content, fileExt, r); err != nil {
+				return err
+			}
 			if !filepath.IsAbs(includePath) {
 				includePath = filepath.Join(filepath.Dir(rulePath), includePath)
 			}
 			irf, err := parser.ParseFile(includePath)
 			if err == nil {
-				executeRules(irf.Rules, initialTarget, cb, includePath, scope, content, fileExt)
+				if err := executeRules(irf.Rules, initialTarget, cb, includePath, scope, content, fileExt, r); err != nil {
+					return err
+				}
 			}
 			skipElse = false
 
 		case ast.RuleTypeBegin, ast.RuleTypeCreate, ast.RuleTypeGlobal:
-			applyFileRule(initialTarget, cb, rule, scope)
+			if err := applyFileRule(initialTarget, cb, rule, scope, r); err != nil {
+				return err
+			}
 			skipElse = false
 
 		case ast.RuleTypeArg:
-			executeActions(&rule, content, scope, fileExt, cb, rulePath)
-			val := getTerminalArg(target)
+			executeActions(&rule, content, scope, fileExt, cb, rulePath, r)
+			val := getTerminalArg(target, r)
 			if rule.As != "" {
 				scope.Set(rule.As, val, rule.Line)
 			}
@@ -198,9 +219,8 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 		case ast.RuleTypeFor:
 			parts := strings.SplitN(rule.Target, " in ", 2)
 			if len(parts) != 2 {
-				fmt.Printf("%s:%d: %serror:%s invalid FOR syntax. Expected '#FOR: var in [list]'\n",
-					currentFile, rule.Line, colorRed, colorReset)
-				os.Exit(1)
+				return fmt.Errorf("%s:%d: invalid FOR syntax. Expected '#FOR: var in [list]'",
+					r.CurrentFile, rule.Line)
 			}
 			varName := strings.TrimSpace(parts[0])
 			
@@ -211,25 +231,29 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 
 			if arr, ok := listVal.(ast.Array); ok {
 				for _, item := range arr {
-					child := &Scope{Parent: scope, Capture: scope.Capture}
+					child := &Scope{Parent: scope, Capture: scope.Capture, Runner: r}
 					child.Set(varName, item, rule.Line)
 					if content != nil {
 						for _, action := range rule.Actions {
-							*content = applyAction(*content, action, fileExt, child, cb, rulePath)
+							*content = applyAction(*content, action, fileExt, child, cb, rulePath, r)
 						}
 					}
-					executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt)
+					if err := executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt, r); err != nil {
+						return err
+					}
 				}
 			} else if arrRaw, ok := listVal.([]interface{}); ok {
 				for _, item := range arrRaw {
-					child := &Scope{Parent: scope, Capture: scope.Capture}
+					child := &Scope{Parent: scope, Capture: scope.Capture, Runner: r}
 					child.Set(varName, item, rule.Line)
 					if content != nil {
 						for _, action := range rule.Actions {
-							*content = applyAction(*content, action, fileExt, child, cb, rulePath)
+							*content = applyAction(*content, action, fileExt, child, cb, rulePath, r)
 						}
 					}
-					executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt)
+					if err := executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt, r); err != nil {
+						return err
+					}
 				}
 			} else if obj, ok := listVal.(ast.Object); ok {
 				var keys []string
@@ -238,14 +262,16 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 				}
 				sort.Strings(keys)
 				for _, k := range keys {
-					child := &Scope{Parent: scope, Capture: scope.Capture}
+					child := &Scope{Parent: scope, Capture: scope.Capture, Runner: r}
 					child.Set(varName, ast.Literal(k), rule.Line)
 					if content != nil {
 						for _, action := range rule.Actions {
-							*content = applyAction(*content, action, fileExt, child, cb, rulePath)
+							*content = applyAction(*content, action, fileExt, child, cb, rulePath, r)
 						}
 					}
-					executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt)
+					if err := executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt, r); err != nil {
+						return err
+					}
 				}
 			} else if objRaw, ok := listVal.(map[string]interface{}); ok {
 				var keys []string
@@ -254,23 +280,26 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 				}
 				sort.Strings(keys)
 				for _, k := range keys {
-					child := &Scope{Parent: scope, Capture: scope.Capture}
+					child := &Scope{Parent: scope, Capture: scope.Capture, Runner: r}
 					child.Set(varName, ast.Literal(k), rule.Line)
 					if content != nil {
 						for _, action := range rule.Actions {
-							*content = applyAction(*content, action, fileExt, child, cb, rulePath)
+							*content = applyAction(*content, action, fileExt, child, cb, rulePath, r)
 						}
 					}
-					executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt)
+					if err := executeRules(rule.SubRules, initialTarget, cb, rulePath, child, content, fileExt, r); err != nil {
+						return err
+					}
 				}
 			}
 			skipElse = false
 		}
 	}
+	return nil
 }
 
 // applyFileRule exécute les règles BEGIN, CREATE et GLOBAL.
-func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope *Scope) {
+func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope *Scope, r *Runner) error {
 	scope := &Scope{
 		Vars:     make(map[string]interface{}),
 		DefLines: make(map[string]int),
@@ -278,6 +307,7 @@ func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope
 		Modules:  parentScope.Modules,
 		Parent:   parentScope,
 		Capture:  parentScope.Capture,
+		Runner:   r,
 	}
 
 	target := util.Interpolate(rule.Target, scope)
@@ -289,12 +319,14 @@ func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope
 	case ast.RuleTypeCreate:
 		fullPath := filepath.Join(currentBase, target)
 		os.MkdirAll(filepath.Dir(fullPath), 0755)
-		content := processInception(rule.Content, scope)
+		content := processInception(rule.Content, scope, r)
 		ext := filepath.Ext(fullPath)
 		
 		// Exécution récursive des règles et actions
-		executeActions(&rule, &content, scope, ext, currentBase, currentFile)
-		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope, &content, ext)
+		executeActions(&rule, &content, scope, ext, currentBase, r.CurrentFile, r)
+		if err := executeRules(rule.SubRules, initialTarget, currentBase, r.CurrentFile, scope, &content, ext, r); err != nil {
+			return err
+		}
 		
 		content = engine.CleanOrphans(content)
 		os.WriteFile(fullPath, []byte(content), 0644)
@@ -303,16 +335,17 @@ func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope
 		fullPath := filepath.Join(currentBase, target)
 		data, err := os.ReadFile(fullPath)
 		if err != nil {
-			fmt.Printf("%s:%d: %serror:%s target file '%s' does not exist for BEGIN\n",
-				currentFile, rule.Line, colorRed, colorReset, target)
-			os.Exit(1)
+			return fmt.Errorf("%s:%d: target file '%s' does not exist for BEGIN",
+				r.CurrentFile, rule.Line, target)
 		}
 		content := string(data)
 		ext := filepath.Ext(fullPath)
 		
 		// Exécution récursive des règles et actions
-		executeActions(&rule, &content, scope, ext, currentBase, currentFile)
-		executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope, &content, ext)
+		executeActions(&rule, &content, scope, ext, currentBase, r.CurrentFile, r)
+		if err := executeRules(rule.SubRules, initialTarget, currentBase, r.CurrentFile, scope, &content, ext, r); err != nil {
+			return err
+		}
 		
 		content = engine.CleanOrphans(content)
 		os.WriteFile(fullPath, []byte(content), 0644)
@@ -327,8 +360,10 @@ func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope
 			ext := filepath.Ext(path)
 			
 			// Pour GLOBAL, on applique les actions de la règle elle-même d'abord
-			executeActions(&rule, &content, scope, ext, currentBase, currentFile)
-			executeRules(rule.SubRules, initialTarget, currentBase, currentFile, scope, &content, ext)
+			executeActions(&rule, &content, scope, ext, currentBase, r.CurrentFile, r)
+			if err := executeRules(rule.SubRules, initialTarget, currentBase, r.CurrentFile, scope, &content, ext, r); err != nil {
+				return err
+			}
 			
 			content = engine.CleanOrphans(content)
 			if content != string(data) {
@@ -337,4 +372,6 @@ func applyFileRule(initialTarget, currentBase string, rule ast.Rule, parentScope
 			return nil
 		})
 	}
+	return nil
 }
+

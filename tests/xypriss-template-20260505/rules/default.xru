@@ -1,0 +1,70 @@
+// --------------------------------------------------------------------------
+// XyPriss Default Mode Rules
+// --------------------------------------------------------------------------
+
+// 1. CLEANUP ENVIRONMENT & CONFIGS
+// Open .env to remove XMS-specific variables
+#BEGIN: ".env"
+    @INJECT: /(?m)^(AUTH_SERVER_PORT|MAIN_SERVER_PORT|AUTH_DOMAIN|MAIN_DOMAIN)=.*$\n?/
+    @END
+#END
+
+// Cleanup XMS-related properties from the JSONC configuration
+#BEGIN: "xypriss.config.jsonc"
+    @INJECT: /(?m)^[ \t]*"(auth|main)ServerPort":.*$\n?/
+    @END
+    @INJECT: /(?s)[ \t]*"xms_nodes":\s*\{.*?"main":\s*\{[^\}]*\},\s*\},\r?\n?/
+    @END
+#END
+
+// 2. CODE INJECTIONS
+#SELECT: "./src/"
+
+#BEGIN: "configs/xypriss.config.ts"
+    @TSINJECT: SERVER_CONFIG
+        /**
+         * Standard single-server configuration.
+         * Configured for high-performance standalone operation.
+         */
+        server: { 
+            autoKillConflict: true, 
+            port: 8080, 
+            serviceName: "default-app" 
+        },
+    @END
+#END
+
+#BEGIN: "router/index.ts"
+    @TSINJECT: ROUTERS_IMPORT
+        <#FOR: S in {SERVERS}>
+        import { {S}Router } from "../routes/{S}.route";
+        <#END>
+    @END
+    @TSINJECT: ROUTERS_USE
+        /** Mounting the primary router */
+        <#FOR: S in {SERVERS}>
+        router.use("{SERVERS.{S}.route}", {S}Router);
+        <#END>
+    @END
+#END
+
+// 3. FILE GENERATION
+#FOR: S in {SERVERS}
+    #CREATE: "routes/{S}.route.ts"
+        import { Router } from "xypriss";
+
+        /**
+         * Default Route Module.
+         * Handles the main application logic for the standalone server.
+         */
+        export const {S}Router = Router();
+
+        {S}Router.get("/", (ctx) => { 
+            ctx.body = { 
+                status: "online",
+                message: "Standalone server is running",
+                timestamp: new Date().toISOString()
+            }; 
+        });
+    #END
+#END

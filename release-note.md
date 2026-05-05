@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.5] - 2026-05-05
+feat(module): improve S.EXEC output capture
+Updated `sys.EXEC` to capture both `stdout` and `stderr` when using the `as` keyword. This ensures that error messages are included in the captured variable.
+
 ## [0.2.4] - 2026-05-05
 feat(module): add sys.GET for system information
 Introduced a new method `GET` to the `sys` module to retrieve system properties.

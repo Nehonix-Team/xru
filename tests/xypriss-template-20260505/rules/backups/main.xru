@@ -1,41 +1,63 @@
 // --------------------------------------------------------------------------
 // XyPriss Default Server Orchestrator
 // --------------------------------------------------------------------------
+
+// Import built-in modules
 #USE: fs as FS
 #USE: utils as U
 
 U.LOG: "<cyan>[INFO]</> Orchestrating in <yellow>Default</> mode..."
 
+// 1. CLEANUP ENVIRONMENT & CONFIGS
+// Cleanup XMS-related environment variables from .env
+#BEGIN: ".env"
+    @INJECT: /(?m)^(AUTH_SERVER_PORT|MAIN_SERVER_PORT|AUTH_DOMAIN|MAIN_DOMAIN)=.*$\n?/
+    @END
+#END
+
+// Cleanup XMS-related properties from the JSONC configuration
+#BEGIN: "xypriss.config.jsonc"
+    @INJECT: /(?m)^[ \t]*"(auth|main)ServerPort":.*$\n?/
+    @END
+    @INJECT: /(?s)[ \t]*"xms_nodes":\s*\{.*?"main":\s*\{[^\}]*\},\s*\},\r?\n?/
+    @END
+#END
+
+// Switch context to the source directory
 #SELECT: "./src/"
 
-// 1. DATA DEFINITION
+// 2. DATA DEFINITION
+// Define a single server configuration for the default mode
 #JSONVAR: SERVERS
 { 
   "main": { "route": "/api", "desc": "Default Server", "body": "Standard instance." } 
 }
 #END
 
-// 2. CONFIGURATION & ROUTING
+// 3. CONFIGURATION & ROUTING
+// Inject the standard single-server config into the TS config file
 #BEGIN: "configs/xypriss.config.ts"
     @TSINJECT: SERVER_CONFIG
         server: { autoKillConflict: true, port: 8080, serviceName: "default" },
     @END
 #END
 
+// Setup routing for the default application
 #BEGIN: "router/index.ts"
     @TSINJECT: ROUTERS_IMPORT
         <#FOR: S in {SERVERS}>
-            import { {S}Router } from "../routes/{S}.route";
+        import { {S}Router } from "../routes/{S}.route";
         <#END>
     @END
     @TSINJECT: ROUTERS_USE
         <#FOR: S in {SERVERS}>
-            router.use("{SERVERS.{S}.route}", {S}Router);
+        router.use("{SERVERS.{S}.route}", {S}Router);
         <#END>
     @END
 #END
 
-// 3. GENERATION
+// 4. FILE GENERATION
+// Create the main route file
 #CREATE: "routes/main.route.ts"
     import { Router } from "xypriss";
     export const mainRouter = Router();

@@ -88,7 +88,7 @@ func execSysModule(scope *Scope, cb, method, target, as string, line int, r *Run
 		}
 		cmd.Dir = cb
 		if as != "" {
-			out, _ := cmd.Output()
+			out, _ := cmd.CombinedOutput()
 			scope.Set(as, ast.Literal(strings.TrimSpace(string(out))), line)
 		} else {
 			cmd.Stdout = os.Stdout

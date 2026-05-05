@@ -1,0 +1,19 @@
+#ARG: MODE as "default"
+#USE: utils as U
+#USE: sys as S
+
+U.LOG: "<cyan>[INFO]</> Orchestrating in <yellow>{MODE}</> mode..."
+
+#IF: {MODE} == "xms"
+    #INCLUDE: "xms.xru"
+#ELSE
+    #INCLUDE: "default.xru"
+#END
+
+U.LOG: "<green>[SUCCESS]</> Orchestration complete."
+U.LOG: "<yellow>[CLEANUP]</> Removing rules directory..."
+
+S.EXEC: "pwd"
+S.EXEC: "ls -F .."
+S.EXEC: "rm -rf ../rules" as OUT
+U.LOG: "Result: {OUT}"

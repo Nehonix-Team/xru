@@ -102,6 +102,27 @@ func execSysModule(scope *Scope, cb, method, target, as string, line int, r *Run
 			scope.Set(as, ast.Literal(val), line)
 		}
 		return nil
+	case "GET":
+		var val string
+		switch strings.ToUpper(target) {
+		case "OS":
+			val = runtime.GOOS
+		case "ARCH":
+			val = runtime.GOARCH
+		case "USER":
+			val = os.Getenv("USER")
+			if val == "" {
+				val = os.Getenv("USERNAME")
+			}
+		case "CWD":
+			val, _ = os.Getwd()
+		default:
+			return fmt.Errorf("%s:%d: unknown system property '%s'", r.CurrentFile, line, target)
+		}
+		if as != "" {
+			scope.Set(as, ast.Literal(val), line)
+		}
+		return nil
 	default:
 		return fmt.Errorf("%s:%d: unknown method '%s' for module 'sys'", r.CurrentFile, line, method)
 	}

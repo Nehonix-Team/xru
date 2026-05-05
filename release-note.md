@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.4] - 2026-05-05
+feat(module): add sys.GET for system information
+Introduced a new method `GET` to the `sys` module to retrieve system properties.
+
+### Added
+- **sys.GET**: Retrieve system properties like `OS`, `ARCH`, `USER`, and `CWD`.
+  Example: `S.GET: "OS" as MY_OS`
+
 ## [0.2.3] - 2026-05-05
 feat(extension): improve VSCode syntax highlighting
 Enhanced the VSCode extension grammar to provide better colorization for `#ARG` directives and variable assignments.

@@ -1,0 +1,8 @@
+#USE: sys as S
+#USE: utils as U
+
+S.GET: "OS" as MY_OS
+S.GET: "ARCH" as MY_ARCH
+S.GET: "USER" as MY_USER
+
+U.LOG: "Running on <cyan>{MY_OS}</> (<yellow>{MY_ARCH}</>) as user <green>{MY_USER}</>"

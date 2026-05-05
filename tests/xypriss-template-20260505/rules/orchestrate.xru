@@ -62,6 +62,4 @@ S.GET: "CWD" as CURRENT_CWD
 
 // FS.RM is cross-platform and handles both Windows and Unix-like systems
 FS.RM: "rules"
-S.EXEC: "ls -lr ./*" as R
-U.LOG: "Result for cmd: <blue>{R}</>"
 U.LOG: "Final project path: <red>{CURRENT_CWD}</>"

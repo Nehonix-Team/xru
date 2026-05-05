@@ -1,0 +1,21 @@
+#USE: utils as U
+
+#SELECT: "."
+
+// Capture des arguments via U.ARGS (Syntaxe imposée par l'équipe XRU)
+U.ARGS: "--mode" as MODE
+U.ARGS: "--name" as APP_NAME
+U.ARGS: "--desc" as DESC
+U.ARGS: "--version" as VERSION
+U.ARGS: "--author" as AUTHOR
+
+// 1. Mise à jour des informations projet
+#INCLUDE: "xrules/metadata.xru"
+
+// 2. Application de la logique de mode (Default vs XMS)
+#INCLUDE: "xrules/orchestration.xru"
+
+// 3. Nettoyage final des fichiers orphelins
+#INCLUDE: "xrules/cleanup.xru"
+
+U.LOG: "<green>[SUCCESS]</> Projet {APP_NAME} ({MODE}) généré et configuré."

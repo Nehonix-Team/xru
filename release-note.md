@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3] - 2026-05-05
+feat(extension): improve VSCode syntax highlighting
+Enhanced the VSCode extension grammar to provide better colorization for `#ARG` directives and variable assignments.
+
+### Added
+- **Syntax Highlighting**: Specific rules for `#ARG` variable names and the `as` keyword.
+
 ## [0.2.2] - 2026-05-05
 feat(orchestrator): fix unified orchestration and regex patching
 This release addresses critical issues in the argument handling and regex-based file patching systems.

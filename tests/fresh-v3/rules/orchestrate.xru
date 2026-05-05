@@ -1,0 +1,161 @@
+// --------------------------------------------------------------------------
+// XyPriss Unified Orchestrator (XMS & Default)
+// --------------------------------------------------------------------------
+
+// Declare an argument that can be passed via terminal using --arg MODE=val
+#ARG: MODE as "default" 
+#ARG: NAME as "xypriss-app"
+#ARG: VERSION as "1.0.0"
+#ARG: DESCRIPTION as "A high-performance XyPriss server."
+#ARG: AUTHOR as "XyPriss Developer"
+
+// Import built-in modules for logging and filesystem operations
+#USE: utils as U
+#USE: fs as FS
+
+// Log the start of the orcheclstration process with colorful output
+U.LOG: "<cyan>[INFO]</> Orchestrating <bold>{NAME}</> (v{VERSION}) in <yellow>{MODE}</> mode..."
+
+// 0. METADATA REPLACEMENT
+// Update project metadata in package.json and TARGET_README.md
+#BEGIN: "package.json"
+    ~~ /\{\{NAME\}\}/ -> {NAME}
+    ~~ /\{\{VERSION\}\}/ -> {VERSION}
+    ~~ /\{\{DESCRIPTION\}\}/ -> {DESCRIPTION}
+    ~~ /\{\{AUTHOR\}\}/ -> {AUTHOR}
+#END
+
+#BEGIN: "README.md"
+    ~~ /\{\{SERVER_NAME\}\}/ -> {NAME}
+    ~~ /\{\{DESCRIPTION\}\}/ -> {DESCRIPTION}
+    ~~ /\{\{AUTHOR\}\}/ -> {AUTHOR}
+#END
+
+// 1. DATA DEFINITION
+// Define a JSON object containing configurations for both modes
+#JSONVAR: DATA
+{
+  "xms": {
+    "auth": { "route": "/auth", "desc": "Auth Server" },
+    "main": { "route": "/api",  "desc": "Main Server", "extra": "security: { honeypotTarpit: true }," }
+  },
+  "default": {
+    "main": { "route": "/api",  "desc": "Default Server" }
+  }
+}
+#END
+
+// Extract the specific configuration based on the selected MODE
+let SERVERS = {DATA.{MODE}}
+
+// 2. UNIFIED CLEANUP
+// Open the .env file to perform targeted deletions
+#BEGIN: ".env"
+    // Use conditional logic to decide which environment variables to remove
+    #IF: {MODE} == "default"
+        // Remove XMS-specific variables using Regex injection
+        @INJECT: /(?m)^(AUTH_SERVER_PORT|MAIN_SERVER_PORT|AUTH_DOMAIN|MAIN_DOMAIN)=.*$\n?/
+        @END
+    #ELSE
+        // Remove standard PORT variable to avoid conflicts in XMS mode
+        @INJECT: /(?m)^PORT=.*$\n?/
+        @END
+    #END
+#END
+
+// Open the JSONC config to remove unused properties in Default mode
+#BEGIN: "xypriss.config.jsonc"
+    #IF: {MODE} == "default"
+        // Remove server port definitions and the entire xms_nodes object
+        @INJECT: /(?m)^[ \t]*"(auth|main)ServerPort":.*$\n?/
+        @END
+        @INJECT: /(?s)[ \t]*"xms_nodes":\s*\{.*?"main":\s*\{[^\}]*\},\s*\},\r?\n?/
+        @END
+    #END
+#END
+
+// Switch the working directory to "src" for subsequent file operations
+#SELECT: "./src/"
+
+// 3. CODE INJECTIONS
+// Inject code into the TypeScript configuration file using markers
+#BEGIN: "configs/xypriss.config.ts"
+    @TSINJECT: SERVERS_IMPORT
+        // Only inject server imports if we are in XMS mode
+        <#IF: {MODE} == "xms">
+        <#FOR: S in {SERVERS}>
+        import { {S}Server } from "../servers/{S}.server";
+        <#END>
+        <#END>
+    @END
+    
+    @TSINJECT: SERVER_CONFIG
+        // Define either a multi-server array or a single standard server config
+        <#IF: {MODE} == "xms">
+        multiServer: {
+            enabled: true,
+            servers: [
+                <#FOR: S in {SERVERS}>
+                {S}Server,
+                <#END>
+            ],
+        },
+        <#ELSE>
+        server: { autoKillConflict: true, port: 8080, serviceName: "default" },
+        <#END>
+    @END
+#END
+
+// Inject routing logic into the main router
+#BEGIN: "router/index.ts"
+    @TSINJECT: ROUTERS_IMPORT
+        // Loop through all defined servers to import their routers
+        <#FOR: S in {SERVERS}>
+        import { {S}Router } from "../routes/{S}.route";
+        <#END>
+    @END
+    @TSINJECT: ROUTERS_USE
+        // Register each router with its specific route prefix
+        <#FOR: S in {SERVERS}>
+        router.use("{SERVERS.{S}.route}", {S}Router);
+        <#END>
+    @END
+#END
+
+// 4. FILE GENERATION
+// Loop through the SERVERS object to generate required files
+#FOR: S in {SERVERS}
+    // Only generate server-specific configs and wrappers in XMS mode
+    #IF: {MODE} == "xms"
+        #CREATE: "configs/xms.config.ts"
+            export const xmsc: any = __sys__.vars.get("xms_nodes");
+        #END
+        #CREATE: "servers/{S}.server.ts"
+            import { MultiServerConfig } from "xypriss";
+            import { xmsc } from "../configs/xms.config";
+            export const {S}Server: MultiServerConfig = {
+                id: xmsc.{S}.id,
+                port: xmsc.{S}.port,
+                routePrefix: "{SERVERS.{S}.route}",
+                <#IF: {SERVERS.{S}.extra}>
+                {SERVERS.{S}.extra}
+                <#END>
+            };
+        #END
+    #END
+
+    // Generate route files for every server in both modes
+    #CREATE: "routes/{S}.route.ts"
+        import { Router } from "xypriss";
+        export const {S}Router = Router();
+        {S}Router.get("/", (ctx) => { 
+            ctx.body = { 
+                message: "Welcome {S}", 
+                mode: "{MODE}" 
+            }; 
+        });
+    #END
+#END
+
+// Final log message indicating success
+U.LOG: "<green>[SUCCESS]</> {MODE} Orchestration complete."

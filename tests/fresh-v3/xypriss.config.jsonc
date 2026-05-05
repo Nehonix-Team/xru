@@ -1,0 +1,35 @@
+// This file is a configuration file for XyPriss.
+// It is automatically loaded by the XyPriss when booting up your server.
+// You can configure it like you want according to the docs.
+// For more information, check the documentation at:
+// https://github.com/Nehonix-Team/XyPriss/blob/master/docs/config/configuration.md
+
+{
+  "$vars": {
+    "__name__": "&(pkg).name",
+    "__description__": "&(pkg).description",
+    "__version__": "&(pkg).version",
+    "__author__": "&(pkg).author",
+    "__PORT__": "&(env).PORT",
+    "__alias__": "&(pkg).alias || app",
+    "authServerPort": "&(env).AUTH_SERVER_PORT",
+    "mainServerPort": "&(env).MAIN_SERVER_PORT",
+    "manifest": {
+      "name": "&(this).$vars.__name__",
+      "description": "&(this).$vars.__description__",
+      "version": "&(this).$vars.__version__",
+      "author": "&(this).$vars.__author__",
+    },
+    "xms_nodes": {
+      "auth": {
+        "id": "&(env).AUTH_DOMAIN",
+        "port": "&(this).$vars.authServerPort",
+      },
+      "main": {
+        "id": "&(env).MAIN_DOMAIN",
+        "port": "&(this).$vars.mainServerPort",
+      },
+    },
+  "xems_secret": "a_very_secret_32_byte_key_placeholder",
+},
+}

@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.2.1] - 2026-05-05
+## [0.2.2] - 2026-05-05
 refactor(library): transform XRU into a reusable Go library
 Refactored the core orchestration engine into a public package (`pkg/engine`), allowing other Go tools (like XFPM) to integrate XRU logic directly.
 

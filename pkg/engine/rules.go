@@ -36,6 +36,9 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 		switch rule.Type {
 		case ast.RuleTypeVar:
 			executeActions(&rule, content, scope, fileExt, cb, rulePath, r)
+			if err := checkSyntaxError(rule.Target, rule.Line, r); err != nil {
+				return err
+			}
 			// Puis la logique spécifique
 				skipElse = false
 				trimmed := strings.TrimSpace(rule.Content)
@@ -233,6 +236,9 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 				}
 			}
 
+			if err := checkSyntaxError(dest, rule.Line, r); err != nil {
+				return err
+			}
 			// On interpole la valeur finale (au cas où la valeur par défaut contient des {VAR})
 			val = util.Interpolate(val, scope)
 			scope.Set(dest, ast.Literal(val), rule.Line)

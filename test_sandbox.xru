@@ -1,0 +1,33 @@
+#ARG: TEST_ARG or "fallback_value"
+#ARG: ANOTHER as "MY_VAR" or "default2"
+#ARG: ALIAS_TEST as ALIAS
+
+// Should set ALIAS = "someval"
+#IF: {ALIAS} == "someval"
+#LOG: "Alias assignment works! ALIAS is {ALIAS}"
+#END
+
+#LOG: "TEST_ARG is {TEST_ARG}"
+#LOG: "MY_VAR is {MY_VAR}"
+
+#CREATE: "test.json"
+{
+  "scripts": {
+    "test": "echo 'test'"
+  },
+  "dependencies": {
+    "fileonix": "1.0.0"
+  }
+}
+#END
+
+#BEGIN: "test.json"
+    SET "scripts.inspect" "xfpm run scripts/inspect.ts"
+    REMOVE "dependencies.fileonix"
+#END
+
+#CREATE: "test_interp.txt"
+// This comment should NOT be stripped
+Value is {TEST_ARG}
+Escaped is \{TEST_ARG\}
+#END

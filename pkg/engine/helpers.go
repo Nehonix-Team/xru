@@ -23,6 +23,8 @@ func checkSyntaxError(val string, line int, r *Runner) error {
 		msg = "missing terminating '}' for variable interpolation"
 	case "[SYNTAX_ERROR: MISSING_QUOTES]":
 		msg = "string literals must be enclosed in quotes (e.g. \"text\")"
+	case "[SYNTAX_ERROR: INVALID_IDENTIFIER]":
+		msg = "invalid variable identifier (must follow JS/TS naming rules: no spaces, dashes, etc)"
 	}
 	return fmt.Errorf("%s:%d: %s", r.CurrentFile, line, msg)
 }

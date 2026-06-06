@@ -87,7 +87,9 @@ func parseNew(src string) (*ast.RuleFile, error) {
 		lineNum := i + 1
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") {
-			continue
+			if pending == nil && !(len(stack) > 0 && (stack[len(stack)-1].Type == ast.RuleTypeCreate || stack[len(stack)-1].Type == ast.RuleTypeVarBlock)) {
+				continue
+			}
 		}
 
 		if strings.HasPrefix(trimmed, "#") {

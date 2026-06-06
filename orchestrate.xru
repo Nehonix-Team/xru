@@ -3,13 +3,13 @@
 // --------------------------------------------------------------------------
 
 // 1. ARGUMENTS & MODULES
-#ARG: MODE as "default"
-#ARG: NAME as "my-xypriss-app"
-#ARG: VERSION as "1.0.0"
-#ARG: DESCRIPTION as "A high-performance XyPriss server."
-#ARG: AUTHOR as "Nehonix-Team"
-#ARG: PORT as "8459"
-#ARG: NOTFOUND as ""
+#ARG: MODE or "default"
+#ARG: NAME or "my-xypriss-app"
+#ARG: VERSION or "1.0.0"
+#ARG: DESCRIPTION or "A high-performance XyPriss server."
+#ARG: AUTHOR or "Nehonix-Team"
+#ARG: PORT or "8459"
+#ARG: NOTFOUND or ""
 
 #USE: utils as U
 #USE: fs as FS
@@ -35,12 +35,9 @@ U.LOG: "<cyan>[INFO]</> Orchestrating <blue>{NAME}</> (v{VERSION}) in <yellow>{M
     ~~ /\{\{AUTHOR\}\}/ -> {AUTHOR}
     
     #IF: {IS_PLUGIN} == ""
-        @INJECT: /"dependencies":\s*\{/
-        "dependencies": {
-            "xypriss": "latest",
-        @END
-        @INJECT: /(?s),\s*"peerDependencies":\s*\{\s*"xypriss":\s*"[^"]+"\s*\}/
-        @END
+        // Configuration Serveur
+        SET "dependencies.xypriss" "latest"
+        REMOVE "peerDependencies.xypriss"
     #ELSE
         @INJECT: /(?s)"scripts":\s*\{.*?\}/
         "scripts": {
@@ -62,7 +59,6 @@ U.LOG: "<cyan>[INFO]</> Orchestrating <blue>{NAME}</> (v{VERSION}) in <yellow>{M
         @END
     #END
 #END
-
 
 #BEGIN: "README.md"
     ~~ /\{\{SERVER_NAME\}\}/ -> {NAME}
@@ -89,7 +85,7 @@ U.LOG: "<cyan>[INFO]</> Orchestrating <blue>{NAME}</> (v{VERSION}) in <yellow>{M
 // Extract the specific configuration based on the selected MODE
 let SERVERS = {DATA.{MODE}}
 
-// 4. MODULAR ORCHESTRATION
+// 5. MODULAR ORCHESTRATION
 // Include the specific rules based on the selected mode
 #IF: {MODE} == "xms"
     #INCLUDE: "xms.xru"
@@ -99,7 +95,7 @@ let SERVERS = {DATA.{MODE}}
 
 #INCLUDE: "notfound.xru"
 
-// 5. FINALIZATION & CLEANUP
+// 6. FINALIZATION & CLEANUP
 U.LOG: "<green>[SUCCESS]</> {MODE} Orchestration complete."
 U.LOG: "<yellow>[CLEANUP]</> Removing rules directory and default route boilerplate..."
 

@@ -101,7 +101,7 @@ Applies subsequent actions to all files within the current sandbox recursively.
 ## 2. Control Flow
 XRU supports native conditional logic that can be nested within structural blocks.
 
-### `#IF: <Condition>` / `#ELSE IF:` / `#ELSE:` / `#END`
+### `#IF: <Condition>` / `#ELSE IF:` / `#ELSE` / `#END`
 Defines a conditional execution block.
 - **Conditions**: Barewords are supported (no quotes needed).
 - **Functions**: `exists(path)` checks for file existence within the current sandbox.
@@ -116,7 +116,7 @@ Defines a conditional execution block.
 #ELSE IF: exists("config.old.json")
     U.LOG: "Migrating old config..."
     FS.MOVE: "config.old.json" -> "config.json"
-#ELSE:
+#ELSE
     U.LOG: "Config found!"
 #END
 ```

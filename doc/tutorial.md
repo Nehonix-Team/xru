@@ -81,7 +81,7 @@ export const config = {
             export const analyticsId = "UA-XXXXXXXXX-1";
         @END
     #END
-#ELSE:
+#ELSE
     #BEGIN: "package.json"
         SET version "1.0.0-dev"
         PUSH keywords "draft"
@@ -95,7 +95,7 @@ export const config = {
     #BEGIN: "README.md"
         ~~ "PROJECT_NAME_PLACEHOLDER" "{PROJECT_NAME}"
     #END
-#ELSE:
+#ELSE
     #CREATE: "README.md"
         # {PROJECT_NAME}
         Environment: {ENV}

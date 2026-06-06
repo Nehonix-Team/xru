@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "test": "echo 'test'"
+  },
+  "dependencies": {
+    "fileonix": "1.0.0"
+  }
+}

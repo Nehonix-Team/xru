@@ -2,6 +2,7 @@ package parser
 
 import (
 	"strings"
+	"regexp"
 	"unicode"
 
 	"github.com/Nehonix-Team/xru/internal/engine/ast"
@@ -76,6 +77,16 @@ func parseTarget(line string, strictQuotes bool) (string, string, string, bool) 
 			if !isNumber && strictQuotes {
 				return "[SYNTAX_ERROR: MISSING_QUOTES]", "", "", false
 			}
+			if !isNumber && !strictQuotes && !IsValidIdentifier(target) {
+				return "[SYNTAX_ERROR: INVALID_IDENTIFIER]", "", "", false
+			}
+		}
+	}
+	if as != "" {
+		isAsQuoted := (len(as) >= 2) && ((as[0] == '"' && as[len(as)-1] == '"') ||
+			(as[0] == '\'' && as[len(as)-1] == '\''))
+		if !isAsQuoted && !IsValidIdentifier(as) {
+			return target, "[SYNTAX_ERROR: INVALID_IDENTIFIER]", or, raw
 		}
 	}
 	return target, as, or, raw
@@ -91,6 +102,11 @@ func parseVar(line string) (string, string, bool) {
 		return "", "", false
 	}
 	name := strings.TrimSpace(line[4:idx])
+	
+	if !IsValidIdentifier(name) {
+		return name, "[SYNTAX_ERROR: INVALID_IDENTIFIER]", true
+	}
+	
 	val := strings.TrimSpace(line[idx+1:])
 	
 	if strings.HasPrefix(val, "\"") || strings.HasPrefix(val, "'") {
@@ -170,4 +186,10 @@ func parseActionLine(line string) (ast.PatchOp, string, string, bool) {
 		}
 	}
 	return "", "", "", false
+}
+
+var identRegex = regexp.MustCompile(`^[a-zA-Z_$][a-zA-Z0-9_$]*$`)
+
+func IsValidIdentifier(name string) bool {
+	return identRegex.MatchString(name)
 }

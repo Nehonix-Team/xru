@@ -26,6 +26,8 @@ func Interpolate(s string, provider VarProvider) string {
 		return strings.ReplaceAll(strings.ReplaceAll(s, "\\{", "{"), "\\}", "}")
 	}
 
+	s = strings.ReplaceAll(s, "\\{", "\x01")
+	s = strings.ReplaceAll(s, "\\}", "\x02")
 	resultLines := strings.Split(s, "\n")
 	for pass := 0; pass < 10; pass++ {
 		interpolatedSomething := false
@@ -100,8 +102,8 @@ func Interpolate(s string, provider VarProvider) string {
 	}
 
 	final := strings.Join(resultLines, "\n")
-	final = strings.ReplaceAll(final, "\\{", "{")
-	final = strings.ReplaceAll(final, "\\}", "}")
+	final = strings.ReplaceAll(final, "\x01", "{")
+	final = strings.ReplaceAll(final, "\x02", "}")
 	return final
 }
 

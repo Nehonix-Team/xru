@@ -7,7 +7,7 @@ import (
 	"github.com/Nehonix-Team/xru/internal/engine/ast"
 )
 
-func parseTarget(line string, strictQuotes bool) (string, string, bool) {
+func parseTarget(line string, strictQuotes bool) (string, string, string, bool) {
 	line = strings.TrimSpace(line)
 	raw := false
 	if strings.HasSuffix(line, " --raw") {
@@ -16,7 +16,8 @@ func parseTarget(line string, strictQuotes bool) (string, string, bool) {
 	}
 	inQuote := false
 	var quoteChar rune
-	idx := -1
+	asIdx := -1
+	orIdx := -1
 	for i, r := range line {
 		if r == '"' || r == '\'' {
 			if !inQuote {
@@ -27,19 +28,37 @@ func parseTarget(line string, strictQuotes bool) (string, string, bool) {
 			}
 		}
 		if !inQuote && i <= len(line)-4 && line[i:i+4] == " as " {
-			idx = i
-			break
+			asIdx = i
+		}
+		if !inQuote && i <= len(line)-4 && line[i:i+4] == " or " {
+			orIdx = i
 		}
 	}
 	if inQuote {
-		return "[SYNTAX_ERROR: UNCLOSED_QUOTE]", "", false
+		return "[SYNTAX_ERROR: UNCLOSED_QUOTE]", "", "", false
 	}
 	target := line
 	as := ""
-	if idx != -1 {
-		target = strings.TrimSpace(line[:idx])
-		as = strings.TrimSpace(line[idx+4:])
+	or := ""
+	
+	if asIdx != -1 && orIdx != -1 {
+		if asIdx < orIdx {
+			target = strings.TrimSpace(line[:asIdx])
+			as = strings.TrimSpace(line[asIdx+4:orIdx])
+			or = strings.TrimSpace(line[orIdx+4:])
+		} else {
+			target = strings.TrimSpace(line[:orIdx])
+			or = strings.TrimSpace(line[orIdx+4:asIdx])
+			as = strings.TrimSpace(line[asIdx+4:])
+		}
+	} else if asIdx != -1 {
+		target = strings.TrimSpace(line[:asIdx])
+		as = strings.TrimSpace(line[asIdx+4:])
+	} else if orIdx != -1 {
+		target = strings.TrimSpace(line[:orIdx])
+		or = strings.TrimSpace(line[orIdx+4:])
 	}
+
 	if target != "" {
 		isQuoted := (len(target) >= 2) && ((target[0] == '"' && target[len(target)-1] == '"') ||
 			(target[0] == '\'' && target[len(target)-1] == '\''))
@@ -55,11 +74,11 @@ func parseTarget(line string, strictQuotes bool) (string, string, bool) {
 				}
 			}
 			if !isNumber && strictQuotes {
-				return "[SYNTAX_ERROR: MISSING_QUOTES]", "", false
+				return "[SYNTAX_ERROR: MISSING_QUOTES]", "", "", false
 			}
 		}
 	}
-	return target, as, raw
+	return target, as, or, raw
 }
 
 func parseVar(line string) (string, string, bool) {

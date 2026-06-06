@@ -66,6 +66,7 @@ type Rule struct {
 	Command  string // Original directive command (e.g. JSONVAR)
 	Target   string
 	As       string // Captured variable name
+	Or       string // Fallback/Default value
 	Content  string
 	Actions  []Action
 	SubRules []Rule

@@ -95,14 +95,14 @@ func parseNew(src string) (*ast.RuleFile, error) {
 			
 			if strings.HasPrefix(directiveLine, "#BEGIN:") {
 				commitPending()
-				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#BEGIN:"), true)
+				target, as, _, _ := parseTarget(strings.TrimPrefix(directiveLine, "#BEGIN:"), true)
 				rule := &ast.Rule{Type: ast.RuleTypeBegin, Target: target, As: as, Line: lineNum}
 				stack = append(stack, rule)
 				continue
 			}
 			if strings.HasPrefix(directiveLine, "#CREATE:") {
 				commitPending()
-				target, as, raw := parseTarget(strings.TrimPrefix(directiveLine, "#CREATE:"), true)
+				target, as, _, raw := parseTarget(strings.TrimPrefix(directiveLine, "#CREATE:"), true)
 				rule := &ast.Rule{Type: ast.RuleTypeCreate, Target: target, As: as, Raw: raw, Line: lineNum}
 				stack = append(stack, rule)
 				continue
@@ -153,7 +153,7 @@ func parseNew(src string) (*ast.RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#SELECT:") {
 				commitPending()
-				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#SELECT:"), true)
+				target, as, _, _ := parseTarget(strings.TrimPrefix(directiveLine, "#SELECT:"), true)
 				rule := ast.Rule{Type: ast.RuleTypeSelect, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
@@ -175,7 +175,7 @@ func parseNew(src string) (*ast.RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#USE:") {
 				commitPending()
-				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#USE:"), false)
+				target, as, _, _ := parseTarget(strings.TrimPrefix(directiveLine, "#USE:"), false)
 				rule := ast.Rule{Type: ast.RuleTypeUse, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
@@ -186,8 +186,8 @@ func parseNew(src string) (*ast.RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#ARG:") {
 				commitPending()
-				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#ARG:"), false)
-				rule := ast.Rule{Type: ast.RuleTypeArg, Target: target, As: as, Line: lineNum}
+				target, as, orVal, _ := parseTarget(strings.TrimPrefix(directiveLine, "#ARG:"), false)
+				rule := ast.Rule{Type: ast.RuleTypeArg, Target: target, As: as, Or: orVal, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
 				} else {
@@ -216,7 +216,7 @@ func parseNew(src string) (*ast.RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#INCLUDE:") {
 				commitPending()
-				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#INCLUDE:"), true)
+				target, as, _, _ := parseTarget(strings.TrimPrefix(directiveLine, "#INCLUDE:"), true)
 				rule := ast.Rule{Type: ast.RuleTypeInclude, Target: target, As: as, Line: lineNum}
 				if len(stack) > 0 {
 					stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, rule)
@@ -227,7 +227,7 @@ func parseNew(src string) (*ast.RuleFile, error) {
 			}
 			if strings.HasPrefix(directiveLine, "#CALL:") {
 				commitPending()
-				target, as, _ := parseTarget(strings.TrimPrefix(directiveLine, "#CALL:"), true)
+				target, as, _, _ := parseTarget(strings.TrimPrefix(directiveLine, "#CALL:"), true)
 				rule := &ast.Rule{Type: ast.RuleTypeCall, Target: target, As: as, Line: lineNum}
 				stack = append(stack, rule)
 				continue
@@ -282,7 +282,7 @@ func parseNew(src string) (*ast.RuleFile, error) {
 					callParts := strings.SplitN(call, ".", 2)
 					module := strings.TrimSpace(callParts[0])
 					method := strings.TrimSpace(callParts[1])
-					target, as, _ := parseTarget(rest, true)
+					target, as, _, _ := parseTarget(rest, true)
 					if len(stack) > 0 {
 						stack[len(stack)-1].SubRules = append(stack[len(stack)-1].SubRules, ast.Rule{Type: ast.RuleTypeModule, Target: module + "." + method, Content: target, As: as, Line: lineNum})
 					} else {

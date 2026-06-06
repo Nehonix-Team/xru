@@ -1,0 +1,111 @@
+// --------------------------------------------------------------------------
+// XyPriss Unified Orchestrator (XMS & Default)
+// --------------------------------------------------------------------------
+
+// 1. ARGUMENTS & MODULES
+#ARG: MODE as "default"
+#ARG: NAME as "my-xypriss-app"
+#ARG: VERSION as "1.0.0"
+#ARG: DESCRIPTION as "A high-performance XyPriss server."
+#ARG: AUTHOR as "Nehonix-Team"
+#ARG: PORT as "8459"
+#ARG: NOTFOUND as ""
+
+#USE: utils as U
+#USE: fs as FS
+#USE: sys as S
+
+U.ARGS: "--notfound" as NOTFOUND
+U.ARGS: "--plugin" as IS_PLUGIN
+
+#IF: {IS_PLUGIN} != ""
+    #IF: {IS_PLUGIN} != "true"
+        let NAME = "{IS_PLUGIN}"
+    #END
+#END
+
+U.LOG: "<cyan>[INFO]</> Orchestrating <blue>{NAME}</> (v{VERSION}) in <yellow>{MODE}</> mode..."
+
+// 2. METADATA REPLACEMENT
+// Update project metadata in package.json and README.md
+#BEGIN: "package.json"
+    ~~ /\{\{NAME\}\}/ -> {NAME}
+    ~~ /\{\{VERSION\}\}/ -> {VERSION}
+    ~~ /\{\{DESCRIPTION\}\}/ -> {DESCRIPTION}
+    ~~ /\{\{AUTHOR\}\}/ -> {AUTHOR}
+    
+    #IF: {IS_PLUGIN} == ""
+        @INJECT: /"dependencies":\s*\{/
+        "dependencies": {
+            "xypriss": "latest",
+        @END
+        @INJECT: /(?s),\s*"peerDependencies":\s*\{\s*"xypriss":\s*"[^"]+"\s*\}/
+        @END
+    #ELSE
+        @INJECT: /(?s)"scripts":\s*\{.*?\}/
+        "scripts": {
+            "build": "xfpm exec tsc",
+            "audit": "xfpm audit -w",
+            "inspect": "xfpm run scripts/inspect.ts",
+            "sign": "xfpm sign ./ --min-version 1.0.0 --fix",
+            "prepublish": "xfpm run build && xfpm run sign"
+        },
+        "xfpm": {
+            "permissions": []
+        },
+        "files": [
+            "dist",
+            "xypriss.plugin.xsig"
+        ]
+        @END
+        @INJECT: /(?s)"dependencies":\s*\{.*?\},\s*/
+        @END
+    #END
+#END
+
+
+#BEGIN: "README.md"
+    ~~ /\{\{SERVER_NAME\}\}/ -> {NAME}
+    ~~ /\{\{DESCRIPTION\}\}/ -> {DESCRIPTION}
+    ~~ /\{\{AUTHOR\}\}/ -> {AUTHOR}
+#END
+
+// 3. PLUGIN ORCHESTRATION
+#INCLUDE: "plugin.xru"
+
+// 4. DATA DEFINITION
+#JSONVAR: DATA
+{
+  "xms": {
+    "auth": { "route": "/auth", "desc": "Auth Server" },
+    "main": { "route": "/api",  "desc": "Main Server", "extra": "security: { honeypotTarpit: true }," }
+  },
+  "default": {
+    "main": { "route": "/api",  "desc": "Default Server" }
+  }
+}
+#END
+
+// Extract the specific configuration based on the selected MODE
+let SERVERS = {DATA.{MODE}}
+
+// 4. MODULAR ORCHESTRATION
+// Include the specific rules based on the selected mode
+#IF: {MODE} == "xms"
+    #INCLUDE: "xms.xru"
+#ELSE
+    #INCLUDE: "default.xru"
+#END
+
+#INCLUDE: "notfound.xru"
+
+// 5. FINALIZATION & CLEANUP
+U.LOG: "<green>[SUCCESS]</> {MODE} Orchestration complete."
+U.LOG: "<yellow>[CLEANUP]</> Removing rules directory and default route boilerplate..."
+
+// S.GET: "CWD" as CURRENT_CWD
+
+// FS.RM is cross-platform and handles both Windows and Unix-like systems
+FS.RM: "src/routes/api.route.ts"
+FS.RM: "rules"
+// U.LOG: "Final project path: <red>{CURRENT_CWD}</>"

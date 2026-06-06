@@ -205,25 +205,34 @@ func executeRules(rules []ast.Rule, initialTarget, currentBase, rulePath string,
 			val := getTerminalArg(rule.Target, r)
 			dest := rule.Target
 
+			// Si 'As' est défini
 			if rule.As != "" {
-				// Si l'argument est absent du terminal
-				if val == "" {
-					// Si rule.As est entre guillemets, c'est une valeur par défaut
-					if (strings.HasPrefix(rule.As, "\"") && strings.HasSuffix(rule.As, "\"")) ||
-						(strings.HasPrefix(rule.As, "'") && strings.HasSuffix(rule.As, "'")) {
+				// Legacy support: Si As est une chaîne entre guillemets et que Or est vide, on l'utilise comme valeur par défaut
+				isQuotedAs := (strings.HasPrefix(rule.As, "\"") && strings.HasSuffix(rule.As, "\"")) || 
+							  (strings.HasPrefix(rule.As, "'") && strings.HasSuffix(rule.As, "'"))
+				
+				if rule.Or == "" && isQuotedAs {
+					if val == "" {
 						val = rule.As[1 : len(rule.As)-1]
-					} else {
-						// Sinon c'est un alias (on change le nom de destination)
-						dest = rule.As
 					}
 				} else {
-					// Si l'argument est présent, et que rule.As n'est pas une valeur par défaut, c'est un alias
-					if !((strings.HasPrefix(rule.As, "\"") && strings.HasSuffix(rule.As, "\"")) ||
-						(strings.HasPrefix(rule.As, "'") && strings.HasSuffix(rule.As, "'"))) {
-						dest = rule.As
+					// Sinon, c'est un vrai alias/assignation
+					dest = rule.As
+					if isQuotedAs {
+						dest = dest[1 : len(dest)-1]
 					}
 				}
 			}
+
+			// Si 'Or' est défini et que l'argument est absent
+			if val == "" && rule.Or != "" {
+				val = rule.Or
+				if (strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"")) ||
+					(strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'")) {
+					val = val[1 : len(val)-1]
+				}
+			}
+
 			// On interpole la valeur finale (au cas où la valeur par défaut contient des {VAR})
 			val = util.Interpolate(val, scope)
 			scope.Set(dest, ast.Literal(val), rule.Line)

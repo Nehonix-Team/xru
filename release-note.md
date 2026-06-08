@@ -2,14 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.2.7] - 2026-06-8
-refactor(engine): enable case-insensitive terminal argument matching
-Update `getTerminalArg` to support case-insensitive flag matching and 
-ensure that arguments provided with the `--` prefix are correctly 
-identified regardless of casing. This improves robustness when 
-parsing terminal arguments.
-
-## [0.2.8] - 2026-06-8
+## [0.2.9] - 2026-06-8
 
 feat(engine): implement compact orchestration and hardened execution
 Added support for native #JSONVAR blocks and object iteration (#FOR). The engine is now strict, halting on undefined or unused variables.
@@ -20,6 +13,13 @@ Strict Execution: Fatal errors for undefined/unused variables.
 Dot Notation: Support for {OBJ.prop} and recursive interpolation.
 Typed Blocks: Added #TSVAR, #JSVAR with automatic dedenting.
 Smart FS: FS.READ_JSON with intelligent path resolution.
+
+## [0.2.7] - 2026-06-8
+refactor(engine): enable case-insensitive terminal argument matching
+Update `getTerminalArg` to support case-insensitive flag matching and 
+ensure that arguments provided with the `--` prefix are correctly 
+identified regardless of casing. This improves robustness when 
+parsing terminal arguments.
 
 ## [0.2.5] - 2026-05-05
 feat(module): improve S.EXEC output capture

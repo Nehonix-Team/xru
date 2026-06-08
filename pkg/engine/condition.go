@@ -11,10 +11,10 @@ import (
 // evalCondition évalue une condition interpolée et retourne true/false.
 func evalCondition(cond string, scope *Scope, cb string, r *Runner) bool {
 	cond = util.Interpolate(cond, scope)
-	cond = strings.Trim(cond, "\"' ")
+	cond = strings.TrimSpace(cond)
 
 	negate := false
-	if strings.HasPrefix(cond, "!") {
+	if strings.HasPrefix(cond, "!") && !strings.HasPrefix(cond, "!=") {
 		negate = true
 		cond = strings.TrimSpace(cond[1:])
 	}

@@ -16,9 +16,12 @@ func getTerminalArg(key string, r *Runner) string {
 		return ""
 	}
 
+	keyLower := strings.ToLower(key)
 	for i := 0; i < len(r.TerminalArgs); i++ {
 		arg := r.TerminalArgs[i]
-		if arg == key {
+		argLower := strings.ToLower(arg)
+		
+		if arg == key || arg == "--"+key || argLower == "--"+keyLower {
 			if i+1 < len(r.TerminalArgs) && !strings.HasPrefix(r.TerminalArgs[i+1], "-") {
 				return r.TerminalArgs[i+1]
 			}
@@ -26,6 +29,13 @@ func getTerminalArg(key string, r *Runner) string {
 		}
 		if strings.HasPrefix(arg, key+"=") {
 			return strings.TrimPrefix(arg, key+"=")
+		}
+		if strings.HasPrefix(arg, "--"+key+"=") {
+			return strings.TrimPrefix(arg, "--"+key+"=")
+		}
+		if strings.HasPrefix(argLower, "--"+keyLower+"=") {
+			// Extract from the original case to preserve value case
+			return arg[len("--"+keyLower+"="):]
 		}
 	}
 	return ""

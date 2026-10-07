@@ -181,12 +181,40 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 }
 
 func handlePack(args []string, verbose bool) {
-	output := "project.xpack"
+	filename := "project.xpack"
 	if len(args) > 0 {
-		output = args[0]
+		filename = args[0]
 	}
+
+	// Assure que l'extension est bien .xpack si non précisée
+	if !strings.HasSuffix(filename, ".xpack") && !strings.Contains(filename, ".") {
+		filename += ".xpack"
+	}
+
 	rootDir, _ := os.Getwd()
-	pkg := packager.New(rootDir, ".xruignore")
+	outDir := filepath.Join(rootDir, "out")
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		fmt.Printf("\033[31m[PACK ERROR]\033[0m Failed to create 'out' directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Si l'utilisateur fournit déjà un chemin, on respecte, sinon on place dans out/
+	var outputPath string
+	if filepath.IsAbs(filename) || strings.Contains(filename, string(filepath.Separator)) {
+		outputPath = filename
+	} else {
+		outputPath = filepath.Join(outDir, filename)
+	}
+
+	// Chercher .xruignore en priorité, sinon fallback vers build.ignore
+	ignoreFile := ".xruignore"
+	if _, err := os.Stat(filepath.Join(rootDir, ignoreFile)); os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(rootDir, "build.ignore")); err == nil {
+			ignoreFile = "build.ignore"
+		}
+	}
+
+	pkg := packager.New(rootDir, ignoreFile)
 	pkg.Verbose = verbose
 
 	entryDir := "src"
@@ -194,12 +222,13 @@ func handlePack(args []string, verbose bool) {
 		entryDir = "."
 	}
 
-	fmt.Printf("\033[36m[PACK]\033[0m Packaging project into '\033[1m%s\033[0m'...\n", output)
-	if err := pkg.Pack(output, entryDir); err != nil {
+	relOutput, _ := filepath.Rel(rootDir, outputPath)
+	fmt.Printf("\033[36m[PACK]\033[0m Packaging project into '\033[1m%s\033[0m' (using %s)...\n", relOutput, ignoreFile)
+	if err := pkg.Pack(outputPath, entryDir); err != nil {
 		fmt.Printf("\033[31m[PACK ERROR]\033[0m %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("\033[32m[SUCCESS]\033[0m Successfully built package %s\n", output)
+	fmt.Printf("\033[32m[SUCCESS]\033[0m Successfully built package %s\n", relOutput)
 }
 
 func handleUnpack(args []string, verbose bool) {

@@ -190,7 +190,7 @@ func (p *Packager) loadIgnoredPatterns() []string {
 	var list []string
 	content, err := os.ReadFile(filepath.Join(p.rootDir, p.ignoreFile))
 	if err != nil {
-		return []string{"node_modules", ".git", "dist", "*.zip", "*.xpack"}
+		return []string{} // Aucun fallback hardcodé : l'utilisateur pilote tout via son fichier ignore
 	}
 	lines := strings.Split(string(content), "\n")
 	for _, l := range lines {

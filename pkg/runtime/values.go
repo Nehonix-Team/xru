@@ -77,3 +77,12 @@ func (u *UnitInstance) String() string  { return fmt.Sprintf("@%s()", u.UnitName
 
 type NativeMethod func(args []Value) (Value, error)
 type NativeDirective func(key Value, val Value) error
+
+// FunctionValue represents a callable function or file operation
+type FunctionValue struct {
+	Name string
+	Fn   NativeMethod
+}
+
+func (f FunctionValue) Type() ValueType { return "function" }
+func (f FunctionValue) String() string  { return fmt.Sprintf("<func %s>", f.Name) }

@@ -80,6 +80,7 @@ func (d *Dispatcher) executeDescriptor(dir string, descriptorPath string) error 
 
 	// Création du scope local hérité du scope parent
 	localEnv := runtime.NewEnvironment(d.parentEnv)
+	localEnv.SetCurrentDir(dir)
 
 	// Injection des primitives locales confinées : Keep, Drop, UseVariant
 	d.injectLocalPrimitives(dir, localEnv)
@@ -209,9 +210,9 @@ func (d *Dispatcher) injectLocalPrimitives(dir string, env *runtime.Environment)
 	}
 	env.Set("Local", scopeUnit, true)
 	// Raccourcis directs
-	env.Set("Keep", scopeUnit, true)
-	env.Set("Drop", scopeUnit, true)
-	env.Set("UseVariant", scopeUnit, true)
+	env.Set("Keep", runtime.FunctionValue{Name: "Keep", Fn: keepMethod}, true)
+	env.Set("Drop", runtime.FunctionValue{Name: "Drop", Fn: dropMethod}, true)
+	env.Set("UseVariant", runtime.FunctionValue{Name: "UseVariant", Fn: useVariantMethod}, true)
 }
 
 // validateSandbox garantit qu'aucune opération ne remonte au-delà du dossier local

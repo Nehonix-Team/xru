@@ -143,6 +143,12 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		c.checkIf(s)
 	case *ast.ExpressionStatement:
 		c.checkExpression(s.Expression)
+	case *ast.FileStatement:
+		for _, bodyStmt := range s.Body {
+			c.checkStatement(bodyStmt)
+		}
+	case *ast.DispatchTreeStatement:
+		// DispatchTree statement is valid
 	}
 }
 

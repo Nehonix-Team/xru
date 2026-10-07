@@ -93,6 +93,26 @@ func (e *Environment) Get(name string) (Value, bool) {
 	return nil, false
 }
 
+func (e *Environment) GetLocal(name string) (Value, bool) {
+	if val, ok := e.store[name]; ok {
+		return val, true
+	}
+	if e.parent != nil {
+		return e.parent.GetLocal(name)
+	}
+	return nil, false
+}
+
+func (e *Environment) GetGlobal(name string) (Value, bool) {
+	if val, ok := e.globals[name]; ok {
+		return val, true
+	}
+	if e.parent != nil {
+		return e.parent.GetGlobal(name)
+	}
+	return nil, false
+}
+
 type TreeDispatcherFunc func(dt *ast.DispatchTreeStatement, eval *Evaluator, env *Environment) error
 
 type Evaluator struct {
@@ -196,6 +216,13 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return ev.evalDispatchTree(n, env)
 	case *ast.CallExpression:
 		return ev.evalCall(n, env)
+	case *ast.GlobalCallExpression:
+		return ev.evalGlobalCall(n, env)
+	case *ast.GlobalAccessExpression:
+		if val, ok := env.GetGlobal(n.Name); ok {
+			return val, nil
+		}
+		return nil, fmt.Errorf("undefined global variable '%s'", n.Name)
 	case *ast.WithStatement:
 		return ev.evalWith(n, env)
 	case *ast.IfStatement:
@@ -281,8 +308,11 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		}
 		return method(args)
 	case *ast.Identifier:
-		val, ok := env.Get(c.Value)
+		val, ok := env.GetLocal(c.Value)
 		if !ok {
+			if _, isGlobal := env.GetGlobal(c.Value); isGlobal {
+				return nil, fmt.Errorf("cannot call global function '%s' as local; use '::%s(...)' or 'global::%s(...)'", c.Value, c.Value, c.Value)
+			}
 			return nil, fmt.Errorf("undefined function '%s'", c.Value)
 		}
 		var args []Value
@@ -302,6 +332,28 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		return nil, fmt.Errorf("'%s' is not callable", c.Value)
 	}
 	return NilValue{}, nil
+}
+
+func (ev *Evaluator) evalGlobalCall(call *ast.GlobalCallExpression, env *Environment) (Value, error) {
+	val, ok := env.GetGlobal(call.Function)
+	if !ok {
+		return nil, fmt.Errorf("undefined global function '%s'", call.Function)
+	}
+	var args []Value
+	for _, arg := range call.Arguments {
+		a, err := ev.Eval(arg, env)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, a)
+	}
+	if fnVal, ok := val.(FunctionValue); ok {
+		return fnVal.Fn(args)
+	}
+	if userFn, ok := val.(UserFunction); ok {
+		return ev.callUserFunction(userFn, args, env)
+	}
+	return nil, fmt.Errorf("global '%s' is not callable", call.Function)
 }
 
 func (ev *Evaluator) evalWith(with *ast.WithStatement, env *Environment) (Value, error) {

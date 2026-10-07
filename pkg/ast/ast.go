@@ -428,3 +428,31 @@ func (e *InfixExpression) Pos() lexer.Position { return e.Position }
 func (e *InfixExpression) String() string {
 	return fmt.Sprintf("(%s %s %s)", e.Left.String(), e.Operator, e.Right.String())
 }
+
+// GlobalCallExpression : ::Func(args...) ou global::Func(args...)
+type GlobalCallExpression struct {
+	Position  lexer.Position
+	Function  string
+	Arguments []Expression
+}
+
+func (e *GlobalCallExpression) expressionNode()      {}
+func (e *GlobalCallExpression) Pos() lexer.Position { return e.Position }
+func (e *GlobalCallExpression) String() string {
+	var args []string
+	for _, a := range e.Arguments {
+		args = append(args, a.String())
+	}
+	return fmt.Sprintf("::%s(%s)", e.Function, strings.Join(args, ", "))
+}
+
+// GlobalAccessExpression : ::Var ou global::Var
+type GlobalAccessExpression struct {
+	Position lexer.Position
+	Name     string
+}
+
+func (e *GlobalAccessExpression) expressionNode()      {}
+func (e *GlobalAccessExpression) Pos() lexer.Position { return e.Position }
+func (e *GlobalAccessExpression) String() string      { return fmt.Sprintf("::%s", e.Name) }
+

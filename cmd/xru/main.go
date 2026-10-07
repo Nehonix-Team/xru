@@ -131,16 +131,21 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 	}
 
 	// 4. Runtime & VM
+	ruleDir := filepath.Dir(ruleFile)
+	if absDir, err := filepath.Abs(ruleDir); err == nil {
+		ruleDir = absDir
+	}
+
 	eval := runtime.NewEvaluator()
 	eval.SetTreeDispatcher(func(dt *ast.DispatchTreeStatement, ev *runtime.Evaluator, treeEnv *runtime.Environment) error {
-		rootDir, _ := os.Getwd()
-		disp := dispatcher.New(rootDir, ev, treeEnv)
+		disp := dispatcher.New(ruleDir, ev, treeEnv)
 		if verbose {
 			fmt.Printf("\033[36m[DEBUG]\033[0m Dispatching tree in '%s' (pattern: '%s')...\n", dt.Path, dt.Pattern)
 		}
 		return disp.DispatchTree(dt.Path, dt.Pattern)
 	})
 	env := runtime.NewEnvironment(nil)
+	env.SetCurrentDir(ruleDir)
 
 	// Injection des arguments CLI (--name=val ou --plugin)
 	for _, arg := range cliArgs {

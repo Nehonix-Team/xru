@@ -169,4 +169,75 @@ func TestGlobalFunctionAndDispatchTreeBlock(t *testing.T) {
 	}
 }
 
+func TestGlobalFunctionInvocationSyntax(t *testing.T) {
+	code := `
+#GLOBAL FUNC Greet(name: string)
+    let msg = "Hello {name}"
+    #RETURN msg
+#END
+
+#FUNC LocalGreet(name: string)
+    let msg = "Hi {name}"
+    #RETURN msg
+#END
+
+let r1 = ::Greet("Alice")
+let r2 = global::Greet("Bob")
+let r3 = LocalGreet("Charlie")
+`
+	l := lexer.New("test_syntax.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	r1, _ := env.Get("r1")
+	if r1.String() != "Hello Alice" {
+		t.Errorf("Expected 'Hello Alice', got '%s'", r1.String())
+	}
+
+	r2, _ := env.Get("r2")
+	if r2.String() != "Hello Bob" {
+		t.Errorf("Expected 'Hello Bob', got '%s'", r2.String())
+	}
+
+	r3, _ := env.Get("r3")
+	if r3.String() != "Hi Charlie" {
+		t.Errorf("Expected 'Hi Charlie', got '%s'", r3.String())
+	}
+
+	// Test: calling global function as local must fail
+	failCode := `
+let fail = Greet("Eve")
+`
+	lFail := lexer.New("test_fail.xru", failCode)
+	pFail := parser.New(lFail)
+	progFail := pFail.ParseProgram()
+	_, errFail := ev.Eval(progFail, env)
+	if errFail == nil || !strings.Contains(errFail.Error(), "cannot call global function 'Greet' as local") {
+		t.Errorf("Expected error calling global function as local, got: %v", errFail)
+	}
+
+	// Test: calling local function as global must fail
+	failGlobalCode := `
+let fail2 = ::LocalGreet("Dave")
+`
+	lFail2 := lexer.New("test_fail2.xru", failGlobalCode)
+	pFail2 := parser.New(lFail2)
+	progFail2 := pFail2.ParseProgram()
+	_, errFail2 := ev.Eval(progFail2, env)
+	if errFail2 == nil || !strings.Contains(errFail2.Error(), "undefined global function 'LocalGreet'") {
+		t.Errorf("Expected error calling local function as global, got: %v", errFail2)
+	}
+}
+
+
 

@@ -149,6 +149,11 @@ func (l *Lexer) NextToken() Token {
 		l.readChar()
 		return Token{Type: COMMA, Literal: ",", Pos: startPos}
 	case ':':
+		if l.peekChar() == ':' {
+			l.readChar()
+			l.readChar()
+			return Token{Type: DOUBLE_COLON, Literal: "::", Pos: startPos}
+		}
 		l.readChar()
 		return Token{Type: COLON, Literal: ":", Pos: startPos}
 	case '.':

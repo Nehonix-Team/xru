@@ -70,9 +70,10 @@ const (
 	RBRACKET TokenType = "]"
 	LBRACE   TokenType = "{"
 	RBRACE   TokenType = "}"
-	COMMA    TokenType = ","
-	COLON    TokenType = ":"
-	DOT      TokenType = "."
+	COMMA        TokenType = ","
+	COLON        TokenType = ":"
+	DOUBLE_COLON TokenType = "::"
+	DOT          TokenType = "."
 )
 
 type Position struct {

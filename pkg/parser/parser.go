@@ -606,7 +606,51 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 		varName := p.curToken.Literal
 		p.expectPeek(lexer.RBRACE)
 		return &ast.Identifier{Position: pos, Value: varName}
+	case lexer.DOUBLE_COLON:
+		pos := p.curToken.Pos
+		if !p.expectPeek(lexer.IDENT) {
+			p.addError(pos, "expected identifier after '::'")
+			return nil
+		}
+		fnName := p.curToken.Literal
+		if p.peekTokenIs(lexer.LPAREN) {
+			p.nextToken()
+			args := p.parseExpressionList(lexer.RPAREN)
+			return &ast.GlobalCallExpression{
+				Position:  pos,
+				Function:  fnName,
+				Arguments: args,
+			}
+		}
+		return &ast.GlobalAccessExpression{
+			Position: pos,
+			Name:     fnName,
+		}
 	case lexer.IDENT:
+		// Support 'global::Func(...)' ou 'global::Var'
+		if strings.EqualFold(p.curToken.Literal, "global") && p.peekTokenIs(lexer.DOUBLE_COLON) {
+			pos := p.curToken.Pos
+			p.nextToken() // saute "global" (curToken devient '::')
+			if !p.expectPeek(lexer.IDENT) {
+				p.addError(pos, "expected identifier after 'global::'")
+				return nil
+			}
+			fnName := p.curToken.Literal
+			if p.peekTokenIs(lexer.LPAREN) {
+				p.nextToken()
+				args := p.parseExpressionList(lexer.RPAREN)
+				return &ast.GlobalCallExpression{
+					Position:  pos,
+					Function:  fnName,
+					Arguments: args,
+				}
+			}
+			return &ast.GlobalAccessExpression{
+				Position: pos,
+				Name:     fnName,
+			}
+		}
+
 		ident := &ast.Identifier{Position: p.curToken.Pos, Value: p.curToken.Literal}
 		// Appel direct : Func(...)
 		if p.peekTokenIs(lexer.LPAREN) {

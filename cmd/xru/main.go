@@ -206,14 +206,8 @@ func handlePack(args []string, verbose bool) {
 		outputPath = filepath.Join(outDir, filename)
 	}
 
-	// Chercher .xruignore en priorité, sinon fallback vers build.ignore
+	// Seul et unique fichier d'ignore officiel : .xruignore
 	ignoreFile := ".xruignore"
-	if _, err := os.Stat(filepath.Join(rootDir, ignoreFile)); os.IsNotExist(err) {
-		if _, err := os.Stat(filepath.Join(rootDir, "build.ignore")); err == nil {
-			ignoreFile = "build.ignore"
-		}
-	}
-
 	pkg := packager.New(rootDir, ignoreFile)
 	pkg.Verbose = verbose
 

@@ -300,6 +300,15 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		}
 		method, ok := unit.Methods[c.Property]
 		if !ok {
+			for mName, mFn := range unit.Methods {
+				if strings.EqualFold(mName, c.Property) {
+					method = mFn
+					ok = true
+					break
+				}
+			}
+		}
+		if !ok {
 			return nil, fmt.Errorf("method '%s' not found on unit '%s'", c.Property, unit.UnitName)
 		}
 		var args []Value

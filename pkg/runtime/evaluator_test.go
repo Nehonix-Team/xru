@@ -239,5 +239,49 @@ let fail2 = ::LocalGreet("Dave")
 	}
 }
 
+func TestCryptoUnitGetRandomBytes(t *testing.T) {
+	code := `
+#USE crypto as Crypto
+#USE utils as Utils
+
+let secret1 = Crypto.GetRandomBytes(32)
+let secret2 = Crypto.getRandomBytes(16)
+let secret3 = Utils.GetRandomBytes(32)
+`
+	l := lexer.New("test_crypto.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	s1, ok := env.Get("secret1")
+	if !ok || len(s1.String()) != 64 {
+		t.Errorf("Expected 64 hex characters for 32 bytes, got %v", s1)
+	}
+
+	s2, ok := env.Get("secret2")
+	if !ok || len(s2.String()) != 32 {
+		t.Errorf("Expected 32 hex characters for 16 bytes, got %v", s2)
+	}
+
+	s3, ok := env.Get("secret3")
+	if !ok || len(s3.String()) != 64 {
+		t.Errorf("Expected 64 hex characters from Utils, got %v", s3)
+	}
+
+	if s1.String() == s3.String() {
+		t.Errorf("Expected two different random byte sequences")
+	}
+}
+
+
 
 

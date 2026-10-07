@@ -265,10 +265,12 @@ func (p *Packager) Unpack(packFile string, destDir string) (*PackageManifest, er
 			continue
 		}
 
-		// Lors du déballage, si c'est un fichier de "core/", on le dépose à la racine du projet déployé
+		// Lors du déballage, si c'est un fichier de "core/" ou "rules/", on le dépose à son emplacement dans le projet
 		outRel := header.Name
 		if strings.HasPrefix(outRel, "core/") {
 			outRel = strings.TrimPrefix(outRel, "core/")
+		} else if strings.HasPrefix(outRel, "rules/") {
+			outRel = strings.TrimPrefix(outRel, "rules/")
 		}
 
 		targetPath := filepath.Join(destDir, outRel)

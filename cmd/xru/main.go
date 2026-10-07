@@ -147,10 +147,19 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 			} else if val == "false" {
 				env.Set(key, runtime.BoolValue{Val: false}, false)
 			} else {
+				if key == "MODE" && (val == "simple" || val == "minimal") {
+					val = "minimal"
+				}
 				env.Set(key, runtime.StringValue{Val: val}, false)
 			}
 		} else {
-			env.Set(key, runtime.BoolValue{Val: true}, false)
+			if key == "NO-XEMS" {
+				env.Set("XEMS", runtime.BoolValue{Val: false}, false)
+			} else if key == "NO-CDN" {
+				env.Set("CDN", runtime.BoolValue{Val: false}, false)
+			} else {
+				env.Set(key, runtime.BoolValue{Val: true}, false)
+			}
 		}
 	}
 

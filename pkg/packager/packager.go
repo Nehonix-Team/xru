@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ type PackageManifest struct {
 type Packager struct {
 	rootDir    string
 	ignoreFile string
+	Verbose    bool
 }
 
 func New(rootDir string, ignoreFile string) *Packager {
@@ -29,6 +31,7 @@ func New(rootDir string, ignoreFile string) *Packager {
 	return &Packager{
 		rootDir:    rootDir,
 		ignoreFile: ignoreFile,
+		Verbose:    false,
 	}
 }
 
@@ -83,10 +86,17 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 		}
 
 		if p.isIgnored(relPath, ignored) {
+			if p.Verbose {
+				fmt.Printf("  \033[90m[EXCLUDE]\033[0m %s\n", relPath)
+			}
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
+		}
+
+		if p.Verbose && !info.IsDir() {
+			fmt.Printf("  \033[32m[ADD]\033[0m %s (%d bytes)\n", relPath, info.Size())
 		}
 
 		header, err := tar.FileInfoHeader(info, info.Name())

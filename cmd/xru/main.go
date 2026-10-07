@@ -36,32 +36,53 @@ func main() {
 		os.Exit(0)
 	}
 
-	cmd := os.Args[1]
+	// Détection du mode verbeux global (-v ou --verbose)
+	verbose := false
+	var filteredArgs []string
+	for _, a := range os.Args[1:] {
+		if a == "-v" || a == "--verbose" {
+			verbose = true
+		} else {
+			filteredArgs = append(filteredArgs, a)
+		}
+	}
+
+	if len(filteredArgs) == 0 {
+		if verbose {
+			fmt.Printf("XRU v2.0.0 (%s)\n", utils.BinVersion)
+			os.Exit(0)
+		}
+		printUsage()
+		os.Exit(0)
+	}
+
+	cmd := filteredArgs[0]
+	cmdArgs := filteredArgs[1:]
 
 	switch cmd {
-	case "version", "-v", "--version":
+	case "version", "--version":
 		fmt.Printf("XRU v2.0.0 (%s)\n", utils.BinVersion)
 
 	case "help", "--help", "-h":
 		printUsage()
 
 	case "pack":
-		handlePack(os.Args[2:])
+		handlePack(cmdArgs, verbose)
 
 	case "unpack":
-		handleUnpack(os.Args[2:])
+		handleUnpack(cmdArgs, verbose)
 
 	case "run":
-		if len(os.Args) < 3 {
+		if len(cmdArgs) < 1 {
 			fmt.Println("Error: 'xru run' requires a rule file. (e.g., xru run main.xru)")
 			os.Exit(1)
 		}
-		handleRun(os.Args[2], os.Args[3:])
+		handleRun(cmdArgs[0], cmdArgs[1:], verbose)
 
 	default:
 		// Si l'utilisateur passe directement un fichier .xru (ex: ./xru main.xru)
 		if strings.HasSuffix(cmd, ".xru") {
-			handleRun(cmd, os.Args[2:])
+			handleRun(cmd, cmdArgs, verbose)
 		} else {
 			fmt.Printf("Unknown command '%s'. Run 'xru --help' for usage.\n", cmd)
 			os.Exit(1)
@@ -69,11 +90,15 @@ func main() {
 	}
 }
 
-func handleRun(ruleFile string, cliArgs []string) {
+func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 	content, err := os.ReadFile(ruleFile)
 	if err != nil {
 		fmt.Printf("\033[31m[ERROR]\033[0m Cannot read file '%s': %v\n", ruleFile, err)
 		os.Exit(1)
+	}
+
+	if verbose {
+		fmt.Printf("\033[36m[DEBUG]\033[0m Lexing & Parsing '%s'...\n", ruleFile)
 	}
 
 	// 1. Lexing
@@ -88,6 +113,10 @@ func handleRun(ruleFile string, cliArgs []string) {
 			fmt.Printf("  • %s\n", e)
 		}
 		os.Exit(1)
+	}
+
+	if verbose {
+		fmt.Printf("\033[36m[DEBUG]\033[0m Validating AST & Checking Types...\n")
 	}
 
 	// 3. Type Checking & Strict Validation
@@ -125,6 +154,10 @@ func handleRun(ruleFile string, cliArgs []string) {
 		}
 	}
 
+	if verbose {
+		fmt.Printf("\033[36m[DEBUG]\033[0m Executing rules on Runtime VM...\n")
+	}
+
 	// Exécution du programme
 	if _, err := eval.Eval(prog, env); err != nil {
 		fmt.Printf("\033[31m[RUNTIME ERROR]\033[0m %v\n", err)
@@ -136,6 +169,9 @@ func handleRun(ruleFile string, cliArgs []string) {
 		if dt, ok := stmt.(*ast.DispatchTreeStatement); ok {
 			rootDir, _ := os.Getwd()
 			disp := dispatcher.New(rootDir, eval, env)
+			if verbose {
+				fmt.Printf("\033[36m[DEBUG]\033[0m Dispatching tree in '%s' (pattern: '%s')...\n", dt.Path, dt.Pattern)
+			}
 			if err := disp.DispatchTree(dt.Path, dt.Pattern); err != nil {
 				fmt.Printf("\033[31m[DISPATCH ERROR]\033[0m %v\n", err)
 				os.Exit(1)
@@ -144,13 +180,14 @@ func handleRun(ruleFile string, cliArgs []string) {
 	}
 }
 
-func handlePack(args []string) {
+func handlePack(args []string, verbose bool) {
 	output := "project.xpack"
 	if len(args) > 0 {
 		output = args[0]
 	}
 	rootDir, _ := os.Getwd()
 	pkg := packager.New(rootDir, ".xruignore")
+	pkg.Verbose = verbose
 
 	entryDir := "src"
 	if _, err := os.Stat(filepath.Join(rootDir, "src")); os.IsNotExist(err) {
@@ -165,7 +202,7 @@ func handlePack(args []string) {
 	fmt.Printf("\033[32m[SUCCESS]\033[0m Successfully built package %s\n", output)
 }
 
-func handleUnpack(args []string) {
+func handleUnpack(args []string, verbose bool) {
 	if len(args) < 1 {
 		fmt.Println("Error: 'xru unpack' requires package path. (e.g., xru unpack project.xpack [dest])")
 		os.Exit(1)
@@ -178,6 +215,7 @@ func handleUnpack(args []string) {
 
 	rootDir, _ := os.Getwd()
 	pkg := packager.New(rootDir, ".xruignore")
+	pkg.Verbose = verbose
 	manifest, err := pkg.Unpack(packFile, dest)
 	if err != nil {
 		fmt.Printf("\033[31m[UNPACK ERROR]\033[0m %v\n", err)

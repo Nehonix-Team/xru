@@ -465,9 +465,15 @@ func (p *Parser) parseMatchStatement() *ast.MatchStatement {
 }
 
 func (p *Parser) parseDispatchTreeStatement() *ast.DispatchTreeStatement {
-	stmt := &ast.DispatchTreeStatement{Position: p.curToken.Pos}
+	stmt := &ast.DispatchTreeStatement{Position: p.curToken.Pos, Pattern: ".rules.xru"}
 	if p.expectPeek(lexer.STRING) {
 		stmt.Path = p.curToken.Literal
+	}
+	if p.peekTokenIs(lexer.COMMA) {
+		p.nextToken() // saute ','
+		if p.expectPeek(lexer.STRING) {
+			stmt.Pattern = p.curToken.Literal
+		}
 	}
 	return stmt
 }

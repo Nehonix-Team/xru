@@ -27,8 +27,11 @@ func New(rootDir string, eval *runtime.Evaluator, env *runtime.Environment) *Dis
 	}
 }
 
-// DispatchTree parcourt l'arborescence et exécute les descripteurs locaux trouvés
-func (d *Dispatcher) DispatchTree(targetPath string) error {
+// DispatchTree parcourt l'arborescence et exécute les descripteurs locaux correspondant au pattern
+func (d *Dispatcher) DispatchTree(targetPath string, pattern string) error {
+	if pattern == "" {
+		pattern = ".rules.xru"
+	}
 	fullTarget := filepath.Join(d.rootDir, targetPath)
 	if !filepath.IsAbs(targetPath) {
 		fullTarget = filepath.Clean(fullTarget)
@@ -42,9 +45,10 @@ func (d *Dispatcher) DispatchTree(targetPath string) error {
 			return nil
 		}
 
-		// Détection d'un descripteur local de dossier
+		// Détection d'un descripteur local correspondant au pattern
 		name := entry.Name()
-		if name == ".rules.xru" || name == "rules.xru" {
+		matched, _ := filepath.Match(pattern, name)
+		if matched || name == pattern {
 			dir := filepath.Dir(path)
 			if err := d.executeDescriptor(dir, path); err != nil {
 				return err

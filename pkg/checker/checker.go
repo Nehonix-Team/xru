@@ -98,9 +98,19 @@ func (c *Checker) initBuiltinUnits() {
 		Name: "Utils",
 		Kind: SymUnit,
 	}
+	sysUnit := &Symbol{
+		Name: "Sys",
+		Kind: SymUnit,
+	}
+	cmdUnit := &Symbol{
+		Name: "Cmd",
+		Kind: SymUnit,
+	}
 	c.scope.Define(netUnit)
 	c.scope.Define(fsUnit)
 	c.scope.Define(utilsUnit)
+	c.scope.Define(sysUnit)
+	c.scope.Define(cmdUnit)
 }
 
 func (c *Checker) Errors() []string {

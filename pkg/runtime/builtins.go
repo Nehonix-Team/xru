@@ -141,6 +141,27 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	}
 	units["Sys"] = sysUnit
 
+	// 5. #UNIT Cmd (exécution de commandes terminal : Cmd.Exec)
+	cmdUnit := &UnitInstance{
+		UnitName:   "Cmd",
+		Properties: make(map[string]Value),
+		Methods: map[string]NativeMethod{
+			"Exec": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return NilValue{}, fmt.Errorf("Cmd.Exec requires command string")
+				}
+				commandLine := args[0].String()
+				cmd := exec.Command("sh", "-c", commandLine)
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				err := cmd.Run()
+				return BoolValue{Val: err == nil}, err
+			},
+		},
+		Directives: make(map[string]NativeDirective),
+	}
+	units["Cmd"] = cmdUnit
+
 	return units
 }
 

@@ -260,11 +260,17 @@ func (s *MatchStatement) String() string      { return "#MATCH ... #END" }
 type DispatchTreeStatement struct {
 	Position lexer.Position
 	Path     string
+	Pattern  string // ex: ".rules.xru", "descriptor.xru", "*.xru"
 }
 
 func (s *DispatchTreeStatement) statementNode()      {}
 func (s *DispatchTreeStatement) Pos() lexer.Position { return s.Position }
-func (s *DispatchTreeStatement) String() string      { return fmt.Sprintf("#DISPATCH_TREE %s", s.Path) }
+func (s *DispatchTreeStatement) String() string {
+	if s.Pattern != "" {
+		return fmt.Sprintf("#DISPATCH_TREE %s, %s", s.Path, s.Pattern)
+	}
+	return fmt.Sprintf("#DISPATCH_TREE %s", s.Path)
+}
 
 type FileStatement struct {
 	Position lexer.Position

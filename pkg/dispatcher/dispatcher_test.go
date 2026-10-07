@@ -44,7 +44,7 @@ func TestLocalDescriptorSandboxAndKeep(t *testing.T) {
 	env.Set("PLUGIN", runtime.StringValue{Val: "false"}, false)
 
 	disp := dispatcher.New(tempDir, eval, env)
-	if err := disp.DispatchTree("src"); err != nil {
+	if err := disp.DispatchTree("src", ".rules.xru"); err != nil {
 		t.Fatalf("DispatchTree failed: %v", err)
 	}
 

@@ -211,10 +211,8 @@ func handlePack(args []string, verbose bool) {
 	pkg := packager.New(rootDir, ignoreFile)
 	pkg.Verbose = verbose
 
-	entryDir := "src"
-	if _, err := os.Stat(filepath.Join(rootDir, "src")); os.IsNotExist(err) {
-		entryDir = "."
-	}
+	// Empaqueter l'ensemble du projet racine en filtrant strictement selon .xruignore
+	entryDir := "."
 
 	relOutput, _ := filepath.Rel(rootDir, outputPath)
 	fmt.Printf("\033[36m[PACK]\033[0m Packaging project into '\033[1m%s\033[0m' (using %s)...\n", relOutput, ignoreFile)

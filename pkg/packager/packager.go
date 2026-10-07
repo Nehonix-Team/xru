@@ -85,6 +85,16 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 			return err
 		}
 
+		// Ne JAMAIS empaqueter le fichier d'output en cours d'écriture ni son dossier parent out/
+		absPath, _ := filepath.Abs(path)
+		absOut, _ := filepath.Abs(outputFile)
+		if absPath == absOut || strings.HasPrefix(relPath, "out/") || relPath == "out" {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
 		if p.isIgnored(relPath, ignored) {
 			if p.Verbose {
 				fmt.Printf("  \033[90m[EXCLUDE]\033[0m %s\n", relPath)
@@ -105,11 +115,18 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 		}
 		header.Name = filepath.ToSlash(relPath)
 
-		if err := tw.WriteHeader(header); err != nil {
-			return err
+		// Si c'est un lien symbolique ou un dossier, on ne fait pas de io.Copy de fichier régulier
+		realInfo, statErr := os.Stat(path)
+		if statErr == nil && realInfo.IsDir() {
+			header.Typeflag = tar.TypeDir
+			header.Name += "/"
+			return tw.WriteHeader(header)
 		}
 
-		if !info.IsDir() {
+		if info.Mode().IsRegular() {
+			if err := tw.WriteHeader(header); err != nil {
+				return err
+			}
 			file, err := os.Open(path)
 			if err != nil {
 				return err

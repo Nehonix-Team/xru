@@ -133,6 +133,10 @@ func (l *Lexer) NextToken() Token {
 			return Token{Type: NEQ, Literal: "!=", Pos: startPos}
 		}
 	case '<':
+		if l.peekChar() == '<' && l.peekChar2() == '<' {
+			str := l.readChevronHeredoc()
+			return Token{Type: STRING, Literal: str, Pos: startPos}
+		}
 		if l.peekChar() == '=' {
 			l.readChar()
 			l.readChar()
@@ -353,6 +357,32 @@ func (l *Lexer) readRawBacktickString() string {
 	}
 	if l.ch == '`' {
 		l.readChar() // saute le dernier `
+	}
+	return buf.String()
+}
+
+func (l *Lexer) readChevronHeredoc() string {
+	l.readChar() // saute 1er <
+	l.readChar() // saute 2ème <
+	l.readChar() // saute 3ème <
+
+	var buf strings.Builder
+	for {
+		if l.ch == 0 {
+			break
+		}
+		if l.ch == '>' && l.peekChar() == '>' && l.peekChar2() == '>' {
+			l.readChar() // saute 1er >
+			l.readChar() // saute 2ème >
+			l.readChar() // saute 3ème >
+			break
+		}
+		if l.ch == '\n' {
+			l.line++
+			l.column = 0
+		}
+		buf.WriteRune(l.ch)
+		l.readChar()
 	}
 	return buf.String()
 }

@@ -82,5 +82,16 @@ func TestLexerMultiLineStrings(t *testing.T) {
 	if tok8.Type != lexer.STRING || tok8.Literal != "multi\nline" {
 		t.Errorf("Expected raw backtick string, got: %s", tok8.Literal)
 	}
+
+	inputHeredoc := "let c = <<<import {\n  permanentCdnPath\n} from \"./cdn\";>>>"
+	lH := lexer.New("test_heredoc.xru", inputHeredoc)
+	_ = lH.NextToken() // let
+	_ = lH.NextToken() // c
+	_ = lH.NextToken() // =
+	tokC := lH.NextToken()
+	expectedC := "import {\n  permanentCdnPath\n} from \"./cdn\";"
+	if tokC.Type != lexer.STRING || tokC.Literal != expectedC {
+		t.Errorf("Expected <<< heredoc raw content, got: %s", tokC.Literal)
+	}
 }
 

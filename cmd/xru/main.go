@@ -220,7 +220,21 @@ func handlePack(args []string, verbose bool) {
 		fmt.Printf("\033[31m[PACK ERROR]\033[0m %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("\033[32m[SUCCESS]\033[0m Successfully built package %s\n", relOutput)
+
+	// Calcul et affichage de la taille finale
+	outStat, statErr := os.Stat(outputPath)
+	sizeStr := ""
+	if statErr == nil {
+		sizeBytes := outStat.Size()
+		if sizeBytes < 1024 {
+			sizeStr = fmt.Sprintf(" (%d bytes)", sizeBytes)
+		} else if sizeBytes < 1024*1024 {
+			sizeStr = fmt.Sprintf(" (%.2f KB)", float64(sizeBytes)/1024.0)
+		} else {
+			sizeStr = fmt.Sprintf(" (%.2f MB)", float64(sizeBytes)/(1024.0*1024.0))
+		}
+	}
+	fmt.Printf("\033[32m[SUCCESS]\033[0m Successfully built package %s%s\n", relOutput, sizeStr)
 }
 
 func handleUnpack(args []string, verbose bool) {

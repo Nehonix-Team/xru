@@ -105,6 +105,54 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 			return nil
 		}
 
+		// Gestion des liens symboliques pointant vers des répertoires
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := filepath.EvalSymlinks(path)
+			if err == nil {
+				targetInfo, err := os.Stat(target)
+				if err == nil && targetInfo.IsDir() {
+					// Parcourir récursivement le répertoire cible du lien symbolique
+					return filepath.Walk(target, func(subPath string, subInfo os.FileInfo, subErr error) error {
+						if subErr != nil {
+							return subErr
+						}
+						subRel, err := filepath.Rel(target, subPath)
+						if err != nil || subRel == "." {
+							return nil
+						}
+						finalRelPath := filepath.ToSlash(filepath.Join(relPath, subRel))
+						if p.isIgnored(finalRelPath, ignored) {
+							if subInfo.IsDir() {
+								return filepath.SkipDir
+							}
+							return nil
+						}
+						if subInfo.Mode().IsRegular() {
+							if p.Verbose {
+								fmt.Printf("  \033[32m[ADD]\033[0m %s (%d bytes)\n", finalRelPath, subInfo.Size())
+							}
+							subHdr, err := tar.FileInfoHeader(subInfo, subInfo.Name())
+							if err != nil {
+								return err
+							}
+							subHdr.Name = finalRelPath
+							if err := tw.WriteHeader(subHdr); err != nil {
+								return err
+							}
+							f, err := os.Open(subPath)
+							if err != nil {
+								return err
+							}
+							defer f.Close()
+							_, err = io.Copy(tw, f)
+							return err
+						}
+						return nil
+					})
+				}
+			}
+		}
+
 		if p.Verbose && !info.IsDir() {
 			fmt.Printf("  \033[32m[ADD]\033[0m %s (%d bytes)\n", relPath, info.Size())
 		}
@@ -115,9 +163,7 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 		}
 		header.Name = filepath.ToSlash(relPath)
 
-		// Si c'est un lien symbolique ou un dossier, on ne fait pas de io.Copy de fichier régulier
-		realInfo, statErr := os.Stat(path)
-		if statErr == nil && realInfo.IsDir() {
+		if info.IsDir() {
 			header.Typeflag = tar.TypeDir
 			header.Name += "/"
 			return tw.WriteHeader(header)

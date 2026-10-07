@@ -411,6 +411,42 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		},
 	}, false)
 
+	// RemoveUntil(startPattern, untilPattern)
+	fileEnv.Set("RemoveUntil", FunctionValue{
+		Name: "RemoveUntil",
+		Fn: func(args []Value) (Value, error) {
+			if len(args) < 2 {
+				return NilValue{}, fmt.Errorf("RemoveUntil requires start pattern and until pattern")
+			}
+			startPat := args[0].String()
+			untilPat := args[1].String()
+
+			sIdx := strings.Index(content, startPat)
+			if sIdx != -1 {
+				lineStart := strings.LastIndex(content[:sIdx], "\n")
+				if lineStart == -1 {
+					lineStart = 0
+				} else {
+					lineStart += 1
+				}
+
+				uRel := strings.Index(content[sIdx:], untilPat)
+				if uRel != -1 {
+					untilIdx := sIdx + uRel
+					lineUntil := strings.LastIndex(content[:untilIdx], "\n")
+					if lineUntil == -1 || lineUntil < lineStart {
+						lineUntil = untilIdx
+					} else {
+						lineUntil += 1
+					}
+					content = content[:lineStart] + content[lineUntil:]
+					modified = true
+				}
+			}
+			return BoolValue{Val: true}, nil
+		},
+	}, false)
+
 	// RemoveLines(pattern)
 	fileEnv.Set("RemoveLines", FunctionValue{
 		Name: "RemoveLines",

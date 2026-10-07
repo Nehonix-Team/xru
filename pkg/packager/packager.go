@@ -219,13 +219,41 @@ func (p *Packager) loadIgnoredPatterns() []string {
 	return list
 }
 
-func (p *Packager) isIgnored(path string, patterns []string) bool {
+func (p *Packager) isIgnored(relPath string, patterns []string) bool {
+	cleanPath := filepath.ToSlash(relPath)
+	baseName := filepath.Base(cleanPath)
+
 	for _, pat := range patterns {
-		if strings.Contains(path, pat) {
+		pat = filepath.ToSlash(strings.TrimSpace(pat))
+		if pat == "" || strings.HasPrefix(pat, "#") {
+			continue
+		}
+
+		// 1. Dossier ciblé explicitement avec slash terminal (ex: "dist/", "node_modules/")
+		if strings.HasSuffix(pat, "/") {
+			dirPat := strings.TrimSuffix(pat, "/")
+			if cleanPath == dirPat || strings.HasPrefix(cleanPath, dirPat+"/") {
+				return true
+			}
+			continue
+		}
+
+		// 2. Correspondance exacte sur chemin complet ou segment (ex: "README.md", ".git")
+		if cleanPath == pat {
 			return true
 		}
-		matched, _ := filepath.Match(pat, filepath.Base(path))
-		if matched {
+		// Si le motif est un nom de dossier racine/intermédiaire (ex: "dist", "tests")
+		if strings.HasPrefix(cleanPath, pat+"/") {
+			return true
+		}
+
+		// 3. Glob matching sur le nom du fichier (ex: "*.log", "*.zip", "TARGET_*.md")
+		if matched, _ := filepath.Match(pat, baseName); matched {
+			return true
+		}
+
+		// 4. Glob matching sur le chemin relatif complet (ex: "tests/*", "docs/*.md")
+		if matched, _ := filepath.Match(pat, cleanPath); matched {
 			return true
 		}
 	}

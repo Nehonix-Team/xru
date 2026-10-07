@@ -1,57 +1,192 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/internal/utils"
-	"github.com/Nehonix-Team/xru/pkg/engine"
+	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/checker"
+	"github.com/Nehonix-Team/xru/pkg/dispatcher"
+	"github.com/Nehonix-Team/xru/pkg/lexer"
+	"github.com/Nehonix-Team/xru/pkg/packager"
+	"github.com/Nehonix-Team/xru/pkg/parser"
+	"github.com/Nehonix-Team/xru/pkg/runtime"
 )
 
-func main() {
-	v := flag.Bool("v", false, "Enable verbose output")
-	flag.Parse()
-	args := flag.Args()
+func printUsage() {
+	fmt.Println(`XRU 2.0 (XyPriss Rule Unit) - CLI & Template Orchestrator
 
-	if len(args) < 1 {
+Usage:
+  xru run <file.xru> [flags...]     Execute an XRU 2.0 rule file
+  xru pack [output.xpack]           Package project into a structured .xpack bundle
+  xru unpack <file.xpack> [dest]    Unpack an .xpack bundle to destination
+  xru version                       Show XRU version
+
+Flags (for run):
+  --<name>=<val>                    Pass CLI arguments matching #ARG declarations
+  -v                                Enable verbose output`)
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		printUsage()
+		os.Exit(0)
+	}
+
+	cmd := os.Args[1]
+
+	switch cmd {
+	case "version", "-v", "--version":
+		fmt.Printf("XRU v2.0.0 (%s)\n", utils.BinVersion)
+
+	case "help", "--help", "-h":
+		printUsage()
+
+	case "pack":
+		handlePack(os.Args[2:])
+
+	case "unpack":
+		handleUnpack(os.Args[2:])
+
+	case "run":
+		if len(os.Args) < 3 {
+			fmt.Println("Error: 'xru run' requires a rule file. (e.g., xru run main.xru)")
+			os.Exit(1)
+		}
+		handleRun(os.Args[2], os.Args[3:])
+
+	default:
+		// Si l'utilisateur passe directement un fichier .xru (ex: ./xru main.xru)
+		if strings.HasSuffix(cmd, ".xru") {
+			handleRun(cmd, os.Args[2:])
+		} else {
+			fmt.Printf("Unknown command '%s'. Run 'xru --help' for usage.\n", cmd)
+			os.Exit(1)
+		}
+	}
+}
+
+func handleRun(ruleFile string, cliArgs []string) {
+	content, err := os.ReadFile(ruleFile)
+	if err != nil {
+		fmt.Printf("\033[31m[ERROR]\033[0m Cannot read file '%s': %v\n", ruleFile, err)
 		os.Exit(1)
 	}
 
-	switch args[0] {
-	case "version":
-		fmt.Printf("XRU %s\n", utils.BinVersion)
-	case "upgrade":
-		handleUpgrade()
-	case "build":
-		if len(args) < 2 {
-			os.Exit(1)
-		}
-		runBuild(args[1])
-	default:
-		target, tArgs := parseRunArgs(args)
-		runner := engine.NewRunner()
-		runner.Verbose = *v
-		runner.TerminalArgs = tArgs
-		
-		if err := runner.Run(args[0], target); err != nil {
-			fmt.Printf("%serror:%s %v\n", engine.ColorRed, engine.ColorReset, err)
-			os.Exit(1)
-		}
-	}
-}
+	// 1. Lexing
+	l := lexer.New(ruleFile, string(content))
 
-func parseRunArgs(args []string) (target string, tArgs []string) {
-	target = "."
-	if len(args) > 1 {
-		if strings.HasPrefix(args[1], "-") {
-			tArgs = args[1:]
+	// 2. Parsing
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		fmt.Printf("\033[31m[SYNTAX ERROR]\033[0m in %s:\n", ruleFile)
+		for _, e := range p.Errors() {
+			fmt.Printf("  • %s\n", e)
+		}
+		os.Exit(1)
+	}
+
+	// 3. Type Checking & Strict Validation
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) > 0 {
+		fmt.Printf("\033[31m[VALIDATION ERROR]\033[0m in %s:\n", ruleFile)
+		for _, e := range c.Errors() {
+			fmt.Printf("  • %s\n", e)
+		}
+		os.Exit(1)
+	}
+
+	// 4. Runtime & VM
+	eval := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+
+	// Injection des arguments CLI (--name=val ou --plugin)
+	for _, arg := range cliArgs {
+		trimmed := strings.TrimPrefix(arg, "--")
+		trimmed = strings.TrimPrefix(trimmed, "-")
+		parts := strings.SplitN(trimmed, "=", 2)
+		key := strings.ToUpper(parts[0])
+		if len(parts) == 2 {
+			val := parts[1]
+			if val == "true" {
+				env.Set(key, runtime.BoolValue{Val: true}, false)
+			} else if val == "false" {
+				env.Set(key, runtime.BoolValue{Val: false}, false)
+			} else {
+				env.Set(key, runtime.StringValue{Val: val}, false)
+			}
 		} else {
-			target = args[1]
-			tArgs = args[2:]
+			env.Set(key, runtime.BoolValue{Val: true}, false)
 		}
 	}
-	return
+
+	// Exécution du programme
+	if _, err := eval.Eval(prog, env); err != nil {
+		fmt.Printf("\033[31m[RUNTIME ERROR]\033[0m %v\n", err)
+		os.Exit(1)
+	}
+
+	// Traitement de #DISPATCH_TREE si présent
+	for _, stmt := range prog.Statements {
+		if dt, ok := stmt.(*ast.DispatchTreeStatement); ok {
+			rootDir, _ := os.Getwd()
+			disp := dispatcher.New(rootDir, eval, env)
+			if err := disp.DispatchTree(dt.Path, dt.Pattern); err != nil {
+				fmt.Printf("\033[31m[DISPATCH ERROR]\033[0m %v\n", err)
+				os.Exit(1)
+			}
+		}
+	}
 }
 
+func handlePack(args []string) {
+	output := "project.xpack"
+	if len(args) > 0 {
+		output = args[0]
+	}
+	rootDir, _ := os.Getwd()
+	pkg := packager.New(rootDir, ".xruignore")
+
+	entryDir := "src"
+	if _, err := os.Stat(filepath.Join(rootDir, "src")); os.IsNotExist(err) {
+		entryDir = "."
+	}
+
+	fmt.Printf("\033[36m[PACK]\033[0m Packaging project into '\033[1m%s\033[0m'...\n", output)
+	if err := pkg.Pack(output, entryDir); err != nil {
+		fmt.Printf("\033[31m[PACK ERROR]\033[0m %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("\033[32m[SUCCESS]\033[0m Successfully built package %s\n", output)
+}
+
+func handleUnpack(args []string) {
+	if len(args) < 1 {
+		fmt.Println("Error: 'xru unpack' requires package path. (e.g., xru unpack project.xpack [dest])")
+		os.Exit(1)
+	}
+	packFile := args[0]
+	dest := "."
+	if len(args) > 1 {
+		dest = args[1]
+	}
+
+	rootDir, _ := os.Getwd()
+	pkg := packager.New(rootDir, ".xruignore")
+	manifest, err := pkg.Unpack(packFile, dest)
+	if err != nil {
+		fmt.Printf("\033[31m[UNPACK ERROR]\033[0m %v\n", err)
+		os.Exit(1)
+	}
+
+	version := "2.0.0"
+	if manifest != nil {
+		version = manifest.Version
+	}
+	fmt.Printf("\033[32m[SUCCESS]\033[0m Unpacked package (v%s) to %s\n", version, dest)
+}

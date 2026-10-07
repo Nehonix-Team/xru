@@ -297,7 +297,7 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 			return fnVal.Fn(args)
 		}
 		if userFn, ok := val.(UserFunction); ok {
-			return ev.callUserFunction(userFn, args)
+			return ev.callUserFunction(userFn, args, env)
 		}
 		return nil, fmt.Errorf("'%s' is not callable", c.Value)
 	}
@@ -680,11 +680,26 @@ func (ev *Evaluator) evalFunc(fn *ast.FuncStatement, env *Environment) (Value, e
 	return userFn, nil
 }
 
-func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value) (Value, error) {
+func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *Environment) (Value, error) {
 	fnEnv := NewEnvironment(fn.Env)
+	if callerEnv != nil {
+		fnEnv.SetCurrentDir(callerEnv.CurrentDir())
+		if dropVal, ok := callerEnv.Get("Drop"); ok {
+			_ = fnEnv.Set("Drop", dropVal, false)
+		}
+		if keepVal, ok := callerEnv.Get("Keep"); ok {
+			_ = fnEnv.Set("Keep", keepVal, false)
+		}
+		if uvVal, ok := callerEnv.Get("UseVariant"); ok {
+			_ = fnEnv.Set("UseVariant", uvVal, false)
+		}
+		if locVal, ok := callerEnv.Get("Local"); ok {
+			_ = fnEnv.Set("Local", locVal, false)
+		}
+	}
 	for i, param := range fn.Stmt.Parameters {
 		if i < len(args) {
-			fnEnv.Set(param.Name, args[i], false)
+			_ = fnEnv.Set(param.Name, args[i], false)
 		}
 	}
 	for _, stmt := range fn.Stmt.Body {

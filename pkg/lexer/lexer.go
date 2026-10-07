@@ -237,22 +237,49 @@ func (l *Lexer) readIdentifier() string {
 
 func (l *Lexer) readString() string {
 	l.readChar() // saute le premier "
-	start := l.position
+	var buf strings.Builder
 	for l.ch != '"' && l.ch != 0 {
-		if l.ch == '\\' && l.peekChar() == '"' {
-			l.readChar() // saute l'échappement
+		if l.ch == '\\' {
+			next := l.peekChar()
+			switch next {
+			case '"':
+				buf.WriteRune('"')
+				l.readChar()
+				l.readChar()
+				continue
+			case '\\':
+				buf.WriteRune('\\')
+				l.readChar()
+				l.readChar()
+				continue
+			case 'n':
+				buf.WriteRune('\n')
+				l.readChar()
+				l.readChar()
+				continue
+			case 't':
+				buf.WriteRune('\t')
+				l.readChar()
+				l.readChar()
+				continue
+			case 'r':
+				buf.WriteRune('\r')
+				l.readChar()
+				l.readChar()
+				continue
+			}
 		}
 		if l.ch == '\n' {
 			l.line++
 			l.column = 0
 		}
+		buf.WriteRune(l.ch)
 		l.readChar()
 	}
-	str := l.input[start:l.position]
 	if l.ch == '"' {
 		l.readChar() // saute le dernier "
 	}
-	return str
+	return buf.String()
 }
 
 func (l *Lexer) readNumberOrDuration() string {

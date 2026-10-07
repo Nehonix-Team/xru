@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goRuntime "runtime"
 	"strings"
 	"time"
 )
@@ -141,7 +142,7 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	}
 	units["Sys"] = sysUnit
 
-	// 5. #UNIT Cmd (exécution de commandes terminal : Cmd.Exec)
+	// 5. #UNIT Cmd (exécution de commandes terminal cross-platform)
 	cmdUnit := &UnitInstance{
 		UnitName:   "Cmd",
 		Properties: make(map[string]Value),
@@ -151,7 +152,12 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 					return NilValue{}, fmt.Errorf("Cmd.Exec requires command string")
 				}
 				commandLine := args[0].String()
-				cmd := exec.Command("sh", "-c", commandLine)
+				var cmd *exec.Cmd
+				if goRuntime.GOOS == "windows" {
+					cmd = exec.Command("cmd.exe", "/c", commandLine)
+				} else {
+					cmd = exec.Command("sh", "-c", commandLine)
+				}
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
 				err := cmd.Run()

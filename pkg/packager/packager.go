@@ -9,11 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Nehonix-Team/xru/pkg/lexer"
+	"github.com/Nehonix-Team/xru/pkg/parser"
 )
 
 type PackageManifest struct {
 	Version      string            `json:"version"`
 	EntryDir     string            `json:"entryDir"`
+	Args         []string          `json:"args,omitempty"`
 	IgnoredPaths []string          `json:"ignoredPaths"`
 	Metadata     map[string]string `json:"metadata"`
 }
@@ -35,7 +39,10 @@ func New(rootDir string, ignoreFile string) *Packager {
 	}
 }
 
-// Pack compresse l'arborescence canonique nettoyée dans un bundle binaire structuré .xpack
+// Pack compresse l'arborescence dans un bundle binaire compartimenté :
+// - manifest.json (métadonnées & arguments extraits)
+// - core/         (template canonique dédoublonné SANS les fichiers .xru)
+// - rules/        (tous les descripteurs *.rules.xru + main.xru)
 func (p *Packager) Pack(outputFile string, entryDir string) error {
 	ignored := p.loadIgnoredPatterns()
 
@@ -51,13 +58,27 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 	tw := tar.NewWriter(gw)
 	defer tw.Close()
 
-	// 1. Écriture du manifest
+	// 1. Extraire les flags #ARG déclarés dans main.xru pour le manifest
+	var detectedArgs []string
+	if mainContent, err := os.ReadFile(filepath.Join(p.rootDir, "main.xru")); err == nil {
+		l := lexer.New("main.xru", string(mainContent))
+		pr := parser.New(l)
+		prog := pr.ParseProgram()
+		for _, stmt := range prog.Statements {
+			if strings.HasPrefix(stmt.String(), "#ARG") {
+				detectedArgs = append(detectedArgs, stmt.String())
+			}
+		}
+	}
+
+	// Écriture du manifest.json à la racine de l'archive
 	manifest := PackageManifest{
 		Version:      "2.0.0",
-		EntryDir:     entryDir,
+		EntryDir:     "core",
+		Args:         detectedArgs,
 		IgnoredPaths: ignored,
 		Metadata: map[string]string{
-			"generator": "xru-pack",
+			"generator": "xru-pack-v2",
 		},
 	}
 	manifestBytes, _ := json.MarshalIndent(manifest, "", "  ")
@@ -73,7 +94,7 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 		return err
 	}
 
-	// 2. Parcourt et inclusion de l'arborescence canonique
+	// 2. Parcourt et inclusion compartimentée : core/ et rules/
 	sourcePath := filepath.Join(p.rootDir, entryDir)
 	return filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -81,11 +102,11 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 		}
 
 		relPath, err := filepath.Rel(p.rootDir, path)
-		if err != nil {
-			return err
+		if err != nil || relPath == "." {
+			return nil
 		}
 
-		// Ne JAMAIS empaqueter le fichier d'output en cours d'écriture ni son dossier parent out/
+		// Ne JAMAIS empaqueter le fichier de sortie en cours d'écriture ni out/
 		absPath, _ := filepath.Abs(path)
 		absOut, _ := filepath.Abs(outputFile)
 		if absPath == absOut || strings.HasPrefix(relPath, "out/") || relPath == "out" {
@@ -95,6 +116,7 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 			return nil
 		}
 
+		// Vérification d'exclusion par .xruignore
 		if p.isIgnored(relPath, ignored) {
 			if p.Verbose {
 				fmt.Printf("  \033[90m[EXCLUDE]\033[0m %s\n", relPath)
@@ -105,13 +127,29 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 			return nil
 		}
 
-		// Gestion des liens symboliques pointant vers des répertoires
+		cleanRel := filepath.ToSlash(relPath)
+		baseName := filepath.Base(cleanRel)
+
+		// Compartimentage : les fichiers .xru vont dans rules/, le reste dans core/
+		var targetTarPath string
+		isRuleFile := strings.HasSuffix(baseName, ".xru")
+
+		if isRuleFile {
+			if cleanRel == "main.xru" {
+				targetTarPath = "rules/main.xru"
+			} else {
+				targetTarPath = "rules/" + cleanRel
+			}
+		} else {
+			targetTarPath = "core/" + cleanRel
+		}
+
+		// Gestion des liens symboliques de dossiers
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, err := filepath.EvalSymlinks(path)
 			if err == nil {
 				targetInfo, err := os.Stat(target)
 				if err == nil && targetInfo.IsDir() {
-					// Parcourir récursivement le répertoire cible du lien symbolique
 					return filepath.Walk(target, func(subPath string, subInfo os.FileInfo, subErr error) error {
 						if subErr != nil {
 							return subErr
@@ -120,22 +158,26 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 						if err != nil || subRel == "." {
 							return nil
 						}
-						finalRelPath := filepath.ToSlash(filepath.Join(relPath, subRel))
-						if p.isIgnored(finalRelPath, ignored) {
+						nestedRel := filepath.ToSlash(filepath.Join(relPath, subRel))
+						if p.isIgnored(nestedRel, ignored) {
 							if subInfo.IsDir() {
 								return filepath.SkipDir
 							}
 							return nil
 						}
 						if subInfo.Mode().IsRegular() {
+							nestedTarPath := "core/" + nestedRel
+							if strings.HasSuffix(filepath.Base(nestedRel), ".xru") {
+								nestedTarPath = "rules/" + nestedRel
+							}
 							if p.Verbose {
-								fmt.Printf("  \033[32m[ADD]\033[0m %s (%d bytes)\n", finalRelPath, subInfo.Size())
+								fmt.Printf("  \033[32m[ADD]\033[0m %s (%d bytes)\n", nestedTarPath, subInfo.Size())
 							}
 							subHdr, err := tar.FileInfoHeader(subInfo, subInfo.Name())
 							if err != nil {
 								return err
 							}
-							subHdr.Name = finalRelPath
+							subHdr.Name = nestedTarPath
 							if err := tw.WriteHeader(subHdr); err != nil {
 								return err
 							}
@@ -154,14 +196,14 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 		}
 
 		if p.Verbose && !info.IsDir() {
-			fmt.Printf("  \033[32m[ADD]\033[0m %s (%d bytes)\n", relPath, info.Size())
+			fmt.Printf("  \033[32m[ADD]\033[0m %s (%d bytes)\n", targetTarPath, info.Size())
 		}
 
 		header, err := tar.FileInfoHeader(info, info.Name())
 		if err != nil {
 			return err
 		}
-		header.Name = filepath.ToSlash(relPath)
+		header.Name = targetTarPath
 
 		if info.IsDir() {
 			header.Typeflag = tar.TypeDir
@@ -185,7 +227,7 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 	})
 }
 
-// Unpack extrait un package .xpack dans un dossier de destination
+// Unpack extrait un package .xpack dans un dossier de destination en matérialisant core/
 func (p *Packager) Unpack(packFile string, destDir string) (*PackageManifest, error) {
 	file, err := os.Open(packFile)
 	if err != nil {
@@ -223,7 +265,13 @@ func (p *Packager) Unpack(packFile string, destDir string) (*PackageManifest, er
 			continue
 		}
 
-		targetPath := filepath.Join(destDir, header.Name)
+		// Lors du déballage, si c'est un fichier de "core/", on le dépose à la racine du projet déployé
+		outRel := header.Name
+		if strings.HasPrefix(outRel, "core/") {
+			outRel = strings.TrimPrefix(outRel, "core/")
+		}
+
+		targetPath := filepath.Join(destDir, outRel)
 		if header.FileInfo().IsDir() {
 			if err := os.MkdirAll(targetPath, 0755); err != nil {
 				return nil, err
@@ -253,7 +301,7 @@ func (p *Packager) loadIgnoredPatterns() []string {
 	var list []string
 	content, err := os.ReadFile(filepath.Join(p.rootDir, p.ignoreFile))
 	if err != nil {
-		return []string{} // Aucun fallback hardcodé : l'utilisateur pilote tout via son fichier ignore
+		return []string{}
 	}
 	lines := strings.Split(string(content), "\n")
 	for _, l := range lines {
@@ -288,12 +336,11 @@ func (p *Packager) isIgnored(relPath string, patterns []string) bool {
 		if cleanPath == pat {
 			return true
 		}
-		// Si le motif est un nom de dossier racine/intermédiaire (ex: "dist", "tests")
 		if strings.HasPrefix(cleanPath, pat+"/") {
 			return true
 		}
 
-		// 3. Glob matching sur le nom du fichier (ex: "*.log", "*.zip", "TARGET_*.md")
+		// 3. Glob matching sur le nom du fichier (ex: "*.log", "*.zip")
 		if matched, _ := filepath.Match(pat, baseName); matched {
 			return true
 		}

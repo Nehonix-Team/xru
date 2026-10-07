@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/internal/utils"
@@ -147,32 +148,65 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 	env := runtime.NewEnvironment(nil)
 	env.SetCurrentDir(ruleDir)
 
-	// Injection des arguments CLI (--name=val ou --plugin)
-	for _, arg := range cliArgs {
-		trimmed := strings.TrimPrefix(arg, "--")
-		trimmed = strings.TrimPrefix(trimmed, "-")
-		parts := strings.SplitN(trimmed, "=", 2)
-		key := strings.ToUpper(parts[0])
-		if len(parts) == 2 {
-			val := parts[1]
-			if val == "true" {
-				env.Set(key, runtime.BoolValue{Val: true}, false)
-			} else if val == "false" {
-				env.Set(key, runtime.BoolValue{Val: false}, false)
-			} else {
-				if key == "MODE" && (val == "simple" || val == "minimal") {
-					val = "minimal"
-				}
-				env.Set(key, runtime.StringValue{Val: val}, false)
-			}
+	// Extraction des #ARG déclarés dans le fichier pour validation stricte
+	declaredArgs := make(map[string]*ast.ArgStatement)
+	for _, stmt := range prog.Statements {
+		if argStmt, ok := stmt.(*ast.ArgStatement); ok {
+			declaredArgs[strings.ToUpper(argStmt.Name)] = argStmt
+		}
+	}
+
+	// Parsing et validation des arguments CLI (--name=val, --xems false, -mode minimal, --no-xems, etc.)
+	for i := 0; i < len(cliArgs); i++ {
+		arg := cliArgs[i]
+		if !strings.HasPrefix(arg, "-") {
+			fmt.Printf("\033[31m[CLI ERROR]\033[0m Unexpected argument '%s'\n", arg)
+			os.Exit(1)
+		}
+
+		trimmed := strings.TrimLeft(arg, "-")
+		var key, valStr string
+		hasValue := false
+
+		if strings.Contains(trimmed, "=") {
+			parts := strings.SplitN(trimmed, "=", 2)
+			key = strings.ToUpper(parts[0])
+			valStr = parts[1]
+			hasValue = true
 		} else {
-			if key == "NO-XEMS" {
-				env.Set("XEMS", runtime.BoolValue{Val: false}, false)
-			} else if key == "NO-CDN" {
-				env.Set("CDN", runtime.BoolValue{Val: false}, false)
-			} else {
-				env.Set(key, runtime.BoolValue{Val: true}, false)
+			key = strings.ToUpper(trimmed)
+			// Vérifier si le token suivant est la valeur (ex: --xems false, --mode minimal)
+			if i+1 < len(cliArgs) && !strings.HasPrefix(cliArgs[i+1], "-") {
+				valStr = cliArgs[i+1]
+				hasValue = true
+				i++ // consommer la valeur
 			}
+		}
+
+		targetKey := key
+		isNegative := false
+		if strings.HasPrefix(key, "NO-") {
+			targetKey = strings.TrimPrefix(key, "NO-")
+			isNegative = true
+		}
+
+		// Validation stricte contre les #ARG déclarés
+		if _, ok := declaredArgs[targetKey]; !ok {
+			var validList []string
+			for k := range declaredArgs {
+				validList = append(validList, strings.ToLower(k))
+			}
+			sort.Strings(validList)
+			fmt.Printf("\033[31m[ERROR]\033[0m Unknown CLI argument '%s'. Declared arguments: %s\n", arg, strings.Join(validList, ", "))
+			os.Exit(1)
+		}
+
+		if isNegative {
+			env.Set(targetKey, runtime.BoolValue{Val: false}, false)
+		} else if hasValue {
+			env.Set(targetKey, parseCliVal(valStr), false)
+		} else {
+			env.Set(targetKey, runtime.BoolValue{Val: true}, false)
 		}
 	}
 
@@ -270,3 +304,18 @@ func handleUnpack(args []string, verbose bool) {
 	}
 	fmt.Printf("\033[32m[SUCCESS]\033[0m Unpacked package (v%s) to %s\n", version, dest)
 }
+
+func parseCliVal(val string) runtime.Value {
+	lower := strings.ToLower(val)
+	if lower == "true" {
+		return runtime.BoolValue{Val: true}
+	}
+	if lower == "false" {
+		return runtime.BoolValue{Val: false}
+	}
+	if lower == "simple" || lower == "minimal" {
+		return runtime.StringValue{Val: "minimal"}
+	}
+	return runtime.StringValue{Val: val}
+}
+

@@ -52,6 +52,13 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 				err := os.RemoveAll(args[0].String())
 				return BoolValue{Val: err == nil}, err
 			},
+			"Move": func(args []Value) (Value, error) {
+				if len(args) < 2 {
+					return NilValue{}, fmt.Errorf("Fs.Move requires src and dest path")
+				}
+				err := os.Rename(args[0].String(), args[1].String())
+				return BoolValue{Val: err == nil}, err
+			},
 			"Exists": func(args []Value) (Value, error) {
 				if len(args) < 1 {
 					return BoolValue{Val: false}, nil

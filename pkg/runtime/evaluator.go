@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -246,6 +247,9 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			placeholder := fmt.Sprintf("{%s}", k)
 			res = strings.ReplaceAll(res, placeholder, v.String())
 		}
+		if unk := findUndefinedInterpolations(res); len(unk) > 0 {
+			return NilValue{}, fmt.Errorf("undefined variable '{%s}' in string interpolation: \"%s\"", strings.Join(unk, ", {"), n.Value)
+		}
 		return StringValue{Val: res}, nil
 	case *ast.NumberLiteral:
 		num, err := strconv.ParseFloat(n.Value, 64)
@@ -305,6 +309,14 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 				return nil, err
 			}
 			args = append(args, a)
+		}
+		if unit.UnitName == "Fs" && env != nil && env.CurrentDir() != "" {
+			for i := 0; i < len(args); i++ {
+				strVal := args[i].String()
+				if !filepath.IsAbs(strVal) {
+					args[i] = StringValue{Val: filepath.Join(env.CurrentDir(), strVal)}
+				}
+			}
 		}
 		return method(args)
 	case *ast.Identifier:
@@ -783,5 +795,23 @@ func (ev *Evaluator) evalDispatchTree(dt *ast.DispatchTreeStatement, env *Enviro
 	}
 	return BoolValue{Val: true}, nil
 }
+
+var reInterpolationIdentifier = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+
+func findUndefinedInterpolations(str string) []string {
+	// Masquer temporairement les accolades doubles {{...}} (placeholders de fichiers)
+	masked := strings.ReplaceAll(str, "{{", "\x00\x00")
+	masked = strings.ReplaceAll(masked, "}}", "\x01\x01")
+
+	matches := reInterpolationIdentifier.FindAllStringSubmatch(masked, -1)
+	var undefinedVars []string
+	for _, m := range matches {
+		if len(m) > 1 {
+			undefinedVars = append(undefinedVars, m[1])
+		}
+	}
+	return undefinedVars
+}
+
 
 

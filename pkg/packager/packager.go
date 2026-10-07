@@ -116,6 +116,14 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 			return nil
 		}
 
+		// Le fichier .xruignore lui-même ne doit JAMAIS être empaqueté
+		if relPath == ".xruignore" || filepath.Base(relPath) == ".xruignore" {
+			if p.Verbose {
+				fmt.Printf("  \033[90m[EXCLUDE]\033[0m %s\n", relPath)
+			}
+			return nil
+		}
+
 		// Vérification d'exclusion par .xruignore
 		if p.isIgnored(relPath, ignored) {
 			if p.Verbose {

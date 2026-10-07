@@ -47,6 +47,19 @@ func (l *Lexer) peekChar() rune {
 	return r
 }
 
+func (l *Lexer) peekChar2() rune {
+	if l.readPosition >= len(l.input) {
+		return 0
+	}
+	_, width := utf8.DecodeRuneInString(l.input[l.readPosition:])
+	nextPos := l.readPosition + width
+	if nextPos >= len(l.input) {
+		return 0
+	}
+	r, _ := utf8.DecodeRuneInString(l.input[nextPos:])
+	return r
+}
+
 func (l *Lexer) NextToken() Token {
 	l.skipWhitespaceAndComments()
 
@@ -67,9 +80,23 @@ func (l *Lexer) NextToken() Token {
 		return Token{Type: tokType, Literal: directive, Pos: startPos}
 	}
 
-	// 2. Chaines de caractères "..."
+	// 2. Chaines de caractères "..." ou """...""" ou '''...''' ou `...`
 	if l.ch == '"' {
+		if l.peekChar() == '"' && l.peekChar2() == '"' {
+			str := l.readTripleString('"')
+			return Token{Type: STRING, Literal: str, Pos: startPos}
+		}
 		str := l.readString()
+		return Token{Type: STRING, Literal: str, Pos: startPos}
+	}
+	if l.ch == '\'' {
+		if l.peekChar() == '\'' && l.peekChar2() == '\'' {
+			str := l.readTripleString('\'')
+			return Token{Type: STRING, Literal: str, Pos: startPos}
+		}
+	}
+	if l.ch == '`' {
+		str := l.readRawBacktickString()
 		return Token{Type: STRING, Literal: str, Pos: startPos}
 	}
 
@@ -283,6 +310,49 @@ func (l *Lexer) readString() string {
 	}
 	if l.ch == '"' {
 		l.readChar() // saute le dernier "
+	}
+	return buf.String()
+}
+
+func (l *Lexer) readTripleString(quote rune) string {
+	l.readChar() // saute 1er quote
+	l.readChar() // saute 2ème quote
+	l.readChar() // saute 3ème quote
+
+	var buf strings.Builder
+	for {
+		if l.ch == 0 {
+			break
+		}
+		if l.ch == quote && l.peekChar() == quote && l.peekChar2() == quote {
+			l.readChar() // saute 1er fermant
+			l.readChar() // saute 2ème fermant
+			l.readChar() // saute 3ème fermant
+			break
+		}
+		if l.ch == '\n' {
+			l.line++
+			l.column = 0
+		}
+		buf.WriteRune(l.ch)
+		l.readChar()
+	}
+	return buf.String()
+}
+
+func (l *Lexer) readRawBacktickString() string {
+	l.readChar() // saute le premier `
+	var buf strings.Builder
+	for l.ch != '`' && l.ch != 0 {
+		if l.ch == '\n' {
+			l.line++
+			l.column = 0
+		}
+		buf.WriteRune(l.ch)
+		l.readChar()
+	}
+	if l.ch == '`' {
+		l.readChar() // saute le dernier `
 	}
 	return buf.String()
 }

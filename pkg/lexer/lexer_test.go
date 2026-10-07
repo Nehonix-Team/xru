@@ -62,3 +62,25 @@ let manager = @TemplateManager()
 		}
 	}
 }
+
+func TestLexerMultiLineStrings(t *testing.T) {
+	input := "let a = \"\"\"import { createServer } from \"xypriss\";\"\"\"\nlet b = `multi\nline`"
+	l := lexer.New("test_multiline.xru", input)
+
+	_ = l.NextToken() // let
+	_ = l.NextToken() // a
+	_ = l.NextToken() // =
+	tok4 := l.NextToken() // """...""" string
+	if tok4.Type != lexer.STRING || tok4.Literal != "import { createServer } from \"xypriss\";" {
+		t.Errorf("Expected raw content with inner quotes, got: %s", tok4.Literal)
+	}
+
+	_ = l.NextToken() // let
+	_ = l.NextToken() // b
+	_ = l.NextToken() // =
+	tok8 := l.NextToken() // `multi\nline` string
+	if tok8.Type != lexer.STRING || tok8.Literal != "multi\nline" {
+		t.Errorf("Expected raw backtick string, got: %s", tok8.Literal)
+	}
+}
+

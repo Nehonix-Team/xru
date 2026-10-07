@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 	"github.com/Nehonix-Team/xru/pkg/parser"
 	"github.com/Nehonix-Team/xru/pkg/runtime"
@@ -103,4 +104,69 @@ line 3
 		t.Errorf("Expected line 2 and line 3 preserved, got: %s", updated)
 	}
 }
+
+func TestGlobalFunctionAndDispatchTreeBlock(t *testing.T) {
+	code := `
+#GLOBAL #FUNC Helper(name: string)
+    let msg = "Hello " + {name}
+    #RETURN msg
+#END
+
+#DISPATCH_TREE "./src", ".rules.xru"
+    #PASS MODE = "minimal"
+    #PASS CDN = false
+#END
+`
+	l := lexer.New("test_global.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+
+	var dispatchedPath, dispatchedPattern string
+	var passedEnv *runtime.Environment
+
+	ev.SetTreeDispatcher(func(dt *ast.DispatchTreeStatement, eval *runtime.Evaluator, treeEnv *runtime.Environment) error {
+		dispatchedPath = dt.Path
+		dispatchedPattern = dt.Pattern
+		passedEnv = treeEnv
+		return nil
+	})
+
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	if dispatchedPath != "./src" || dispatchedPattern != ".rules.xru" {
+		t.Errorf("Unexpected dispatch path/pattern: %s, %s", dispatchedPath, dispatchedPattern)
+	}
+
+	modeVal, ok := passedEnv.Get("MODE")
+	if !ok || modeVal.String() != "minimal" {
+		t.Errorf("Expected MODE 'minimal' passed to tree, got %v", modeVal)
+	}
+
+	cdnVal, ok := passedEnv.Get("CDN")
+	if !ok || cdnVal.String() != "false" {
+		t.Errorf("Expected CDN 'false' passed to tree, got %v", cdnVal)
+	}
+
+	// Verify global function is accessible from child env
+	fnVal, ok := passedEnv.Get("Helper")
+	if !ok {
+		t.Fatalf("Expected global function 'Helper' accessible in passedEnv")
+	}
+	userFn, ok := fnVal.(runtime.UserFunction)
+	if !ok {
+		t.Fatalf("Expected 'Helper' to be a UserFunction")
+	}
+	if userFn.Stmt.Name != "Helper" {
+		t.Errorf("Expected Helper function, got %s", userFn.Stmt.Name)
+	}
+}
+
 

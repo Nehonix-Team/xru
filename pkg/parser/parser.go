@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
@@ -90,6 +91,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseDispatchTreeStatement()
 	case lexer.FILE_DIR:
 		return p.parseFileStatement()
+	case lexer.GLOBAL_DIR:
+		return p.parseGlobalStatement()
 	case lexer.CUSTOM_DIR:
 		return p.parseCustomDirective()
 	case lexer.RETURN_DIR:
@@ -464,8 +467,26 @@ func (p *Parser) parseMatchStatement() *ast.MatchStatement {
 	return stmt
 }
 
+func (p *Parser) parseGlobalStatement() ast.Statement {
+	p.nextToken() // saute #GLOBAL
+	// Peut être suivi de #FUNC ou IDENT ("FUNC" / "func")
+	if p.curTokenIs(lexer.FUNC_DIR) || (p.curTokenIs(lexer.IDENT) && strings.EqualFold(p.curToken.Literal, "func")) {
+		fnStmt := p.parseFuncStatement()
+		if fnStmt != nil {
+			fnStmt.IsGlobal = true
+		}
+		return fnStmt
+	}
+	stmt := p.parseStatement()
+	return stmt
+}
+
 func (p *Parser) parseDispatchTreeStatement() *ast.DispatchTreeStatement {
-	stmt := &ast.DispatchTreeStatement{Position: p.curToken.Pos, Pattern: ".rules.xru"}
+	stmt := &ast.DispatchTreeStatement{
+		Position: p.curToken.Pos,
+		Pattern:  ".rules.xru",
+		PassArgs: make(map[string]ast.Expression),
+	}
 	if p.expectPeek(lexer.STRING) {
 		stmt.Path = p.curToken.Literal
 	}
@@ -475,6 +496,24 @@ func (p *Parser) parseDispatchTreeStatement() *ast.DispatchTreeStatement {
 			stmt.Pattern = p.curToken.Literal
 		}
 	}
+
+	// Support de la syntaxe en bloc (#PASS / #SET)
+	for p.peekTokenIs(lexer.PASS_DIR) || p.peekToken.Literal == "#PASS" || p.peekToken.Literal == "#SET" {
+		p.nextToken() // avance vers #PASS ou #SET
+		if p.expectPeek(lexer.IDENT) {
+			key := p.curToken.Literal
+			if p.expectPeek(lexer.ASSIGN) {
+				p.nextToken() // saute '='
+				valExpr := p.parseExpression()
+				stmt.PassArgs[key] = valExpr
+			}
+		}
+	}
+
+	if p.peekTokenIs(lexer.END_DIR) {
+		p.nextToken() // saute #END
+	}
+
 	return stmt
 }
 

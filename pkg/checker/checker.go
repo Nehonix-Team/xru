@@ -149,6 +149,10 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		}
 	case *ast.DispatchTreeStatement:
 		// DispatchTree statement is valid
+	case *ast.ReturnStatement:
+		if s.Value != nil {
+			c.checkExpression(s.Value)
+		}
 	}
 }
 

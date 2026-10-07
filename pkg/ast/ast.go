@@ -158,6 +158,7 @@ type FuncStatement struct {
 	Parameters []*Parameter
 	ReturnType string
 	Body       []Statement
+	IsGlobal   bool
 }
 
 func (s *FuncStatement) statementNode()      {}
@@ -261,6 +262,7 @@ type DispatchTreeStatement struct {
 	Position lexer.Position
 	Path     string
 	Pattern  string // ex: ".rules.xru", "descriptor.xru", "*.xru"
+	PassArgs map[string]Expression
 }
 
 func (s *DispatchTreeStatement) statementNode()      {}

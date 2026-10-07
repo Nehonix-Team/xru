@@ -14,17 +14,29 @@ import (
 type Environment struct {
 	parent     *Environment
 	store      map[string]Value
+	globals    map[string]Value
 	constants  map[string]bool
 	unitRef    *UnitInstance // Pointeur vers l'unité courante si dans #UNIT
 	currentDir string
 }
 
 func NewEnvironment(parent *Environment) *Environment {
+	var g map[string]Value
+	if parent != nil {
+		g = parent.globals
+	} else {
+		g = make(map[string]Value)
+	}
 	return &Environment{
 		parent:    parent,
 		store:     make(map[string]Value),
+		globals:   g,
 		constants: make(map[string]bool),
 	}
+}
+
+func (e *Environment) SetGlobal(name string, val Value) {
+	e.globals[name] = val
 }
 
 func (e *Environment) SetCurrentDir(dir string) {
@@ -43,6 +55,9 @@ func (e *Environment) CurrentDir() string {
 
 func (e *Environment) All() map[string]Value {
 	res := make(map[string]Value)
+	for k, v := range e.globals {
+		res[k] = v
+	}
 	if e.parent != nil {
 		for k, v := range e.parent.All() {
 			res[k] = v
@@ -69,20 +84,30 @@ func (e *Environment) Get(name string) (Value, bool) {
 	if val, ok := e.store[name]; ok {
 		return val, true
 	}
+	if val, ok := e.globals[name]; ok {
+		return val, true
+	}
 	if e.parent != nil {
 		return e.parent.Get(name)
 	}
 	return nil, false
 }
 
+type TreeDispatcherFunc func(dt *ast.DispatchTreeStatement, eval *Evaluator, env *Environment) error
+
 type Evaluator struct {
-	builtins map[string]*UnitInstance
+	builtins       map[string]*UnitInstance
+	treeDispatcher TreeDispatcherFunc
 }
 
 func NewEvaluator() *Evaluator {
 	return &Evaluator{
 		builtins: NewBuiltinUnits(),
 	}
+}
+
+func (ev *Evaluator) SetTreeDispatcher(fn TreeDispatcherFunc) {
+	ev.treeDispatcher = fn
 }
 
 func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
@@ -159,6 +184,16 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return ev.Eval(n.Expression, env)
 	case *ast.FileStatement:
 		return ev.evalFile(n, env)
+	case *ast.FuncStatement:
+		return ev.evalFunc(n, env)
+	case *ast.ReturnStatement:
+		val, err := ev.Eval(n.Value, env)
+		if err != nil {
+			return nil, err
+		}
+		return ReturnValue{Val: val}, nil
+	case *ast.DispatchTreeStatement:
+		return ev.evalDispatchTree(n, env)
 	case *ast.CallExpression:
 		return ev.evalCall(n, env)
 	case *ast.WithStatement:
@@ -250,10 +285,6 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		if !ok {
 			return nil, fmt.Errorf("undefined function '%s'", c.Value)
 		}
-		fnVal, ok := val.(FunctionValue)
-		if !ok {
-			return nil, fmt.Errorf("'%s' is not callable", c.Value)
-		}
 		var args []Value
 		for _, arg := range call.Arguments {
 			a, err := ev.Eval(arg, env)
@@ -262,7 +293,13 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 			}
 			args = append(args, a)
 		}
-		return fnVal.Fn(args)
+		if fnVal, ok := val.(FunctionValue); ok {
+			return fnVal.Fn(args)
+		}
+		if userFn, ok := val.(UserFunction); ok {
+			return ev.callUserFunction(userFn, args)
+		}
+		return nil, fmt.Errorf("'%s' is not callable", c.Value)
 	}
 	return NilValue{}, nil
 }
@@ -630,4 +667,54 @@ func setNestedJson(data map[string]any, keys []string, val any) {
 	}
 	setNestedJson(subMap, keys[1:], val)
 }
+
+func (ev *Evaluator) evalFunc(fn *ast.FuncStatement, env *Environment) (Value, error) {
+	userFn := UserFunction{Stmt: fn, Env: env}
+	if fn.IsGlobal {
+		env.SetGlobal(fn.Name, userFn)
+	} else {
+		if err := env.Set(fn.Name, userFn, false); err != nil {
+			return nil, err
+		}
+	}
+	return userFn, nil
+}
+
+func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value) (Value, error) {
+	fnEnv := NewEnvironment(fn.Env)
+	for i, param := range fn.Stmt.Parameters {
+		if i < len(args) {
+			fnEnv.Set(param.Name, args[i], false)
+		}
+	}
+	for _, stmt := range fn.Stmt.Body {
+		res, err := ev.Eval(stmt, fnEnv)
+		if err != nil {
+			return NilValue{}, err
+		}
+		if ret, ok := res.(ReturnValue); ok {
+			return ret.Val, nil
+		}
+	}
+	return NilValue{}, nil
+}
+
+func (ev *Evaluator) evalDispatchTree(dt *ast.DispatchTreeStatement, env *Environment) (Value, error) {
+	treeEnv := NewEnvironment(env)
+	for k, expr := range dt.PassArgs {
+		val, err := ev.Eval(expr, env)
+		if err != nil {
+			return NilValue{}, err
+		}
+		treeEnv.Set(k, val, false)
+	}
+
+	if ev.treeDispatcher != nil {
+		if err := ev.treeDispatcher(dt, ev, treeEnv); err != nil {
+			return NilValue{}, err
+		}
+	}
+	return BoolValue{Val: true}, nil
+}
+
 

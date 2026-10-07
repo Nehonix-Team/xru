@@ -132,6 +132,14 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 
 	// 4. Runtime & VM
 	eval := runtime.NewEvaluator()
+	eval.SetTreeDispatcher(func(dt *ast.DispatchTreeStatement, ev *runtime.Evaluator, treeEnv *runtime.Environment) error {
+		rootDir, _ := os.Getwd()
+		disp := dispatcher.New(rootDir, ev, treeEnv)
+		if verbose {
+			fmt.Printf("\033[36m[DEBUG]\033[0m Dispatching tree in '%s' (pattern: '%s')...\n", dt.Path, dt.Pattern)
+		}
+		return disp.DispatchTree(dt.Path, dt.Pattern)
+	})
 	env := runtime.NewEnvironment(nil)
 
 	// Injection des arguments CLI (--name=val ou --plugin)
@@ -171,21 +179,6 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 	if _, err := eval.Eval(prog, env); err != nil {
 		fmt.Printf("\033[31m[RUNTIME ERROR]\033[0m %v\n", err)
 		os.Exit(1)
-	}
-
-	// Traitement de #DISPATCH_TREE si présent
-	for _, stmt := range prog.Statements {
-		if dt, ok := stmt.(*ast.DispatchTreeStatement); ok {
-			rootDir, _ := os.Getwd()
-			disp := dispatcher.New(rootDir, eval, env)
-			if verbose {
-				fmt.Printf("\033[36m[DEBUG]\033[0m Dispatching tree in '%s' (pattern: '%s')...\n", dt.Path, dt.Pattern)
-			}
-			if err := disp.DispatchTree(dt.Path, dt.Pattern); err != nil {
-				fmt.Printf("\033[31m[DISPATCH ERROR]\033[0m %v\n", err)
-				os.Exit(1)
-			}
-		}
 	}
 }
 

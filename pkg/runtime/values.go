@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Nehonix-Team/xru/pkg/ast"
 )
 
 type ValueType string
@@ -86,3 +88,21 @@ type FunctionValue struct {
 
 func (f FunctionValue) Type() ValueType { return "function" }
 func (f FunctionValue) String() string  { return fmt.Sprintf("<func %s>", f.Name) }
+
+// UserFunction represents a function declared via #FUNC or #GLOBAL #FUNC
+type UserFunction struct {
+	Stmt *ast.FuncStatement
+	Env  *Environment
+}
+
+func (u UserFunction) Type() ValueType { return "function" }
+func (u UserFunction) String() string  { return fmt.Sprintf("<func %s>", u.Stmt.Name) }
+
+// ReturnValue captures early returns from functions
+type ReturnValue struct {
+	Val Value
+}
+
+func (r ReturnValue) Type() ValueType { return r.Val.Type() }
+func (r ReturnValue) String() string  { return r.Val.String() }
+

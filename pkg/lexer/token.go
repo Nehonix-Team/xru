@@ -39,6 +39,8 @@ const (
 	DISPATCH_TREE TokenType = "#DISPATCH_TREE"
 	FILE_DIR      TokenType = "#FILE"
 	SCOPE_DIR     TokenType = "#SCOPE"
+	GLOBAL_DIR    TokenType = "#GLOBAL"
+	PASS_DIR      TokenType = "#PASS"
 
 	// Keywords
 	LET   TokenType = "let"
@@ -121,6 +123,10 @@ var directives = map[string]TokenType{
 	"#DISPATCH_TREE": DISPATCH_TREE,
 	"#FILE":          FILE_DIR,
 	"#SCOPE":         SCOPE_DIR,
+	"#GLOBAL":        GLOBAL_DIR,
+	"#global":        GLOBAL_DIR,
+	"#PASS":          PASS_DIR,
+	"#pass":          PASS_DIR,
 }
 
 func LookupIdent(ident string) TokenType {

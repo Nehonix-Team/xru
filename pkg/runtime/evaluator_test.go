@@ -13,13 +13,13 @@ import (
 
 func TestEvaluatorBasic(t *testing.T) {
 	code := `
-#USE utils as Utils
-#USE fs as Fs
+use utils as Utils
+use fs as Fs
 
-#ARG APP_NAME or "demo-app"
+arg app_name: string = "demo-app"
 let version = "1.0.0"
 
-Utils.Log("<green>[TEST]</> Orchestration {APP_NAME} v{version}")
+Utils.Log("<green>[TEST]</> Orchestration {app_name} v{version}")
 `
 	l := lexer.New("runtime_test.xru", code)
 	p := parser.New(l)
@@ -42,9 +42,9 @@ Utils.Log("<green>[TEST]</> Orchestration {APP_NAME} v{version}")
 		t.Errorf("Expected version to be '1.0.0', got '%v'", val)
 	}
 
-	appVal, ok := env.Get("APP_NAME")
+	appVal, ok := env.Get("app_name")
 	if !ok || appVal.String() != "demo-app" {
-		t.Errorf("Expected APP_NAME to be 'demo-app', got '%v'", appVal)
+		t.Errorf("Expected app_name to be 'demo-app', got '%v'", appVal)
 	}
 }
 
@@ -65,11 +65,11 @@ line 3
 	}
 
 	code := `
-#FILE "` + testFilePath + `"
+file "` + testFilePath + `" {
     Replace("line 1", "first line")
     RemoveBlock("// BEGIN BLOCK", "// END BLOCK")
     RemoveLines("cdn")
-#END
+}
 `
 	l := lexer.New("test_file_ops.xru", code)
 	p := parser.New(l)
@@ -107,15 +107,15 @@ line 3
 
 func TestGlobalFunctionAndDispatchTreeBlock(t *testing.T) {
 	code := `
-#GLOBAL #FUNC Helper(name: string)
-    let msg = "Hello " + {name}
-    #RETURN msg
-#END
+global func Helper(name: string) {
+    let msg = "Hello " + name
+    return msg
+}
 
-#DISPATCH_TREE "./src", ".rules.xru"
-    #PASS MODE = "minimal"
-    #PASS CDN = false
-#END
+dispatch_tree "./src", ".rules.xru" {
+    pass MODE = "minimal"
+    pass CDN = false
+}
 `
 	l := lexer.New("test_global.xru", code)
 	p := parser.New(l)
@@ -171,15 +171,15 @@ func TestGlobalFunctionAndDispatchTreeBlock(t *testing.T) {
 
 func TestGlobalFunctionInvocationSyntax(t *testing.T) {
 	code := `
-#GLOBAL FUNC Greet(name: string)
+global func Greet(name: string) {
     let msg = "Hello {name}"
-    #RETURN msg
-#END
+    return msg
+}
 
-#FUNC LocalGreet(name: string)
+func LocalGreet(name: string) {
     let msg = "Hi {name}"
-    #RETURN msg
-#END
+    return msg
+}
 
 let r1 = ::Greet("Alice")
 let r2 = global::Greet("Bob")
@@ -241,8 +241,8 @@ let fail2 = ::LocalGreet("Dave")
 
 func TestCryptoUnitGetRandomBytes(t *testing.T) {
 	code := `
-#USE crypto as Crypto
-#USE utils as Utils
+use crypto as Crypto
+use utils as Utils
 
 let secret1 = Crypto.GetRandomBytes(32)
 let secret2 = Crypto.getRandomBytes(16)
@@ -281,7 +281,3 @@ let secret3 = Utils.GetRandomBytes(32)
 		t.Errorf("Expected two different random byte sequences")
 	}
 }
-
-
-
-

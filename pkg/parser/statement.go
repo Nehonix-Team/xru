@@ -1,0 +1,69 @@
+package parser
+
+import (
+	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/lexer"
+)
+
+func (p *Parser) parseStatement() ast.Statement {
+	switch p.curToken.Type {
+	case lexer.LBRACE:
+		return p.parseBlockStatement()
+	case lexer.USE:
+		return p.parseUseStatement()
+	case lexer.ARG:
+		return p.parseArgStatement()
+	case lexer.LET, lexer.CONST:
+		return p.parseVarStatement()
+	case lexer.UNIT:
+		return p.parseUnitStatement()
+	case lexer.FUNC:
+		return p.parseFuncStatement()
+	case lexer.WITH:
+		return p.parseWithStatement()
+	case lexer.IF:
+		return p.parseIfStatement()
+	case lexer.MATCH:
+		return p.parseMatchStatement()
+	case lexer.DISPATCH_TREE:
+		return p.parseDispatchTreeStatement()
+	case lexer.FILE:
+		return p.parseFileStatement()
+	case lexer.GLOBAL:
+		return p.parseGlobalStatement()
+	case lexer.SET, lexer.HEADER, lexer.ON:
+		return p.parseCustomDirective()
+	case lexer.RETURN:
+		return p.parseReturnStatement()
+	case lexer.IDENT:
+		if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.STRING) {
+			return p.parseCustomDirective()
+		}
+		return p.parseExpressionStatement()
+	default:
+		// Expression libre (ex: appel de fonction ou méthode)
+		return p.parseExpressionStatement()
+	}
+}
+
+// { stmt1; stmt2; ... }
+func (p *Parser) parseBlockStatement() *ast.BlockStatement {
+	block := &ast.BlockStatement{Position: p.curToken.Pos}
+	p.nextToken() // saute '{'
+	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		stmt := p.parseStatement()
+		if stmt != nil {
+			block.Statements = append(block.Statements, stmt)
+		}
+		p.nextToken()
+	}
+	return block
+}
+
+func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
+	stmt := &ast.ExpressionStatement{
+		Position:   p.curToken.Pos,
+		Expression: p.parseExpression(),
+	}
+	return stmt
+}

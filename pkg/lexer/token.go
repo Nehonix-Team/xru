@@ -14,46 +14,45 @@ const (
 	COMMENT TokenType = "COMMENT"
 
 	// Identifiers & Literals
-	IDENT    TokenType = "IDENT"    // ex: myVar, Clean, Net
+	IDENT    TokenType = "IDENT"    // ex: myVar, clean, Net
 	STRING   TokenType = "STRING"   // ex: "hello", "https://..."
 	NUMBER   TokenType = "NUMBER"   // ex: 3000, 42, 3.14
 	BOOL     TokenType = "BOOL"     // true, false
 	DURATION TokenType = "DURATION" // ex: 30s, 500ms, 2m, 1h
 
-	// Directives starting with '#'
-	USE_DIR       TokenType = "#USE"
-	ARG_DIR       TokenType = "#ARG"
-	UNIT_DIR      TokenType = "#UNIT"
-	DECLARE_DIR   TokenType = "#DECLARE"
-	DIRECTIVE_DIR TokenType = "#DIRECTIVE"
-	FUNC_DIR      TokenType = "#FUNC"
-	RETURN_DIR    TokenType = "#RETURN"
-	WITH_DIR      TokenType = "#WITH"
-	END_DIR       TokenType = "#END"
-	IF_DIR        TokenType = "#IF"
-	ELIF_DIR      TokenType = "#ELIF"
-	ELSE_DIR      TokenType = "#ELSE"
-	MATCH_DIR     TokenType = "#MATCH"
-	CASE_DIR      TokenType = "#CASE"
-	DEFAULT_DIR   TokenType = "#DEFAULT"
-	DISPATCH_TREE TokenType = "#DISPATCH_TREE"
-	FILE_DIR      TokenType = "#FILE"
-	SCOPE_DIR     TokenType = "#SCOPE"
-	GLOBAL_DIR    TokenType = "#GLOBAL"
-	PASS_DIR      TokenType = "#PASS"
-
-	// Keywords
-	LET   TokenType = "let"
-	CONST TokenType = "const"
-	AS    TokenType = "as"
-	OR    TokenType = "or"
+	// Modern clean language keywords (all lowercase)
+	USE           TokenType = "use"
+	ARG           TokenType = "arg"
+	LET           TokenType = "let"
+	CONST         TokenType = "const"
+	UNIT          TokenType = "unit"
+	DECLARE       TokenType = "declare"
+	DIRECTIVE     TokenType = "directive"
+	FUNC          TokenType = "func"
+	RETURN        TokenType = "return"
+	WITH          TokenType = "with"
+	SET           TokenType = "set"
+	HEADER        TokenType = "header"
+	ON            TokenType = "on"
+	IF            TokenType = "if"
+	ELIF          TokenType = "elif"
+	ELSE          TokenType = "else"
+	MATCH         TokenType = "match"
+	CASE          TokenType = "case"
+	DEFAULT       TokenType = "default"
+	DISPATCH_TREE TokenType = "dispatch_tree"
+	FILE          TokenType = "file"
+	GLOBAL        TokenType = "global"
+	PASS          TokenType = "pass"
+	AS            TokenType = "as"
+	OR            TokenType = "or"
 
 	// Operators & Symbols
-	ASSIGN TokenType = "="
-	ARROW  TokenType = "->"
+	ASSIGN    TokenType = "="
+	ARROW     TokenType = "->"
 	FAT_ARROW TokenType = "=>"
-	AT     TokenType = "@" // Instanciation @Unit()
-	AMP    TokenType = "&" // Propriété interne &prop
+	AT        TokenType = "@" // Instanciation @Unit()
+	AMP       TokenType = "&" // Propriété interne &prop
 
 	// Comparaisons
 	EQ  TokenType = "=="
@@ -64,12 +63,12 @@ const (
 	GTE TokenType = ">="
 
 	// Delimiters
-	LPAREN   TokenType = "("
-	RPAREN   TokenType = ")"
-	LBRACKET TokenType = "["
-	RBRACKET TokenType = "]"
-	LBRACE   TokenType = "{"
-	RBRACE   TokenType = "}"
+	LPAREN       TokenType = "("
+	RPAREN       TokenType = ")"
+	LBRACKET     TokenType = "["
+	RBRACKET     TokenType = "]"
+	LBRACE       TokenType = "{"
+	RBRACE       TokenType = "}"
 	COMMA        TokenType = ","
 	COLON        TokenType = ":"
 	DOUBLE_COLON TokenType = "::"
@@ -97,56 +96,39 @@ func (t Token) String() string {
 }
 
 var keywords = map[string]TokenType{
-	"let":   LET,
-	"const": CONST,
-	"as":    AS,
-	"or":    OR,
-	"true":  BOOL,
-	"false": BOOL,
-}
-
-var directives = map[string]TokenType{
-	"#USE":           USE_DIR,
-	"#ARG":           ARG_DIR,
-	"#UNIT":          UNIT_DIR,
-	"#DECLARE":       DECLARE_DIR,
-	"#DIRECTIVE":     DIRECTIVE_DIR,
-	"#FUNC":          FUNC_DIR,
-	"#RETURN":        RETURN_DIR,
-	"#WITH":          WITH_DIR,
-	"#END":           END_DIR,
-	"#IF":            IF_DIR,
-	"#ELIF":          ELIF_DIR,
-	"#ELSE":          ELSE_DIR,
-	"#MATCH":         MATCH_DIR,
-	"#CASE":          CASE_DIR,
-	"#DEFAULT":       DEFAULT_DIR,
-	"#DISPATCH_TREE": DISPATCH_TREE,
-	"#FILE":          FILE_DIR,
-	"#SCOPE":         SCOPE_DIR,
-	"#GLOBAL":        GLOBAL_DIR,
-	"#global":        GLOBAL_DIR,
-	"#PASS":          PASS_DIR,
-	"#pass":          PASS_DIR,
+	"let":           LET,
+	"const":         CONST,
+	"as":            AS,
+	"or":            OR,
+	"true":          BOOL,
+	"false":         BOOL,
+	"use":           USE,
+	"arg":           ARG,
+	"unit":          UNIT,
+	"declare":       DECLARE,
+	"directive":     DIRECTIVE,
+	"func":          FUNC,
+	"return":        RETURN,
+	"with":          WITH,
+	"set":           SET,
+	"header":        HEADER,
+	"on":            ON,
+	"if":            IF,
+	"elif":          ELIF,
+	"else":          ELSE,
+	"match":         MATCH,
+	"case":          CASE,
+	"default":       DEFAULT,
+	"dispatch_tree": DISPATCH_TREE,
+	"file":          FILE,
+	"global":        GLOBAL,
+	"pass":          PASS,
 }
 
 func LookupIdent(ident string) TokenType {
-	if tok, ok := keywords[ident]; ok {
+	lower := strings.ToLower(ident)
+	if tok, ok := keywords[lower]; ok {
 		return tok
 	}
 	return IDENT
-}
-
-const (
-	CUSTOM_DIR TokenType = "CUSTOM_DIR" // ex: #HEADER, #SET, #OPTION
-)
-
-func LookupDirective(dir string) TokenType {
-	if tok, ok := directives[dir]; ok {
-		return tok
-	}
-	if strings.HasPrefix(dir, "#") {
-		return CUSTOM_DIR
-	}
-	return ILLEGAL
 }

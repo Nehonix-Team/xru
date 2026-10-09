@@ -1,6 +1,7 @@
 package parser_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -10,46 +11,48 @@ import (
 
 func TestParserComplete(t *testing.T) {
 	input := `
-#USE net as Net
-#ARG PORT: number or 3000
-#ARG TIMEOUT: duration or 30s
+use net as Net
+arg port: number = 3000
+arg timeout: duration = 30s
 
 let targetDir: string = "./my-project"
 let isProd: bool = true
 let manager: TemplateManager = @TemplateManager()
 
-#UNIT TemplateManager
-    #DECLARE baseDir: string = "./src"
+unit TemplateManager {
+    declare baseDir: string = "./src"
     
-    #DIRECTIVE OPTION(key: string, value: any)
+    directive OPTION(key: string, value: any) {
         Utils.Log("Option set")
-    #END
+    }
 
-    #FUNC Clean(target: string) -> bool
+    func Clean(target: string) -> bool {
         Fs.Remove("{&baseDir}/{target}")
-        #RETURN true
-    #END
-#END
+        return true
+    }
+}
 
-#WITH Net.Fetch("https://api.github.com/releases")
-    #SET Method = "GET"
-    #HEADER "Accept" -> "application/json"
-#END
+with Net.Fetch("https://api.github.com/releases") {
+    set Method = "GET"
+    header "Accept" -> "application/json"
+}
 
-#IF {PORT} == 3000
+if port == 3000 {
     Utils.Log("Default port used")
-#ELIF {PORT} > 8000
+} elif port > 8000 {
     Utils.Log("High port")
-#ELSE
+} else {
     Utils.Log("Custom port")
-#END
+}
 
-#MATCH {PORT}
-    #CASE 3000
+match port {
+    case 3000 {
         let pType = "standard"
-    #DEFAULT
+    }
+    default {
         let pType = "other"
-#END
+    }
+}
 
 let headers: map[string, string] = [
     "Accept" -> "application/json",
@@ -74,7 +77,6 @@ let files: list[string] = ["index.ts", "server.ts"]
 		t.Fatal("Expected statements in program, got 0")
 	}
 
-	// Vérification de la présence des déclarations clés
 	hasUnit := false
 	hasWith := false
 	hasIf := false
@@ -104,5 +106,65 @@ let files: list[string] = ["index.ts", "server.ts"]
 	}
 	if !hasMatch {
 		t.Error("Missing MatchStatement in parsed AST")
+	}
+}
+
+func TestWithLambdaAndBlockClosure(t *testing.T) {
+	input := `use utils as Utils
+use net as Net
+
+let a: string = "testing with block"
+Utils.Log(a)
+
+with Net.Fetch("https://api.github.com/repos/Nehonix-Team/xypriss-templates/releases/latest") {
+    set Method = "GET"
+    set Timeout = 30s
+    set ExtractTo = "./src"
+
+    header "Accept" -> "application/vnd.github.v3+json"
+    header "User-Agent" -> "XRU-Engine"
+
+    on Progress -> (percent, speed) => Utils.Log("<cyan>[PROGRESS]</> {percent}% à {speed}")
+    on Complete -> (data, err) => {
+        if err != nil {
+            Utils.Log("Failed")
+        } else {
+            Utils.Log("<green>[DONE]</> Téléchargement terminé.")
+        }
+    }
+}
+`
+	l := lexer.New("test.xru", input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	for _, err := range p.Errors() {
+		t.Errorf("Error: %s", err)
+	}
+	if len(prog.Statements) == 0 {
+		t.Fatal("No statements")
+	}
+}
+
+func TestUnclosedBlock(t *testing.T) {
+	input := `
+with Net.Fetch("https://example.com") {
+    set Method = "GET"
+`
+	l := lexer.New("unclosed.xru", input)
+	p := parser.New(l)
+	p.ParseProgram()
+
+	if len(p.Errors()) == 0 {
+		t.Fatal("Expected parser error for unclosed block, got none")
+	}
+
+	foundExpected := false
+	for _, err := range p.Errors() {
+		if strings.Contains(err, "expected token '}'") || strings.Contains(err, "}") {
+			foundExpected = true
+		}
+	}
+	if !foundExpected {
+		t.Errorf("Expected 'expected token '}' error, got: %v", p.Errors())
 	}
 }

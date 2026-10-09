@@ -30,6 +30,7 @@ func New(filename string, input string) *Lexer {
 func (l *Lexer) readChar() {
 	if l.readPosition >= len(l.input) {
 		l.ch = 0
+		l.position = len(l.input)
 	} else {
 		r, width := utf8.DecodeRuneInString(l.input[l.readPosition:])
 		l.ch = r
@@ -73,14 +74,7 @@ func (l *Lexer) NextToken() Token {
 
 	startPos := Position{Filename: l.filename, Line: l.line, Column: l.column}
 
-	// 1. Directives débutant par '#'
-	if l.ch == '#' {
-		directive := l.readDirective()
-		tokType := LookupDirective(directive)
-		return Token{Type: tokType, Literal: directive, Pos: startPos}
-	}
-
-	// 2. Chaines de caractères "..." ou """...""" ou '''...''' ou `...`
+	// 1. Chaines de caractères "..." ou """...""" ou '''...''' ou `...`
 	if l.ch == '"' {
 		if l.peekChar() == '"' && l.peekChar2() == '"' {
 			str := l.readTripleString('"')
@@ -255,13 +249,6 @@ func (l *Lexer) skipWhitespaceAndComments() {
 	}
 }
 
-func (l *Lexer) readDirective() string {
-	start := l.position
-	for l.ch == '#' || isLetter(l.ch) || l.ch == '_' {
-		l.readChar()
-	}
-	return l.input[start:l.position]
-}
 
 func (l *Lexer) readIdentifier() string {
 	start := l.position

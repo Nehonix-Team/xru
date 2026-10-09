@@ -201,11 +201,17 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 			os.Exit(1)
 		}
 
+		declArg := declaredArgs[targetKey]
+		actualKey := declArg.Name
 		if isNegative {
+			env.Set(actualKey, runtime.BoolValue{Val: false}, false)
 			env.Set(targetKey, runtime.BoolValue{Val: false}, false)
 		} else if hasValue {
-			env.Set(targetKey, parseCliVal(valStr), false)
+			val := parseCliVal(valStr)
+			env.Set(actualKey, val, false)
+			env.Set(targetKey, val, false)
 		} else {
+			env.Set(actualKey, runtime.BoolValue{Val: true}, false)
 			env.Set(targetKey, runtime.BoolValue{Val: true}, false)
 		}
 	}
@@ -245,6 +251,9 @@ func handlePack(args []string, verbose bool) {
 		outputPath = filename
 	} else {
 		outputPath = filepath.Join(outDir, filename)
+	}
+	if !filepath.IsAbs(outputPath) {
+		outputPath = filepath.Join(rootDir, outputPath)
 	}
 
 	// Seul et unique fichier d'ignore officiel : .xruignore

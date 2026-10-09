@@ -3,6 +3,7 @@ package checker
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
@@ -21,9 +22,11 @@ const (
 type Symbol struct {
 	Name       string
 	Kind       SymbolKind
-	Type       string
+	Type       string // Pour les variables/constantes: type. Pour les fonctions: return type.
 	Pos        lexer.Position
-	Directives map[string]bool // Pour les #UNIT : directives déclarées
+	Directives map[string]bool    // Pour les #UNIT : directives déclarées
+	Params     []*ast.Parameter   // Pour les fonctions : paramètres
+	Methods    map[string]*Symbol // Pour les #UNIT : méthodes exposées
 }
 
 type Scope struct {
@@ -69,8 +72,9 @@ func (s *Scope) InUnitScope() bool {
 }
 
 type Checker struct {
-	errors []string
-	scope  *Scope
+	errors      []string
+	scope       *Scope
+	currentFunc *ast.FuncStatement
 }
 
 func New() *Checker {
@@ -78,7 +82,6 @@ func New() *Checker {
 		errors: []string{},
 		scope:  NewScope(nil, false),
 	}
-	// Initialisation des #UNIT natives dans le scope racine
 	c.initBuiltinUnits()
 	return c
 }
@@ -87,30 +90,71 @@ func (c *Checker) initBuiltinUnits() {
 	netUnit := &Symbol{
 		Name:       "Net",
 		Kind:       SymUnit,
-		Directives: map[string]bool{"#SET": true, "#HEADER": true, "#ON": true},
+		Directives: map[string]bool{"set": true, "header": true, "on": true},
+		Methods: map[string]*Symbol{
+			"Fetch": {Name: "Fetch", Kind: SymFunc, Type: "any"},
+			"Clone": {Name: "Clone", Kind: SymFunc, Type: "bool"},
+			"Get":   {Name: "Get", Kind: SymFunc, Type: "string"},
+		},
 	}
 	fsUnit := &Symbol{
 		Name:       "Fs",
 		Kind:       SymUnit,
-		Directives: map[string]bool{"#SET": true},
+		Directives: map[string]bool{"set": true},
+		Methods: map[string]*Symbol{
+			"Exists":    {Name: "Exists", Kind: SymFunc, Type: "bool"},
+			"IsDir":     {Name: "IsDir", Kind: SymFunc, Type: "bool"},
+			"IsFile":    {Name: "IsFile", Kind: SymFunc, Type: "bool"},
+			"Read":      {Name: "Read", Kind: SymFunc, Type: "string"},
+			"Size":      {Name: "Size", Kind: SymFunc, Type: "number"},
+			"Remove":    {Name: "Remove", Kind: SymFunc, Type: "void"},
+			"Move":      {Name: "Move", Kind: SymFunc, Type: "void"},
+			"Copy":      {Name: "Copy", Kind: SymFunc, Type: "void"},
+			"EnsureDir": {Name: "EnsureDir", Kind: SymFunc, Type: "void"},
+		},
 	}
 	utilsUnit := &Symbol{
 		Name: "Utils",
 		Kind: SymUnit,
+		Methods: map[string]*Symbol{
+			"Log": {Name: "Log", Kind: SymFunc, Type: "void"},
+		},
 	}
 	sysUnit := &Symbol{
 		Name: "Sys",
 		Kind: SymUnit,
+		Methods: map[string]*Symbol{
+			"GetEnv": {Name: "GetEnv", Kind: SymFunc, Type: "string"},
+			"Os":     {Name: "Os", Kind: SymFunc, Type: "string"},
+			"Arch":   {Name: "Arch", Kind: SymFunc, Type: "string"},
+		},
 	}
 	cmdUnit := &Symbol{
 		Name: "Cmd",
 		Kind: SymUnit,
+		Methods: map[string]*Symbol{
+			"Exec": {Name: "Exec", Kind: SymFunc, Type: "string"},
+		},
 	}
+	cryptoUnit := &Symbol{
+		Name: "Crypto",
+		Kind: SymUnit,
+		Methods: map[string]*Symbol{
+			"GetRandomBytes": {Name: "GetRandomBytes", Kind: SymFunc, Type: "string"},
+			"RandomBytes":    {Name: "RandomBytes", Kind: SymFunc, Type: "string"},
+			"RandomHex":      {Name: "RandomHex", Kind: SymFunc, Type: "string"},
+			"RandomBase64":   {Name: "RandomBase64", Kind: SymFunc, Type: "string"},
+			"Sha256":         {Name: "Sha256", Kind: SymFunc, Type: "string"},
+			"Uuid":           {Name: "Uuid", Kind: SymFunc, Type: "string"},
+		},
+	}
+
 	c.scope.Define(netUnit)
 	c.scope.Define(fsUnit)
 	c.scope.Define(utilsUnit)
 	c.scope.Define(sysUnit)
 	c.scope.Define(cmdUnit)
+	c.scope.Define(cryptoUnit)
 }
 
 func (c *Checker) Errors() []string {
@@ -129,6 +173,8 @@ func (c *Checker) Check(prog *ast.Program) {
 
 func (c *Checker) checkStatement(stmt ast.Statement) {
 	switch s := stmt.(type) {
+	case *ast.UseStatement:
+		c.checkUse(s)
 	case *ast.ArgStatement:
 		c.checkArg(s)
 	case *ast.VarStatement:
@@ -141,6 +187,10 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		c.checkFunc(s)
 	case *ast.IfStatement:
 		c.checkIf(s)
+	case *ast.BlockStatement:
+		for _, bodyStmt := range s.Statements {
+			c.checkStatement(bodyStmt)
+		}
 	case *ast.ExpressionStatement:
 		c.checkExpression(s.Expression)
 	case *ast.FileStatement:
@@ -152,7 +202,46 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.ReturnStatement:
 		if s.Value != nil {
 			c.checkExpression(s.Value)
+			if c.currentFunc != nil && c.currentFunc.ReturnType != "" && c.currentFunc.ReturnType != "void" {
+				actualType := c.inferType(s.Value)
+				if !isTypeCompatible(c.currentFunc.ReturnType, actualType) {
+					c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
+						fmt.Sprintf("Cannot return value of type '%s' from function '%s' expecting '%s'", actualType, c.currentFunc.Name, c.currentFunc.ReturnType))
+				}
+			}
 		}
+	}
+}
+
+func (c *Checker) checkUse(s *ast.UseStatement) {
+	alias := s.Alias
+	if alias == "" {
+		alias = s.Module
+	}
+	var sourceSym *Symbol
+	for name, sym := range c.scope.symbols {
+		if strings.EqualFold(name, s.Module) {
+			sourceSym = sym
+			break
+		}
+	}
+	if sourceSym != nil {
+		aliasSym := &Symbol{
+			Name:       alias,
+			Kind:       SymUnit,
+			Type:       sourceSym.Type,
+			Pos:        s.Pos(),
+			Directives: sourceSym.Directives,
+			Methods:    sourceSym.Methods,
+		}
+		c.scope.Define(aliasSym)
+	} else {
+		aliasSym := &Symbol{
+			Name: alias,
+			Kind: SymUnit,
+			Pos:  s.Pos(),
+		}
+		c.scope.Define(aliasSym)
 	}
 }
 
@@ -161,6 +250,17 @@ func (c *Checker) checkArg(s *ast.ArgStatement) {
 	sym := &Symbol{Name: s.Name, Kind: kind, Type: s.Type, Pos: s.Pos()}
 	if err := c.scope.Define(sym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+	}
+
+	if s.DefaultValue != nil {
+		c.checkExpression(s.DefaultValue)
+		if s.Type != "" {
+			actualType := c.inferType(s.DefaultValue)
+			if !isTypeCompatible(s.Type, actualType) {
+				c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
+					fmt.Sprintf("Default value of type '%s' does not match declared type '%s' for argument '%s'", actualType, s.Type, s.Name))
+			}
+		}
 	}
 }
 
@@ -176,23 +276,41 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 	}
 
 	c.checkExpression(s.Value)
+
+	if s.Value != nil && s.Type != "" {
+		actualType := c.inferType(s.Value)
+		if !isTypeCompatible(s.Type, actualType) {
+			c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
+				fmt.Sprintf("Cannot assign expression of type '%s' to variable '%s' declared as '%s'", actualType, s.Name, s.Type))
+		}
+	}
 }
 
 func (c *Checker) checkUnit(s *ast.UnitStatement) {
-	sym := &Symbol{
+	unitSym := &Symbol{
 		Name:       s.Name,
 		Kind:       SymUnit,
 		Pos:        s.Pos(),
 		Directives: make(map[string]bool),
+		Methods:    make(map[string]*Symbol),
 	}
 
-	// Enregistre les directives autorisées pour cette unité
 	for _, dir := range s.Directives {
 		dirName := "#" + dir.Name
-		sym.Directives[dirName] = true
+		unitSym.Directives[dirName] = true
 	}
 
-	if err := c.scope.Define(sym); err != nil {
+	for _, method := range s.Methods {
+		unitSym.Methods[method.Name] = &Symbol{
+			Name:   method.Name,
+			Kind:   SymFunc,
+			Type:   method.ReturnType,
+			Pos:    method.Pos(),
+			Params: method.Parameters,
+		}
+	}
+
+	if err := c.scope.Define(unitSym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 	}
 
@@ -206,6 +324,13 @@ func (c *Checker) checkUnit(s *ast.UnitStatement) {
 			c.addError(prop.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 		}
 		c.checkExpression(prop.Value)
+		if prop.Value != nil && prop.Type != "" {
+			actualType := c.inferType(prop.Value)
+			if !isTypeCompatible(prop.Type, actualType) {
+				c.addError(prop.Pos(), "ERR_TYPE_MISMATCH",
+					fmt.Sprintf("Cannot assign expression of type '%s' to property '%s' declared as '%s'", actualType, prop.Name, prop.Type))
+			}
+		}
 	}
 
 	for _, method := range s.Methods {
@@ -214,9 +339,11 @@ func (c *Checker) checkUnit(s *ast.UnitStatement) {
 }
 
 func (c *Checker) checkWith(s *ast.WithStatement) {
+	if s == nil {
+		return
+	}
 	c.checkExpression(s.Target)
 
-	// Identifier l'unité ciblée par le bloc #WITH
 	var targetUnitSym *Symbol
 	switch t := s.Target.(type) {
 	case *ast.Identifier:
@@ -237,18 +364,37 @@ func (c *Checker) checkWith(s *ast.WithStatement) {
 	for _, bodyStmt := range s.Body {
 		if customDir, ok := bodyStmt.(*ast.CustomDirectiveInvocation); ok {
 			if targetUnitSym != nil && len(targetUnitSym.Directives) > 0 {
-				if !targetUnitSym.Directives[customDir.Directive] {
+				dirName := strings.ToLower(customDir.Directive)
+				found := false
+				for dKey := range targetUnitSym.Directives {
+					if strings.ToLower(dKey) == dirName {
+						found = true
+						break
+					}
+				}
+				if !found {
 					c.addError(customDir.Pos(), "ERR_ORPHAN_DIRECTIVE",
-						fmt.Sprintf("Directive '%s' is not defined for #UNIT '%s'", customDir.Directive, targetUnitSym.Name))
+						fmt.Sprintf("Directive '%s' is not defined for with target '%s'", customDir.Directive, targetUnitSym.Name))
 				}
 			}
 		}
+		c.checkStatement(bodyStmt)
 	}
 }
 
 func (c *Checker) checkFunc(s *ast.FuncStatement) {
-	fnSym := &Symbol{Name: s.Name, Kind: SymFunc, Pos: s.Pos()}
+	fnSym := &Symbol{
+		Name:   s.Name,
+		Kind:   SymFunc,
+		Type:   s.ReturnType,
+		Pos:    s.Pos(),
+		Params: s.Parameters,
+	}
 	c.scope.Define(fnSym)
+
+	oldFunc := c.currentFunc
+	c.currentFunc = s
+	defer func() { c.currentFunc = oldFunc }()
 
 	fnScope := NewScope(c.scope, false)
 	c.scope = fnScope
@@ -286,14 +432,21 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	}
 
 	switch e := expr.(type) {
+	case *ast.LambdaExpression:
+		lambdaScope := NewScope(c.scope, false)
+		c.scope = lambdaScope
+		defer func() { c.scope = c.scope.parent }()
+
+		for _, p := range e.Parameters {
+			c.scope.Define(&Symbol{Name: p.Name, Kind: SymVar, Type: p.Type})
+		}
+		c.checkExpression(e.Body)
 	case *ast.PropAccess:
-		// Règle stricte : &prop n'est autorisé que DANS une #UNIT
 		if !c.scope.InUnitScope() {
 			c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
 				fmt.Sprintf("Property access '&%s' is only allowed inside a #UNIT definition", e.Name))
 		}
 	case *ast.DurationLiteral:
-		// Validation stricte de format duration
 		re := regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(ms|s|m|h)$`)
 		if !re.MatchString(e.Value) {
 			c.addError(e.Pos(), "ERR_INVALID_DURATION",
@@ -309,5 +462,140 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	case *ast.InfixExpression:
 		c.checkExpression(e.Left)
 		c.checkExpression(e.Right)
+	case *ast.BlockStatement:
+		for _, stmt := range e.Statements {
+			c.checkStatement(stmt)
+		}
 	}
+}
+
+func (c *Checker) inferType(expr ast.Expression) string {
+	if expr == nil {
+		return "any"
+	}
+	switch e := expr.(type) {
+	case *ast.BlockStatement:
+		return "void"
+	case *ast.StringLiteral:
+		return "string"
+	case *ast.NumberLiteral:
+		return "number"
+	case *ast.BoolLiteral:
+		return "bool"
+	case *ast.DurationLiteral:
+		return "duration"
+	case *ast.ListLiteral:
+		if len(e.Elements) == 0 {
+			return "list"
+		}
+		return "list[" + c.inferType(e.Elements[0]) + "]"
+	case *ast.MapLiteral:
+		return "map"
+	case *ast.LambdaExpression:
+		return "function"
+	case *ast.InstantiationExpression:
+		return e.UnitName
+	case *ast.Identifier:
+		if strings.EqualFold(e.Value, "nil") || strings.EqualFold(e.Value, "null") {
+			return "any"
+		}
+		if sym, ok := c.scope.Resolve(e.Value); ok {
+			if sym.Type != "" {
+				return sym.Type
+			}
+			if sym.Kind == SymUnit {
+				return sym.Name
+			}
+		}
+		return "any"
+	case *ast.PropAccess:
+		if sym, ok := c.scope.Resolve("&" + e.Name); ok {
+			return sym.Type
+		}
+		if sym, ok := c.scope.Resolve(e.Name); ok {
+			return sym.Type
+		}
+		return "any"
+	case *ast.InfixExpression:
+		switch e.Operator {
+		case "==", "!=", "<", "<=", ">", ">=", "&&", "||":
+			return "bool"
+		case "+":
+			leftType := c.inferType(e.Left)
+			rightType := c.inferType(e.Right)
+			if leftType == "string" || rightType == "string" {
+				return "string"
+			}
+			return "number"
+		case "-", "*", "/", "%":
+			return "number"
+		}
+		return "any"
+	case *ast.CallExpression:
+		if member, ok := e.Caller.(*ast.MemberExpression); ok {
+			if ident, ok := member.Object.(*ast.Identifier); ok {
+				if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Methods != nil {
+					for mName, mSym := range sym.Methods {
+						if strings.EqualFold(mName, member.Property) {
+							if mSym.Type != "" {
+								return mSym.Type
+							}
+						}
+					}
+				}
+			}
+		} else if ident, ok := e.Caller.(*ast.Identifier); ok {
+			if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Kind == SymFunc {
+				if sym.Type != "" {
+					return sym.Type
+				}
+			}
+		}
+		return "any"
+	case *ast.GlobalCallExpression:
+		if sym, ok := c.scope.Resolve(e.Function); ok && sym.Kind == SymFunc {
+			if sym.Type != "" {
+				return sym.Type
+			}
+		}
+		return "any"
+	case *ast.GlobalAccessExpression:
+		if sym, ok := c.scope.Resolve(e.Name); ok {
+			return sym.Type
+		}
+		return "any"
+	default:
+		return "any"
+	}
+}
+
+func isTypeCompatible(expected, actual string) bool {
+	if expected == "" || expected == "any" {
+		return true
+	}
+	if actual == "" || actual == "any" {
+		return true
+	}
+	if strings.EqualFold(expected, actual) {
+		return true
+	}
+	if (strings.EqualFold(expected, "bool") || strings.EqualFold(expected, "boolean")) &&
+		(strings.EqualFold(actual, "bool") || strings.EqualFold(actual, "boolean")) {
+		return true
+	}
+	if strings.EqualFold(expected, "number") && (strings.EqualFold(actual, "int") || strings.EqualFold(actual, "float") || strings.EqualFold(actual, "number")) {
+		return true
+	}
+	if strings.HasPrefix(expected, "list") && strings.HasPrefix(actual, "list") {
+		if expected == "list" || actual == "list" {
+			return true
+		}
+		tExpected := strings.TrimSuffix(strings.TrimPrefix(expected, "list["), "]")
+		tActual := strings.TrimSuffix(strings.TrimPrefix(actual, "list["), "]")
+		return isTypeCompatible(tExpected, tActual)
+	}
+	if strings.HasPrefix(expected, "map") && strings.HasPrefix(actual, "map") {
+		return true
+	}
+	return false
 }

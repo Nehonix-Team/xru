@@ -1,12 +1,15 @@
 package runtime
 
 import (
+	"archive/zip"
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -94,30 +97,210 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
 			"Fetch": func(args []Value) (Value, error) {
-				if len(args) < 2 {
-					return NilValue{}, fmt.Errorf("Net.Fetch requires url and dest path")
+				if len(args) < 1 {
+					return NilValue{}, fmt.Errorf("Net.Fetch requires url")
 				}
 				url := args[0].String()
-				dest := args[1].String()
+				if len(args) >= 2 {
+					dest := args[1].String()
+					resp, err := http.Get(url)
+					if err != nil {
+						return BoolValue{Val: false}, err
+					}
+					defer resp.Body.Close()
 
-				resp, err := http.Get(url)
-				if err != nil {
-					return BoolValue{Val: false}, err
+					if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+						return BoolValue{Val: false}, err
+					}
+
+					out, err := os.Create(dest)
+					if err != nil {
+						return BoolValue{Val: false}, err
+					}
+					defer out.Close()
+
+					_, err = io.Copy(out, resp.Body)
+					return BoolValue{Val: err == nil}, err
 				}
-				defer resp.Body.Close()
 
-				if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
-					return BoolValue{Val: false}, err
+				// Contexte étendu pour bloc #WITH Net.Fetch("...")
+				var onProgress LambdaValue
+				var onComplete LambdaValue
+				props := make(map[string]Value)
+				headers := make(map[string]string)
+				props["url"] = StringValue{Val: url}
+
+				fetchCtx := &UnitInstance{
+					UnitName:   "Net.Fetch",
+					Properties: props,
+					Directives: map[string]NativeDirective{
+						"set": func(key Value, val Value) error {
+							props[key.String()] = val
+							return nil
+						},
+						"header": func(key Value, val Value) error {
+							headers[key.String()] = val.String()
+							return nil
+						},
+						"on": func(key Value, val Value) error {
+							kStr := key.String()
+							if strings.EqualFold(kStr, "Progress") {
+								if lambda, ok := val.(LambdaValue); ok {
+									onProgress = lambda
+								}
+							} else if strings.EqualFold(kStr, "Complete") {
+								if lambda, ok := val.(LambdaValue); ok {
+									onComplete = lambda
+								}
+							}
+							return nil
+						},
+					},
+					Methods: map[string]NativeMethod{
+						"__complete": func(mArgs []Value) (Value, error) {
+							ev := NewEvaluator()
+
+							// 1. Détermination de la méthode HTTP
+							method := "GET"
+							if m, ok := props["Method"]; ok && m.String() != "" {
+								method = strings.ToUpper(m.String())
+							}
+
+							// 2. Détermination du timeout
+							timeout := 30 * time.Second
+							if tVal, ok := props["Timeout"]; ok {
+								if dur, ok := tVal.(DurationValue); ok {
+									timeout = dur.Val
+								} else if num, ok := tVal.(NumberValue); ok {
+									timeout = time.Duration(num.Val) * time.Second
+								} else if parsed, err := time.ParseDuration(tVal.String()); err == nil {
+									timeout = parsed
+								}
+							}
+
+							// 3. Corps de requête optionnel
+							var reqBody io.Reader
+							if bVal, ok := props["Body"]; ok && bVal.String() != "" {
+								reqBody = strings.NewReader(bVal.String())
+							}
+
+							extractTo := ""
+							if et, ok := props["ExtractTo"]; ok {
+								extractTo = et.String()
+							}
+							dest := ""
+							if d, ok := props["Dest"]; ok {
+								dest = d.String()
+							}
+
+							// 4. Initialisation de la requête HTTP
+							req, err := http.NewRequest(method, url, reqBody)
+							if err != nil {
+								if onComplete.Body != nil {
+									_, _ = ev.CallLambda(onComplete, []Value{NilValue{}, StringValue{Val: err.Error()}})
+								}
+								return NilValue{}, err
+							}
+
+							// En-têtes HTTP configurés via #HEADER
+							for k, v := range headers {
+								req.Header.Set(k, v)
+							}
+
+							client := &http.Client{Timeout: timeout}
+							resp, err := client.Do(req)
+							if err != nil {
+								if onComplete.Body != nil {
+									_, _ = ev.CallLambda(onComplete, []Value{NilValue{}, StringValue{Val: err.Error()}})
+								}
+								return NilValue{}, err
+							}
+							defer resp.Body.Close()
+
+							// 5. Téléchargement réel et calcul de progression
+							var bodyBuf bytes.Buffer
+							buf := make([]byte, 32*1024)
+							totalSize := resp.ContentLength
+							var downloaded int64 = 0
+							startTime := time.Now()
+							lastProgress := time.Now()
+
+							for {
+								n, rErr := resp.Body.Read(buf)
+								if n > 0 {
+									downloaded += int64(n)
+									bodyBuf.Write(buf[:n])
+
+									if onProgress.Body != nil && time.Since(lastProgress) >= 150*time.Millisecond {
+										lastProgress = time.Now()
+										pct := 100
+										if totalSize > 0 {
+											pct = int((float64(downloaded) / float64(totalSize)) * 100)
+										}
+										elapsed := time.Since(startTime).Seconds()
+										speed := formatSpeed(float64(downloaded) / math.Max(elapsed, 0.001))
+										_, _ = ev.CallLambda(onProgress, []Value{
+											StringValue{Val: fmt.Sprintf("%d", pct)},
+											StringValue{Val: speed},
+										})
+									}
+								}
+								if rErr != nil {
+									if rErr != io.EOF {
+										if onComplete.Body != nil {
+											_, _ = ev.CallLambda(onComplete, []Value{NilValue{}, StringValue{Val: rErr.Error()}})
+										}
+										return NilValue{}, rErr
+									}
+									break
+								}
+							}
+
+							// Déclenchement de la notification de progression finale (100%)
+							if onProgress.Body != nil {
+								elapsed := time.Since(startTime).Seconds()
+								speed := formatSpeed(float64(downloaded) / math.Max(elapsed, 0.001))
+								_, _ = ev.CallLambda(onProgress, []Value{
+									StringValue{Val: "100"},
+									StringValue{Val: speed},
+								})
+							}
+
+							// 6. Extraction ZIP ou écriture dans le fichier de destination
+							dataBytes := bodyBuf.Bytes()
+							if extractTo != "" {
+								// Signature d'archive ZIP : PK\x03\x04 ou PK\x05\x06
+								if len(dataBytes) >= 4 && dataBytes[0] == 0x50 && dataBytes[1] == 0x4B {
+									if err := extractZip(dataBytes, extractTo); err != nil {
+										if onComplete.Body != nil {
+											_, _ = ev.CallLambda(onComplete, []Value{NilValue{}, StringValue{Val: fmt.Sprintf("zip extraction failed: %v", err)}})
+										}
+										return NilValue{}, err
+									}
+								}
+							}
+							if dest != "" {
+								if err := os.MkdirAll(filepath.Dir(dest), 0755); err == nil {
+									_ = os.WriteFile(dest, dataBytes, 0644)
+								}
+							}
+
+							// 7. Déclenchement de l'événement Complete(data, err)
+							var dataVal Value = StringValue{Val: bodyBuf.String()}
+							var errVal Value = NilValue{}
+							if resp.StatusCode >= 400 {
+								errVal = StringValue{Val: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, resp.Status)}
+							}
+
+							if onComplete.Body != nil {
+								_, _ = ev.CallLambda(onComplete, []Value{dataVal, errVal})
+							}
+
+							return dataVal, nil
+						},
+					},
 				}
-
-				out, err := os.Create(dest)
-				if err != nil {
-					return BoolValue{Val: false}, err
-				}
-				defer out.Close()
-
-				_, err = io.Copy(out, resp.Body)
-				return BoolValue{Val: err == nil}, err
+				return fetchCtx, nil
 			},
 			"Clone": func(args []Value) (Value, error) {
 				if len(args) < 2 {
@@ -298,4 +481,52 @@ func formatTerminalColors(s string) string {
 	s = strings.ReplaceAll(s, "<bold>", "\033[1m")
 	s = strings.ReplaceAll(s, "</>", "\033[0m")
 	return s
+}
+
+func extractZip(zipBytes []byte, destDir string) error {
+	r, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+	if err != nil {
+		return err
+	}
+	cleanDest := filepath.Clean(destDir)
+	for _, f := range r.File {
+		targetPath := filepath.Join(destDir, f.Name)
+		cleanTarget := filepath.Clean(targetPath)
+		if !strings.HasPrefix(cleanTarget, cleanDest) {
+			continue // Zip slip mitigation
+		}
+		if f.FileInfo().IsDir() {
+			_ = os.MkdirAll(cleanTarget, 0755)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(cleanTarget), 0755); err != nil {
+			return err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		outFile, err := os.OpenFile(cleanTarget, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			rc.Close()
+			return err
+		}
+		_, err = io.Copy(outFile, rc)
+		rc.Close()
+		outFile.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func formatSpeed(bytesPerSec float64) string {
+	if bytesPerSec < 1024 {
+		return fmt.Sprintf("%.0f B/s", bytesPerSec)
+	} else if bytesPerSec < 1024*1024 {
+		return fmt.Sprintf("%.1f KB/s", bytesPerSec/1024.0)
+	} else {
+		return fmt.Sprintf("%.1f MB/s", bytesPerSec/(1024.0*1024.0))
+	}
 }

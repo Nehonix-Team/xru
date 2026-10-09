@@ -10,7 +10,7 @@ import (
 )
 
 func TestCheckerStrictRules(t *testing.T) {
-	// 1. Test violation : &prop hors d'une #UNIT
+	// 1. Test violation : &prop hors d'une unit
 	badCode1 := `
 let x = &baseDir
 `
@@ -35,11 +35,11 @@ let x = &baseDir
 		t.Errorf("Expected ERR_INVALID_PROP_ACCESS, got: %v", c1.Errors())
 	}
 
-	// 2. Test violation : Directive orpheline dans #WITH Net
+	// 2. Test violation : Directive orpheline dans with Net
 	badCode2 := `
-#WITH Net.Fetch("https://example.com")
-    #UNKNOWN_DIR "arg" -> "val"
-#END
+with Net.Fetch("https://example.com") {
+    unknown_dir "arg" -> "val"
+}
 `
 	l2 := lexer.New("bad2.xru", badCode2)
 	p2 := parser.New(l2)
@@ -56,5 +56,34 @@ let x = &baseDir
 	}
 	if !foundDirErr {
 		t.Errorf("Expected ERR_ORPHAN_DIRECTIVE, got: %v", c2.Errors())
+	}
+}
+
+func TestTypeMismatch(t *testing.T) {
+	code := `
+let a: string = 3
+`
+	l := lexer.New("type_err.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	c := checker.New()
+	c.Check(prog)
+
+	if len(c.Errors()) == 0 {
+		t.Fatal("Expected ERR_TYPE_MISMATCH, got 0 errors")
+	}
+
+	foundTypeErr := false
+	for _, err := range c.Errors() {
+		if strings.Contains(err, "ERR_TYPE_MISMATCH") {
+			foundTypeErr = true
+		}
+	}
+	if !foundTypeErr {
+		t.Errorf("Expected ERR_TYPE_MISMATCH, got: %v", c.Errors())
 	}
 }

@@ -238,6 +238,25 @@ type ElifStatement struct {
 	Body      []Statement
 }
 
+// BlockStatement : { stmt1; stmt2; ... }
+type BlockStatement struct {
+	Position   lexer.Position
+	Statements []Statement
+}
+
+func (s *BlockStatement) statementNode()      {}
+func (s *BlockStatement) expressionNode()     {}
+func (s *BlockStatement) Pos() lexer.Position { return s.Position }
+func (s *BlockStatement) String() string {
+	var sb strings.Builder
+	sb.WriteString("{\n")
+	for _, st := range s.Statements {
+		sb.WriteString(st.String() + "\n")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
 func (s *IfStatement) statementNode()      {}
 func (s *IfStatement) Pos() lexer.Position { return s.Position }
 func (s *IfStatement) String() string      { return "#IF ... #END" }
@@ -455,4 +474,21 @@ type GlobalAccessExpression struct {
 func (e *GlobalAccessExpression) expressionNode()      {}
 func (e *GlobalAccessExpression) Pos() lexer.Position { return e.Position }
 func (e *GlobalAccessExpression) String() string      { return fmt.Sprintf("::%s", e.Name) }
+
+// LambdaExpression : (params...) => Expr ou () => Expr
+type LambdaExpression struct {
+	Position   lexer.Position
+	Parameters []*Parameter
+	Body       Expression
+}
+
+func (e *LambdaExpression) expressionNode()      {}
+func (e *LambdaExpression) Pos() lexer.Position { return e.Position }
+func (e *LambdaExpression) String() string {
+	var params []string
+	for _, p := range e.Parameters {
+		params = append(params, p.Name)
+	}
+	return fmt.Sprintf("(%s) => %s", strings.Join(params, ", "), e.Body.String())
+}
 

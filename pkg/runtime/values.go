@@ -106,3 +106,13 @@ type ReturnValue struct {
 func (r ReturnValue) Type() ValueType { return r.Val.Type() }
 func (r ReturnValue) String() string  { return r.Val.String() }
 
+// LambdaValue represents an anonymous function or event closure (params) => expr
+type LambdaValue struct {
+	Params []*ast.Parameter
+	Body   ast.Expression
+	Env    *Environment
+}
+
+func (l LambdaValue) Type() ValueType { return "function" }
+func (l LambdaValue) String() string  { return "<lambda>" }
+

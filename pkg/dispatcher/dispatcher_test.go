@@ -30,9 +30,9 @@ func TestLocalDescriptorSandboxAndKeep(t *testing.T) {
 	// Création du descripteur local .rules.xru :
 	// Ne garder que api.ts et supprimer le reste
 	rulesCode := `
-#IF {PLUGIN} == "false"
+if plugin == "false" {
     Local.Keep(["api.ts"])
-#END
+}
 `
 	rulesPath := filepath.Join(routesDir, ".rules.xru")
 	if err := os.WriteFile(rulesPath, []byte(rulesCode), 0644); err != nil {

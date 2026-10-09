@@ -12,27 +12,20 @@
     { "open": "[", "close": "]" },
     { "open": "(", "close": ")" },
     { "open": "\"", "close": "\"" },
-    { "open": "'", "close": "'" }
+    { "open": "'", "close": "'" },
+    { "open": "`", "close": "`" }
   ],
   "surroundingPairs": [
     ["{", "}"],
     ["[", "]"],
     ["(", ")"],
     ["\"", "\""],
-    ["'", "'"]
+    ["'", "'"],
+    ["`", "`"]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "^.*(\\{|\\[|#(BEGIN|CREATE):).*$",
-    "decreaseIndentPattern": "^\\s*(\\}|\\]|#END).*$"
+    "increaseIndentPattern": "^.*(\\{|\\[)\\s*$",
+    "decreaseIndentPattern": "^\\s*(\\}|\\]).*$"
   },
-  "onEnterRules": [
-    {
-      "beforeText": "^\\s*#(BEGIN|CREATE):.*$",
-      "action": { "indent": "indent" }
-    },
-    {
-      "beforeText": "^\\s*(MERGE|SET|PUSH).*$",
-      "action": { "indent": "indent" }
-    }
-  ]
+  "wordPattern": "(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\@\\#\\%\\^\\&\\*\\(\\)\\-\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\'\\\"\\,\\.\\<\\>\\/\\?\\s]+)"
 }

@@ -1,115 +1,160 @@
 {
-  "Xru Begin Block": {
-    "prefix": "#begin",
+  "Xru Use Module": {
+    "prefix": "use",
     "body": [
-      "#BEGIN:${1:path/to/file}",
-      "\t$0",
-      "#END"
+      "use ${1:utils} as ${2:Utils}"
     ],
-    "description": "Create a file patching block"
+    "description": "Import a native or external unit module"
   },
-  "Xru Create Block": {
-    "prefix": "#create",
+  "Xru Arg Declaration": {
+    "prefix": "arg",
     "body": [
-      "#CREATE:${1:path/to/file}",
-      "\t$0",
-      "#END"
+      "arg ${1:name}: ${2|string,number,bool,duration|} = ${3:default}"
     ],
-    "description": "Create a new file with content"
+    "description": "Declare a configurable CLI argument"
   },
-  "Xru Select": {
-    "prefix": "#select",
-    "body": ["#SELECT: ${1:path}"],
-    "description": "Switch sandbox directory"
+  "Xru Let Declaration": {
+    "prefix": "let",
+    "body": [
+      "let ${1:name}: ${2:string} = ${3:value}"
+    ],
+    "description": "Declare a local variable"
   },
-  "Xru Assert": {
-    "prefix": "#assert",
-    "body": ["#ASSERT: exists(\"${1:file}\")"],
-    "description": "Validate condition"
+  "Xru Const Declaration": {
+    "prefix": "const",
+    "body": [
+      "const ${1:name}: ${2:string} = ${3:value}"
+    ],
+    "description": "Declare a constant"
+  },
+  "Xru Unit Block": {
+    "prefix": "unit",
+    "body": [
+      "unit ${1:TemplateManager} {",
+      "\tdeclare ${2:baseDir}: string = \"./src\"",
+      "\t",
+      "\tfunc ${3:Clean}(${4:target}: string) -> bool {",
+      "\t\tFs.remove(\"{&${2:baseDir}}/\\{${4:target}\\}\")",
+      "\t\treturn true",
+      "\t}",
+      "}"
+    ],
+    "description": "Define a reusable custom unit with properties, directives, and methods"
+  },
+  "Xru Function": {
+    "prefix": "func",
+    "body": [
+      "func ${1:name}(${2:params}) -> ${3:void} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Define a local function"
+  },
+  "Xru Global Function": {
+    "prefix": "global func",
+    "body": [
+      "global func ${1:name}(${2:params}) -> ${3:void} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Define a global cross-module function"
+  },
+  "Xru With Block": {
+    "prefix": "with",
+    "body": [
+      "with Net.fetch(\"${1:https://api.github.com/repos/...}\") {",
+      "\tset method = \"GET\"",
+      "\tset timeout = 30s",
+      "\tset extractTo = \"${2:./src}\"",
+      "\t",
+      "\theader \"Accept\" -> \"application/vnd.github.v3+json\"",
+      "\theader \"User-Agent\" -> \"XRU-Engine\"",
+      "\t",
+      "\ton progress -> (percent, speed) => Utils.log(\"<cyan>[PROGRESS]</> {percent}% à {speed}\")",
+      "\ton complete -> (data, err) => {",
+      "\t\tif err != nil {",
+      "\t\t\tUtils.log(\"<red>[ERROR]</> {err}\")",
+      "\t\t} else {",
+      "\t\t\tUtils.log(\"<green>[DONE]</> Download complete!\")",
+      "\t\t\t$0",
+      "\t\t}",
+      "\t}",
+      "}"
+    ],
+    "description": "Execute a contextual Net.fetch streaming request"
+  },
+  "Xru File Surgical Block": {
+    "prefix": "file",
+    "body": [
+      "file \"${1:package.json}\" {",
+      "\treplace(\"{{NAME}}\", ${2:name})",
+      "\t$0",
+      "}"
+    ],
+    "description": "Surgically edit a file in place"
+  },
+  "Xru If Block": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Conditional if block"
+  },
+  "Xru If Else Block": {
+    "prefix": "ifelse",
+    "body": [
+      "if ${1:condition} {",
+      "\t$2",
+      "} else {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Conditional if / else block"
+  },
+  "Xru If Elif Else Block": {
+    "prefix": "ifelif",
+    "body": [
+      "if ${1:condition} {",
+      "\t$2",
+      "} elif ${3:condition} {",
+      "\t$4",
+      "} else {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Conditional if / elif / else block"
+  },
+  "Xru Match Block": {
+    "prefix": "match",
+    "body": [
+      "match ${1:target} {",
+      "\tcase ${2:pattern} {",
+      "\t\t$3",
+      "\t}",
+      "\tdefault {",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Pattern matching block"
+  },
+  "Xru Dispatch Tree Block": {
+    "prefix": "dispatch_tree",
+    "body": [
+      "dispatch_tree \"${1:./src}\", \"${2:.rules.xru}\" {",
+      "\tpass ${3:MODE} = ${4:mode}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Cascade execution through recursive subdescriptors"
   },
   "Xru Log": {
-    "prefix": "#log",
-    "body": ["#LOG: \"${1:message}\""],
-    "description": "Print colored message"
-  },
-  "Xru Include": {
-    "prefix": "#include",
-    "body": ["#INCLUDE: ${1:file.xru}"],
-    "description": "Include external rules"
-  },
-  "Xru Exec": {
-    "prefix": "#exec",
-    "body": ["#EXEC: ${1:command}"],
-    "description": "Execute shell command"
-  },
-  "Xru Set": {
-    "prefix": "set",
-    "body": ["SET ${1:path} ${2:value}"],
-    "description": "Set/Overwrite value at path"
-  },
-  "Xru Push": {
-    "prefix": "push",
-    "body": ["PUSH ${1:path} ${2:value}"],
-    "description": "Push value to array at path"
-  },
-  "Xru Merge Path": {
-    "prefix": "merge",
+    "prefix": "log",
     "body": [
-      "MERGE ${1:path} {",
-      "\t${2:key}: ${3:value}",
-      "}"
+      "Utils.log(\"${1:message}\")"
     ],
-    "description": "Merge object at path"
-  },
-  "Xru Remove Path": {
-    "prefix": "remove",
-    "body": ["REMOVE ${1:path}"],
-    "description": "Remove key or branch at path"
-  },
-  "Xru TS Inject": {
-    "prefix": "@ts",
-    "body": [
-      "@TSINJECT:{{${1:MARKER}}}",
-      "\t$0",
-      "@END"
-    ],
-    "description": "Inject TypeScript code"
-  },
-  "Xru HTML Inject": {
-    "prefix": "@html",
-    "body": [
-      "@HTMLINJECT:{{${1:MARKER}}}",
-      "\t$0",
-      "@END"
-    ],
-    "description": "Inject HTML code"
-  },
-  "Xru JSON Inject": {
-    "prefix": "@json",
-    "body": [
-      "@JSONINJECT:{{${1:MARKER}}}",
-      "\t$0",
-      "@END"
-    ],
-    "description": "Inject JSON data"
-  },
-  "Xru Merge Symbol": {
-    "prefix": "++",
-    "body": [
-      "++ {",
-      "\t${1:key}: ${2:value}",
-      "}"
-    ],
-    "description": "Deep merge (root level)"
-  },
-  "Xru Remove Symbol": {
-    "prefix": "--",
-    "body": ["-- { ${1:key}: \"\" }"],
-    "description": "Remove (root level)"
-  },
-  "Xru Regex Symbol": {
-    "prefix": "~~",
-    "body": ["~~ { \"${1:pattern}\": \"${2:replacement}\" }"],
-    "description": "Regex replace"
+    "description": "Log colored message to terminal"
   }
 }

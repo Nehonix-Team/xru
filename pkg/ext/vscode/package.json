@@ -1,13 +1,14 @@
 {
   "name": "xru-syntax",
   "displayName": "XyPriss Rule Unit (XRU) Syntax",
-  "description": "Syntax highlighting for XRU (.xru) transformation rules.",
-  "version": "0.5.0",
+  "description": "Rich language intelligence, Go-to-Definition, and syntax highlighting for XRU 2.0 transformation rules.",
+  "version": "0.6.0",
   "publisher": "nehonix",
   "main": "./extension.js",
   "activationEvents": [
     "onLanguage:xru",
-    "onLanguage:markdown"
+    "onLanguage:markdown",
+    "workspaceContains:**/*.xru"
   ],
   "engines": {
     "vscode": "^1.75.0"

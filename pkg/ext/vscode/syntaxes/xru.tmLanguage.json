@@ -1,82 +1,27 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "XyPriss Rule Unit",
+  "scopeName": "source.xru",
   "patterns": [
-    {
-      "include": "#comments"
-    },
-    {
-      "include": "#inception"
-    },
-    {
-      "include": "#create_html"
-    },
-    {
-      "include": "#create_json"
-    },
-    {
-      "include": "#create_js"
-    },
-    {
-      "include": "#create_ts"
-    },
-    {
-      "include": "#var_ts"
-    },
-    {
-      "include": "#var_js"
-    },
-    {
-      "include": "#var_json"
-    },
-    {
-      "include": "#var_generic"
-    },
-    {
-      "include": "#create_css"
-    },
-    {
-      "include": "#create_go"
-    },
-    {
-      "include": "#scoping"
-    },
-    {
-      "include": "#injections"
-    },
-    {
-      "include": "#modular_actions"
-    },
-    {
-      "include": "#functions"
-    },
-    {
-      "include": "#actions_generic"
-    },
-    {
-      "include": "#patch_ops"
-    },
-    {
-      "include": "#paths"
-    },
-    {
-      "include": "#strings"
-    },
-    {
-      "include": "#numbers"
-    },
-    {
-      "include": "#constants"
-    },
-    {
-      "include": "#interpolation"
-    },
-    {
-      "include": "#variable_capture"
-    },
-    {
-      "include": "#variable_declaration"
-    }
+    { "include": "#comments" },
+    { "include": "#strings_heredoc_chevron" },
+    { "include": "#strings_heredoc_triple" },
+    { "include": "#strings_backtick" },
+    { "include": "#strings" },
+    { "include": "#keywords_control" },
+    { "include": "#keywords_declaration" },
+    { "include": "#keywords_directive" },
+    { "include": "#types" },
+    { "include": "#builtins" },
+    { "include": "#functions_call" },
+    { "include": "#constants" },
+    { "include": "#numbers" },
+    { "include": "#durations" },
+    { "include": "#operators" },
+    { "include": "#global_access" },
+    { "include": "#prop_access" },
+    { "include": "#unit_instantiation" },
+    { "include": "#identifiers" }
   ],
   "repository": {
     "comments": {
@@ -87,982 +32,198 @@
         }
       ]
     },
-    "scoping": {
+    "strings_heredoc_chevron": {
+      "name": "string.quoted.triple.chevron.xru",
+      "begin": "<<<",
+      "end": ">>>",
       "patterns": [
-        {
-          "name": "keyword.control.scoping.if.xru",
-          "begin": "^\\s*#\\s*(IF|ELSEIF):",
-          "beginCaptures": {
-            "0": {
-              "name": "keyword.control.scoping.xru"
-            }
-          },
-          "end": "$",
-          "patterns": [
-            {
-              "name": "entity.name.function.method.xru",
-              "match": "\\bexists(?=\\()"
-            },
-            {
-              "name": "keyword.operator.comparison.xru",
-              "match": "==|!="
-            },
-            {
-              "include": "#strings"
-            },
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#barewords"
-            }
-          ]
-        },
-        {
-          "name": "meta.directive.arg.xru",
-          "match": "^\\s*(#\\s*ARG):\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(as|or)\\s+(.*))?",
-          "captures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            },
-            "2": {
-              "name": "variable.parameter.xru"
-            },
-            "3": {
-              "name": "keyword.control.scoping.xru"
-            },
-            "4": {
-              "patterns": [
-                { "include": "#strings" },
-                { "include": "#interpolation" },
-                { "include": "#barewords" }
-              ]
-            }
-          }
-        },
-        {
-          "name": "meta.directive.use.xru",
-          "match": "^\\s*(#\\s*USE):\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
-          "captures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            },
-            "2": {
-              "name": "entity.name.type.module.xru"
-            },
-            "3": {
-              "name": "keyword.control.scoping.xru"
-            },
-            "4": {
-              "name": "variable.other.alias.xru"
-            }
-          }
-        },
-        {
-          "name": "meta.directive.for.xru",
-          "begin": "^\\s*(#\\s*FOR):",
-          "beginCaptures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            }
-          },
-          "end": "$",
-          "patterns": [
-            {
-              "name": "keyword.control.scoping.xru",
-              "match": "\\bin\\b"
-            },
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#strings"
-            },
-            {
-              "include": "#variable_declaration"
-            },
-            {
-              "include": "#barewords"
-            }
-          ]
-        },
-        {
-          "name": "meta.directive.select.xru",
-          "begin": "^\\s*(#\\s*(?:SELECT|BEGIN|CREATE|INCLUDE|CALL)):",
-          "beginCaptures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            }
-          },
-          "end": "$",
-          "patterns": [
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#strings"
-            },
-            {
-              "name": "entity.name.filename.xru",
-              "match": "[a-zA-Z0-9_\\-][a-zA-Z0-9_\\-\\.]*\\.[a-zA-Z0-9]+"
-            },
-            {
-              "include": "#barewords"
-            },
-            {
-              "match": "\\s+(as|or)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-              "captures": {
-                "1": {
-                  "name": "keyword.control.scoping.xru"
-                },
-                "2": {
-                  "name": "variable.other.alias.xru"
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "keyword.control.scoping.xru",
-          "match": "^\\s*#\\s*(GLOBAL|ELSE|END)\\b:?"
-        },
-        {
-          "name": "meta.directive.generic.xru",
-          "begin": "^\\s*(#\\s*[A-Z][A-Z0-9]*)\\b:?",
-          "beginCaptures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            }
-          },
-          "end": "$",
-          "patterns": [
-            {
-              "include": "#strings"
-            },
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#numbers"
-            },
-            {
-              "include": "#variable_capture"
-            },
-            {
-              "include": "#barewords"
-            }
-          ]
-        },
-        {
-          "include": "#inception"
-        }
+        { "include": "#interpolation" }
       ]
     },
-    "injections": {
+    "strings_heredoc_triple": {
+      "name": "string.quoted.triple.double.xru",
+      "begin": "\"\"\"",
+      "end": "\"\"\"",
       "patterns": [
-        {
-          "include": "#inject_ts"
-        },
-        {
-          "include": "#inject_js"
-        },
-        {
-          "include": "#inject_go"
-        },
-        {
-          "include": "#inject_json"
-        },
-        {
-          "include": "#inject_css"
-        },
-        {
-          "include": "#inject_html"
-        },
-        {
-          "include": "#inject_generic"
-        }
+        { "include": "#interpolation" }
       ]
     },
-    "inject_generic": {
-      "begin": "^\\s*(@INJECT):\\s*(.*)$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "patterns": [
-            {
-              "include": "#strings"
-            },
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#barewords"
-            }
-          ]
-        }
-      },
-      "end": "^\\s*(@END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
+    "strings_backtick": {
+      "name": "string.template.xru",
+      "begin": "`",
+      "end": "`",
       "patterns": [
-        {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        }
-      ]
-    },
-    "inject_ts": {
-      "begin": "^\\s*(@TSINJECT):",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "end": "^\\s*(@END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "source.ts"
-        }
-      ]
-    },
-    "inject_js": {
-      "begin": "^\\s*(@JSINJECT):",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "end": "^\\s*(@END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "source.js"
-        }
-      ]
-    },
-    "inject_go": {
-      "begin": "^\\s*(@GOINJECT):",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "end": "^\\s*(@END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "source.go"
-        }
-      ]
-    },
-    "inject_json": {
-      "begin": "^\\s*(@JSONINJECT):",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "end": "^\\s*(@END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "source.json"
-        }
-      ]
-    },
-    "inject_css": {
-      "begin": "^\\s*(@CSSINJECT):",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "end": "^\\s*(@END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "source.css"
-        }
-      ]
-    },
-    "inject_html": {
-      "begin": "^\\s*(@HTMLINJECT):",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "end": "^\\s*(@END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "text.html.basic"
-        }
-      ]
-    },
-    "actions_generic": {
-      "patterns": [
-        {
-          "name": "keyword.control.scoping.if.xru",
-          "begin": "^\\s*#\\s*(IF|ELSEIF):",
-          "beginCaptures": {
-            "0": {
-              "name": "keyword.control.scoping.xru"
-            }
-          }
-        },
-        {
-          "name": "keyword.control.action.inject.xru",
-          "match": "^\\s*@[A-Z]*INJECT:",
-          "captures": {
-            "0": {
-              "name": "entity.name.tag.xru"
-            }
-          }
-        },
-        {
-          "name": "keyword.control.action.end.xru",
-          "match": "^\\s*@END$",
-          "captures": {
-            "0": {
-              "name": "entity.name.tag.xru"
-            }
-          }
-        }
-      ]
-    },
-    "patch_ops": {
-      "patterns": [
-        {
-          "name": "keyword.operator.patch.symbol.xru",
-          "match": "^\\s*(\\+\\+|--|>>|<<|~~)"
-        },
-        {
-          "name": "entity.name.function.action.xru",
-          "match": "\\b(MERGE|SET|REMOVE|PUSH|merge|set|rm|remove|push)\\b"
-        },
-        {
-          "name": "keyword.operator.patch.legacy.xru",
-          "match": "&(merge|add|rm|rp-k|rp-0|rp-v|rp-1|append|regex):"
-        }
+        { "include": "#interpolation" }
       ]
     },
     "strings": {
+      "name": "string.quoted.double.xru",
+      "begin": "\"",
+      "end": "\"",
       "patterns": [
         {
-          "name": "string.quoted.double.xru",
-          "begin": "\"",
-          "end": "\"",
-          "patterns": [
-            {
-              "name": "constant.character.escape.xru",
-              "match": "\\\\."
-            },
-            {
-              "include": "#log_colors"
-            },
-            {
-              "include": "#interpolation"
-            }
-          ]
+          "name": "constant.character.escape.xru",
+          "match": "\\\\."
+        },
+        { "include": "#interpolation" }
+      ]
+    },
+    "interpolation": {
+      "patterns": [
+        {
+          "name": "meta.interpolation.xru",
+          "match": "(\\{)(&?)([a-zA-Z_][a-zA-Z0-9_]*)(\\})",
+          "captures": {
+            "1": { "name": "punctuation.definition.variable.begin.xru" },
+            "2": { "name": "punctuation.definition.variable.prop.xru" },
+            "3": { "name": "variable.other.interpolation.xru" },
+            "4": { "name": "punctuation.definition.variable.end.xru" }
+          }
+        }
+      ]
+    },
+    "keywords_declaration": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.xru",
+          "match": "\\b(let|const|arg|use|as|declare|unit|func|directive|global)\\b"
+        }
+      ]
+    },
+    "keywords_control": {
+      "patterns": [
+        {
+          "name": "keyword.control.xru",
+          "match": "\\b(if|elif|else|match|case|default|return|with|file|dispatch_tree|pass)\\b"
+        }
+      ]
+    },
+    "keywords_directive": {
+      "patterns": [
+        {
+          "name": "keyword.other.directive.xru",
+          "match": "\\b(set|header|on)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.xru",
+          "match": "\\b(string|number|bool|duration|any|list|map|void)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.class.builtin.xru",
+          "match": "\\b(Utils|Fs|Net|Crypto|Local|Sys|Path)\\b"
         },
         {
-          "name": "string.quoted.single.xru",
-          "begin": "'",
-          "end": "'",
-          "patterns": [
-            {
-              "name": "constant.character.escape.xru",
-              "match": "\\\\."
-            },
-            {
-              "include": "#log_colors"
-            },
-            {
-              "include": "#interpolation"
-            }
-          ]
+          "name": "support.function.builtin.xru",
+          "match": "\\b(replace|replaceLine|remove|removeLines|removeBlock|removeUntil|commentOut|append|prepend|jsonSet|jsonRemove|Drop|drop|Keep|keep)\\b(?=\\()"
         }
       ]
     },
-    "log_colors": {
+    "functions_call": {
       "patterns": [
         {
-          "name": "entity.name.tag.xru",
-          "match": "</?(red|green|yellow|blue|magenta|cyan|gray|white|/)>"
-        }
-      ]
-    },
-    "barewords": {
-      "match": "[a-zA-Z0-9_\\-\\./]+",
-      "name": "string.unquoted.path.xru"
-    },
-    "numbers": {
-      "patterns": [
-        {
-          "name": "constant.numeric.xru",
-          "match": "\\b\\d+(\\.\\d+)?\\b"
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.xru" }
+          }
         }
       ]
     },
     "constants": {
       "patterns": [
         {
-          "name": "constant.language.xru",
-          "match": "\\b(true|false|null)\\b"
+          "name": "constant.language.boolean.xru",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.xru",
+          "match": "\\b(nil|null)\\b"
         }
       ]
     },
-    "functions": {
+    "durations": {
       "patterns": [
         {
-          "name": "entity.name.function.method.xru",
-          "match": "\\b[a-z_][a-zA-Z0-9_]*(?=\\()"
+          "name": "constant.numeric.duration.xru",
+          "match": "\\b[0-9]+(?:ms|s|m|h|d)\\b"
         }
       ]
     },
-        "base_rules": {
+    "numbers": {
       "patterns": [
         {
-          "include": "#inception"
-        },
-        {
-          "include": "#scoping"
-        },
-        {
-          "include": "#injections"
-        },
-        {
-          "include": "#modular_actions"
-        },
-        {
-          "include": "#patch_ops"
-        },
-        {
-          "include": "#functions"
-        },
-        {
-          "include": "#strings"
-        },
-        {
-          "include": "#interpolation"
+          "name": "constant.numeric.xru",
+          "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b"
         }
       ]
     },
-    "modular_actions": {
+    "operators": {
       "patterns": [
         {
-          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*)(?=:)",
+          "name": "keyword.operator.arrow.xru",
+          "match": "->|=>"
+        },
+        {
+          "name": "keyword.operator.comparison.xru",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.assignment.xru",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.logical.xru",
+          "match": "!|&&|\\|\\||\\bor\\b"
+        }
+      ]
+    },
+    "global_access": {
+      "patterns": [
+        {
+          "match": "(::|global::)([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
-            "1": {
-              "name": "variable.other.object.xru"
-            },
-            "2": {
-              "name": "entity.name.function.method.xru"
-            }
+            "1": { "name": "punctuation.accessor.scope.xru" },
+            "2": { "name": "entity.name.function.global.xru" }
           }
         }
       ]
     },
-    "create_html": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.html)(?:\"|')?$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "string.quoted.double.xru"
-        }
-      },
-      "end": "^\\s*#END",
-      "endCaptures": {
-        "0": {
-          "name": "keyword.control.scoping.end.xru"
-        }
-      },
+    "prop_access": {
       "patterns": [
         {
-          "include": "#base_rules"
-        },
-        {
-          "include": "text.html.basic"
-        }
-      ]
-    },
-    "create_json": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.json)(?:\"|')?$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "string.quoted.double.xru"
-        }
-      },
-      "end": "^\\s*#END",
-      "endCaptures": {
-        "0": {
-          "name": "keyword.control.scoping.end.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#base_rules"
-        },
-        {
-          "include": "source.json"
-        }
-      ]
-    },
-    "create_js": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.js)(?:\"|')?$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "string.quoted.double.xru"
-        }
-      },
-      "end": "^\\s*#END",
-      "endCaptures": {
-        "0": {
-          "name": "keyword.control.scoping.end.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#base_rules"
-        },
-        {
-          "include": "source.js"
-        }
-      ]
-    },
-    "create_ts": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.ts)(?:\"|')?$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "string.quoted.double.xru"
-        }
-      },
-      "end": "^\\s*#END",
-      "endCaptures": {
-        "0": {
-          "name": "keyword.control.scoping.end.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#base_rules"
-        },
-        {
-          "include": "source.ts"
-        }
-      ]
-    },
-    "create_css": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.css)(?:\"|')?$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "string.quoted.double.xru"
-        }
-      },
-      "end": "^\\s*#END",
-      "endCaptures": {
-        "0": {
-          "name": "keyword.control.scoping.end.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#base_rules"
-        },
-        {
-          "include": "source.css"
-        }
-      ]
-    },
-    "create_go": {
-      "begin": "^\\s*(#(?:CREATE|BEGIN):)\\s*(?:\"|')?([^\"'\\s]*\\.go)(?:\"|')?$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "string.quoted.double.xru"
-        }
-      },
-      "end": "^\\s*#END",
-      "endCaptures": {
-        "0": {
-          "name": "keyword.control.scoping.end.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#base_rules"
-        },
-        {
-          "include": "source.go"
-        }
-      ]
-    },
-    "variable_capture": {
-      "patterns": [
-        {
-          "match": "\\b(as|or)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "match": "(&)([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
-            "1": {
-              "name": "keyword.other.unit.xru"
-            },
-            "2": {
-              "name": "variable.other.xru"
-            }
+            "1": { "name": "punctuation.definition.variable.prop.xru" },
+            "2": { "name": "variable.other.property.xru" }
           }
         }
       ]
     },
-    "variable_declaration": {
+    "unit_instantiation": {
       "patterns": [
         {
-          "match": "\\b(let)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*=",
+          "match": "(@)([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
-            "1": {
-              "name": "keyword.control.declaration.xru"
-            },
-            "2": {
-              "name": "variable.other.xru"
-            }
+            "1": { "name": "punctuation.definition.unit.at.xru" },
+            "2": { "name": "entity.name.class.unit.xru" }
           }
         }
       ]
     },
-    "interpolation": {
+    "identifiers": {
       "patterns": [
         {
-          "match": "(\\{)([a-zA-Z0-9_\\.]+)(\\})",
-          "captures": {
-            "1": {
-              "name": "punctuation.definition.variable.xru"
-            },
-            "2": {
-              "name": "variable.other.xru"
-            },
-            "3": {
-              "name": "punctuation.definition.variable.xru"
-            }
-          }
-        }
-      ]
-    },
-    "paths": {
-      "patterns": [
-        {
-          "name": "variable.other.member.xru",
-          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+\\b"
-        }
-      ]
-    },
-    "var_ts": {
-      "begin": "^\\s*(#TSVAR):\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "variable.other.xru"
-        }
-      },
-      "end": "^\\s*(#END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#base_rules"
-        },
-        {
-          "include": "source.ts"
-        }
-      ]
-    },
-    "var_js": {
-      "begin": "^\\s*(#JSVAR):\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "variable.other.xru"
-        }
-      },
-      "end": "^\\s*(#END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#base_rules"
-        },
-        {
-          "include": "source.js"
-        }
-      ]
-    },
-    "var_json": {
-      "begin": "^\\s*(#JSONVAR):\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "variable.other.xru"
-        }
-      },
-      "end": "^\\s*(#END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#base_rules"
-        },
-        {
-          "include": "source.json"
-        }
-      ]
-    },
-    "var_generic": {
-      "begin": "^\\s*(#VAR):\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*$",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        },
-        "2": {
-          "name": "variable.other.xru"
-        }
-      },
-      "end": "^\\s*(#END)\\s*$",
-      "endCaptures": {
-        "1": {
-          "name": "keyword.control.scoping.xru"
-        }
-      }
-    },
-    "scoping_inner": {
-      "patterns": [
-        {
-          "include": "#modular_actions"
-        },
-        {
-          "name": "keyword.control.scoping.if.xru",
-          "begin": "\\b(IF|ELSEIF):",
-          "beginCaptures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            }
-          },
-          "end": "(?=>)",
-          "patterns": [
-            {
-              "name": "entity.name.function.method.xru",
-              "match": "\\bexists(?=\\()"
-            },
-            {
-              "name": "keyword.operator.comparison.xru",
-              "match": "==|!="
-            },
-            {
-              "include": "#strings"
-            },
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#barewords"
-            }
-          ]
-        },
-        {
-          "name": "meta.directive.for.xru",
-          "begin": "\\b(FOR):",
-          "beginCaptures": {
-            "1": {
-              "name": "keyword.control.scoping.xru"
-            }
-          },
-          "end": "(?=>)",
-          "patterns": [
-            {
-              "name": "keyword.control.scoping.xru",
-              "match": "\\bin\\b"
-            },
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#strings"
-            },
-            {
-              "include": "#variable_declaration"
-            },
-            {
-              "include": "#barewords"
-            }
-          ]
-        },
-        {
-          "name": "keyword.control.scoping.xru",
-          "match": "\\b(GLOBAL|ELSE|END)\\b:?"
-        }
-      ]
-    },
-    "inception": {
-      "patterns": [
-        {
-          "name": "meta.embedded.xru.inception",
-          "begin": "<#(?!END\\s*>)",
-          "end": ">",
-          "beginCaptures": {
-            "0": {
-              "name": "punctuation.definition.tag.xru"
-            }
-          },
-          "endCaptures": {
-            "0": {
-              "name": "punctuation.definition.tag.xru"
-            }
-          },
-          "patterns": [
-            {
-              "include": "#scoping_inner"
-            },
-            {
-              "include": "#strings"
-            },
-            {
-              "include": "#interpolation"
-            },
-            {
-              "include": "#barewords"
-            }
-          ]
-        },
-        {
-          "match": "(<#)\\s*(END)\\s*(>)",
-          "captures": {
-            "1": {
-              "name": "punctuation.definition.tag.xru"
-            },
-            "2": {
-              "name": "keyword.control.scoping.xru"
-            },
-            "3": {
-              "name": "punctuation.definition.tag.xru"
-            }
-          }
+          "name": "variable.other.xru",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
         }
       ]
     }
-  },
-  "scopeName": "source.xru"
+  }
 }

@@ -58,31 +58,60 @@ async function indexAllWorkspaceFiles() {
     }
 }
 
+let diagnosticCollection;
+
+function updateDiagnostics(document) {
+    if (document.languageId !== 'xru' && !document.fileName.endsWith('.xru')) {
+        return;
+    }
+    const docAnalysis = workspaceIndex.indexDocument(document.fileName, document.getText());
+    const rawDiags = docAnalysis.validate();
+    const vsDiags = rawDiags.map(d => {
+        const vsRange = toVsCodeRange(d.range);
+        const diag = new vscode.Diagnostic(
+            vsRange,
+            d.message,
+            d.severity === 'error' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning
+        );
+        diag.source = 'xru';
+        return diag;
+    });
+    diagnosticCollection.set(document.uri, vsDiags);
+}
+
 function activate(context) {
-    // 1. Initial indexing
-    indexAllWorkspaceFiles();
+    diagnosticCollection = vscode.languages.createDiagnosticCollection('xru');
+    context.subscriptions.push(diagnosticCollection);
+
+    // 1. Initial indexing and diagnostics for visible editors
+    indexAllWorkspaceFiles().then(() => {
+        vscode.window.visibleTextEditors.forEach(ed => {
+            if (ed.document) updateDiagnostics(ed.document);
+        });
+    });
 
     // 2. Watch document lifecycle
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(doc => {
-            if (doc.languageId === 'xru' || doc.fileName.endsWith('.xru')) {
-                workspaceIndex.indexDocument(doc.fileName, doc.getText());
-            }
+            updateDiagnostics(doc);
         })
     );
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(event => {
-            const doc = event.document;
-            if (doc.languageId === 'xru' || doc.fileName.endsWith('.xru')) {
-                workspaceIndex.indexDocument(doc.fileName, doc.getText());
-            }
+            updateDiagnostics(event.document);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.workspace.onDidSaveTextDocument(doc => {
+            updateDiagnostics(doc);
         })
     );
 
     context.subscriptions.push(
         vscode.workspace.onDidCloseTextDocument(doc => {
-            // Keep in index for cross-file references unless deleted
+            diagnosticCollection.delete(doc.uri);
         })
     );
 

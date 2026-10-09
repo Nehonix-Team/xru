@@ -236,12 +236,7 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 		}
 		c.scope.Define(aliasSym)
 	} else {
-		aliasSym := &Symbol{
-			Name: alias,
-			Kind: SymUnit,
-			Pos:  s.Pos(),
-		}
-		c.scope.Define(aliasSym)
+		c.addError(s.Pos(), "ERR_UNKNOWN_MODULE", fmt.Sprintf("Module '%s' does not exist", s.Module))
 	}
 }
 
@@ -363,8 +358,8 @@ func (c *Checker) checkWith(s *ast.WithStatement) {
 	// Validation stricte des directives contextuelles dans le bloc
 	for _, bodyStmt := range s.Body {
 		if customDir, ok := bodyStmt.(*ast.CustomDirectiveInvocation); ok {
+			dirName := strings.ToLower(customDir.Directive)
 			if targetUnitSym != nil && len(targetUnitSym.Directives) > 0 {
-				dirName := strings.ToLower(customDir.Directive)
 				found := false
 				for dKey := range targetUnitSym.Directives {
 					if strings.ToLower(dKey) == dirName {
@@ -375,6 +370,22 @@ func (c *Checker) checkWith(s *ast.WithStatement) {
 				if !found {
 					c.addError(customDir.Pos(), "ERR_ORPHAN_DIRECTIVE",
 						fmt.Sprintf("Directive '%s' is not defined for with target '%s'", customDir.Directive, targetUnitSym.Name))
+				}
+			}
+			// Validation des propriétés et événements spécifiques pour Net ou Net.fetch
+			if targetUnitSym != nil && (strings.EqualFold(targetUnitSym.Name, "Net") || strings.EqualFold(targetUnitSym.Name, "Net.Fetch")) {
+				if dirName == "set" && customDir.Key != nil {
+					keyName := strings.ToLower(customDir.Key.String())
+					if keyName != "method" && keyName != "timeout" && keyName != "extractto" && keyName != "dest" {
+						c.addError(customDir.Pos(), "ERR_INVALID_PROPERTY",
+							fmt.Sprintf("Property '%s' does not exist on Net.fetch (supported: method, timeout, extractTo, dest)", customDir.Key.String()))
+					}
+				} else if dirName == "on" && customDir.Key != nil {
+					keyName := strings.ToLower(customDir.Key.String())
+					if keyName != "progress" && keyName != "complete" {
+						c.addError(customDir.Pos(), "ERR_INVALID_EVENT",
+							fmt.Sprintf("Event '%s' does not exist on Net.fetch (supported: progress, complete)", customDir.Key.String()))
+					}
 				}
 			}
 		}

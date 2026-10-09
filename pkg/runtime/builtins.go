@@ -135,25 +135,33 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 					Properties: props,
 					Directives: map[string]NativeDirective{
 						"set": func(key Value, val Value) error {
-							props[key.String()] = val
-							return nil
+							k := key.String()
+							switch strings.ToLower(k) {
+							case "method", "timeout", "extractto", "dest":
+								props[k] = val
+								return nil
+							default:
+								return fmt.Errorf("unknown property '%s' on Net.fetch (supported: method, timeout, extractTo, dest)", k)
+							}
 						},
 						"header": func(key Value, val Value) error {
 							headers[key.String()] = val.String()
 							return nil
 						},
 						"on": func(key Value, val Value) error {
-							kStr := key.String()
-							if strings.EqualFold(kStr, "Progress") {
+							kStr := strings.ToLower(key.String())
+							if kStr == "progress" {
 								if lambda, ok := val.(LambdaValue); ok {
 									onProgress = lambda
 								}
-							} else if strings.EqualFold(kStr, "Complete") {
+								return nil
+							} else if kStr == "complete" {
 								if lambda, ok := val.(LambdaValue); ok {
 									onComplete = lambda
 								}
+								return nil
 							}
-							return nil
+							return fmt.Errorf("unknown event '%s' on Net.fetch (supported: progress, complete)", key.String())
 						},
 					},
 					Methods: map[string]NativeMethod{

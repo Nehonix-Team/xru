@@ -66,11 +66,16 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			alias = unitName
 		}
 		// Recherche insensible à la casse dans les builtins
+		found := false
 		for bName, bUnit := range ev.builtins {
 			if strings.EqualFold(bName, unitName) {
 				env.Set(alias, bUnit, true)
+				found = true
 				break
 			}
+		}
+		if !found {
+			return nil, fmt.Errorf("module '%s' does not exist", unitName)
 		}
 		return NilValue{}, nil
 	case *ast.UnitStatement:

@@ -704,6 +704,84 @@ class DocumentAnalysis {
         }
         return matches;
     }
+
+    validate() {
+        const diagnostics = [];
+        const KNOWN_MODULES = new Set(['utils', 'fs', 'net', 'crypto', 'local', 'sys', 'path', 'cmd']);
+        const NET_PROPERTIES = new Set(['method', 'timeout', 'extractto', 'dest']);
+        const NET_EVENTS = new Set(['progress', 'complete']);
+
+        let insideWithNet = false;
+        let withBraceDepth = 0;
+
+        for (let lineIdx = 0; lineIdx < this.lines.length; lineIdx++) {
+            const rawLine = this.lines[lineIdx];
+            const trimmed = rawLine.trim();
+
+            if (trimmed.startsWith('//')) continue;
+
+            // 1. Module import check
+            const useMatch = rawLine.match(/^\s*use\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+            if (useMatch) {
+                const modName = useMatch[1];
+                if (!KNOWN_MODULES.has(modName.toLowerCase())) {
+                    const col = rawLine.indexOf(modName);
+                    diagnostics.push({
+                        range: new Range(lineIdx, col, lineIdx, col + modName.length),
+                        message: `Module '${modName}' does not exist`,
+                        severity: 'error'
+                    });
+                }
+            }
+
+            // 2. Track with Net.fetch(...)
+            if (/^\s*with\s+Net\.fetch\b/i.test(rawLine)) {
+                insideWithNet = true;
+            }
+
+            if (insideWithNet) {
+                for (let c = 0; c < rawLine.length; c++) {
+                    const ch = rawLine[c];
+                    if (ch === '{') withBraceDepth++;
+                    else if (ch === '}') {
+                        withBraceDepth--;
+                        if (withBraceDepth <= 0) {
+                            insideWithNet = false;
+                        }
+                    }
+                }
+
+                // Check directives inside with Net
+                const setMatch = rawLine.match(/^\s*set\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+                if (setMatch) {
+                    const propName = setMatch[1];
+                    if (!NET_PROPERTIES.has(propName.toLowerCase())) {
+                        const col = rawLine.indexOf(propName);
+                        diagnostics.push({
+                            range: new Range(lineIdx, col, lineIdx, col + propName.length),
+                            message: `Property '${propName}' does not exist on Net.fetch (supported: method, timeout, extractTo, dest)`,
+                            severity: 'error'
+                        });
+                    }
+                }
+
+                const onMatch = rawLine.match(/^\s*on\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+                if (onMatch) {
+                    const eventName = onMatch[1];
+                    if (!NET_EVENTS.has(eventName.toLowerCase())) {
+                        const col = rawLine.indexOf(eventName);
+                        diagnostics.push({
+                            range: new Range(lineIdx, col, lineIdx, col + eventName.length),
+                            message: `Event '${eventName}' does not exist on Net.fetch (supported: progress, complete)`,
+                            severity: 'error'
+                        });
+                    }
+                }
+            }
+        }
+
+        return diagnostics;
+    }
 }
 
 class WorkspaceIndex {

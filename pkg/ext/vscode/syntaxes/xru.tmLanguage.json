@@ -4,13 +4,14 @@
   "scopeName": "source.xru",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#imports" },
+    { "include": "#directives" },
     { "include": "#strings_heredoc_chevron" },
     { "include": "#strings_heredoc_triple" },
     { "include": "#strings_backtick" },
     { "include": "#strings" },
     { "include": "#keywords_control" },
     { "include": "#keywords_declaration" },
-    { "include": "#keywords_directive" },
     { "include": "#types" },
     { "include": "#builtins" },
     { "include": "#functions_call" },
@@ -29,6 +30,41 @@
         {
           "name": "comment.line.double-slash.xru",
           "match": "//.*$"
+        }
+      ]
+    },
+    "imports": {
+      "patterns": [
+        {
+          "match": "\\b(use)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
+          "captures": {
+            "1": { "name": "keyword.control.import.xru" },
+            "2": { "name": "entity.name.namespace.module.xru" },
+            "3": { "name": "keyword.operator.as.xru" },
+            "4": { "name": "entity.name.type.class.alias.xru" }
+          }
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "match": "\\b(set)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?==)",
+          "captures": {
+            "1": { "name": "keyword.other.directive.xru" },
+            "2": { "name": "variable.other.property.directive.xru" }
+          }
+        },
+        {
+          "match": "\\b(on)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=->)",
+          "captures": {
+            "1": { "name": "keyword.other.directive.xru" },
+            "2": { "name": "entity.name.function.event.xru" }
+          }
+        },
+        {
+          "name": "keyword.other.directive.xru",
+          "match": "\\b(set|header|on)\\b"
         }
       ]
     },
@@ -86,7 +122,7 @@
       "patterns": [
         {
           "name": "keyword.declaration.xru",
-          "match": "\\b(let|const|arg|use|as|declare|unit|func|directive|global)\\b"
+          "match": "\\b(let|const|arg|declare|unit|func|directive|global)\\b"
         }
       ]
     },
@@ -95,14 +131,6 @@
         {
           "name": "keyword.control.xru",
           "match": "\\b(if|elif|else|match|case|default|return|with|file|dispatch_tree|pass)\\b"
-        }
-      ]
-    },
-    "keywords_directive": {
-      "patterns": [
-        {
-          "name": "keyword.other.directive.xru",
-          "match": "\\b(set|header|on)\\b"
         }
       ]
     },

@@ -518,6 +518,134 @@ std.println(host)
 	}
 }
 
+func TestAsyncTaskChecker(t *testing.T) {
+	validCode := `
+use net as Net
+use std
+let task = with Net.fetch("https://api.xypriss.dev/templates")
+let done = task.isDone()
+let res = task.wait()
+task.cancel()
+std.println(done)
+std.println(res)
+`
+	l := lexer.New("test_async_valid.xru", validCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) > 0 {
+		t.Errorf("Expected 0 checker errors for valid task methods, got: %v", c.Errors())
+	}
+
+	invalidCode := `
+use net as Net
+let task = with Net.fetch("https://api.xypriss.dev")
+task.unknownMethod()
+`
+	lBad := lexer.New("test_async_bad.xru", invalidCode)
+	pBad := parser.New(lBad)
+	progBad := pBad.ParseProgram()
+	cBad := checker.New()
+	cBad.Check(progBad)
+	foundErr := false
+	for _, e := range cBad.Errors() {
+		if strings.Contains(e, "ERR_UNKNOWN_METHOD") {
+			foundErr = true
+			break
+		}
+	}
+	if !foundErr {
+		t.Errorf("Expected ERR_UNKNOWN_METHOD for unknown task method, got: %v", cBad.Errors())
+	}
+}
+
+func TestUnitInstanceMethodChecker(t *testing.T) {
+	// 1. Calling unit instance method with wrong arg count
+	badArgsCode := `
+unit TemplateManager {
+    func clean(target: string) -> bool {
+        return true
+    }
+}
+let mgr = @TemplateManager()
+mgr.clean()
+`
+	l1 := lexer.New("unit_chk1.xru", badArgsCode)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	c1 := checker.New()
+	c1.Check(prog1)
+	foundArgErr := false
+	for _, e := range c1.Errors() {
+		if strings.Contains(e, "ERR_ARG_COUNT") {
+			foundArgErr = true
+			break
+		}
+	}
+	if !foundArgErr {
+		t.Errorf("Expected ERR_ARG_COUNT for mgr.clean(), got: %v", c1.Errors())
+	}
+
+	// 2. Calling unit instance method with wrong arg type
+	badTypeCode := `
+unit TemplateManager {
+    func clean(target: string) -> bool {
+        return true
+    }
+}
+let mgr = @TemplateManager()
+mgr.clean(123)
+`
+	l2 := lexer.New("unit_chk2.xru", badTypeCode)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+	foundTypeErr := false
+	for _, e := range c2.Errors() {
+		if strings.Contains(e, "ERR_TYPE_MISMATCH") {
+			foundTypeErr = true
+			break
+		}
+	}
+	if !foundTypeErr {
+		t.Errorf("Expected ERR_TYPE_MISMATCH for mgr.clean(123), got: %v", c2.Errors())
+	}
+
+	// 3. Incompatible return type across multiple branches
+	badReturnCode := `
+unit TemplateManager {
+    declare isLocked: bool = false
+    func clean(target: string) -> bool {
+        if &isLocked == true {
+            return false
+        }
+        return "invalid string return"
+    }
+}
+`
+	l3 := lexer.New("unit_chk3.xru", badReturnCode)
+	p3 := parser.New(l3)
+	prog3 := p3.ParseProgram()
+	c3 := checker.New()
+	c3.Check(prog3)
+	foundRetErr := false
+	for _, e := range c3.Errors() {
+		if strings.Contains(e, "ERR_TYPE_MISMATCH") && strings.Contains(e, "Cannot return value of type 'string' from function 'clean' expecting 'bool'") {
+			foundRetErr = true
+			break
+		}
+	}
+	if !foundRetErr {
+		t.Errorf("Expected ERR_TYPE_MISMATCH for clean returning 'string' while expecting 'bool', got: %v", c3.Errors())
+	}
+}
+
 
 
 

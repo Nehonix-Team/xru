@@ -69,13 +69,31 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		if member, ok := e.Caller.(*ast.MemberExpression); ok {
 			c.checkExpression(member.Object)
 			if ident, ok := member.Object.(*ast.Identifier); ok {
-				if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Kind == SymUnit {
-					if sym.Methods != nil {
-						if targetMethod, methodOk := sym.Methods[member.Property]; !methodOk {
+				if sym, ok := c.scope.Resolve(ident.Value); ok {
+					sym.Used = true
+					if sym.Type == "task" {
+						propLower := strings.ToLower(member.Property)
+						if propLower != "wait" && propLower != "await" && propLower != "result" &&
+							propLower != "isdone" && propLower != "done" && propLower != "cancel" {
 							c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
-								fmt.Sprintf("Method '%s' not found on unit '%s'", member.Property, sym.Name))
-						} else if targetMethod.Kind == SymFunc && len(targetMethod.Params) > 0 {
-							c.validateCallArgs(e, member.Property, targetMethod.Params)
+								fmt.Sprintf("Method '%s' not found on task", member.Property))
+						}
+					} else {
+						var unitSym *Symbol
+						if sym.Kind == SymUnit {
+							unitSym = sym
+						} else if sym.Type != "" {
+							if uSym, ok := c.scope.Resolve(sym.Type); ok && uSym.Kind == SymUnit {
+								unitSym = uSym
+							}
+						}
+						if unitSym != nil && unitSym.Methods != nil {
+							if targetMethod, methodOk := unitSym.Methods[member.Property]; !methodOk {
+								c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+									fmt.Sprintf("Method '%s' not found on unit '%s'", member.Property, unitSym.Name))
+							} else if targetMethod.Kind == SymFunc {
+								c.validateCallArgs(e, member.Property, targetMethod.Params)
+							}
 						}
 					}
 				}
@@ -179,6 +197,9 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		c.checkExpression(e.Condition)
 		c.checkExpression(e.Consequence)
 		c.checkExpression(e.Alternative)
+
+	case *ast.WithExpression:
+		c.checkExpression(e.Target)
 	}
 }
 

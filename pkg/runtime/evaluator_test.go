@@ -691,6 +691,119 @@ let grade = if score >= 90 -> "A" else if score >= 70 -> "B" else "C"
 	}
 }
 
+func TestAsyncTaskWithExecution(t *testing.T) {
+	code := `
+func compute(n: number) -> number {
+    return n * 2
+}
+
+let task = with compute(21)
+let doneBefore = task.isDone()
+let res = task.wait()
+let doneAfter = task.isDone()
+`
+	l := lexer.New("async_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	resVal, ok := env.Get("res")
+	if !ok || resVal.String() != "42" {
+		t.Errorf("Expected task.wait() to return 42, got %v", resVal)
+	}
+
+	doneAfterVal, ok := env.Get("doneAfter")
+	if !ok || doneAfterVal.String() != "true" {
+		t.Errorf("Expected task.isDone() after wait to be true, got %v", doneAfterVal)
+	}
+}
+
+func TestUnitInstanceMethodsAndSignatures(t *testing.T) {
+	code := `
+unit TemplateManager {
+    declare baseDir: string = "./src"
+    declare isLocked: bool = false
+
+    func clean(target: string) -> bool {
+        if &isLocked == true {
+            return false
+        }
+        return true
+    }
+
+    func lock() -> void {
+        &isLocked =: true
+    }
+}
+
+let mgr = @TemplateManager()
+let ok1 = mgr.clean("cache")
+mgr.lock()
+let ok2 = mgr.clean("cache")
+`
+	l := lexer.New("unit_methods_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	ok1Val, _ := env.Get("ok1")
+	if ok1Val.String() != "true" {
+		t.Errorf("Expected ok1 to be true, got %v", ok1Val)
+	}
+
+	ok2Val, _ := env.Get("ok2")
+	if ok2Val.String() != "false" {
+		t.Errorf("Expected ok2 to be false after lock(), got %v", ok2Val)
+	}
+
+	// Test: runtime mismatch on arguments
+	badArgsCode := `
+let mgr2 = @TemplateManager()
+mgr2.clean()
+`
+	lBad := lexer.New("bad_args.xru", badArgsCode)
+	pBad := parser.New(lBad)
+	progBad := pBad.ParseProgram()
+	_, errBad := ev.Eval(progBad, env)
+	if errBad == nil || !strings.Contains(errBad.Error(), "expects 1 arguments, but got 0") {
+		t.Errorf("Expected runtime error for wrong argument count, got: %v", errBad)
+	}
+
+	// Test: runtime mismatch on return type
+	badRetCode := `
+unit BadUnit {
+    func broken() -> bool {
+        return "invalid string"
+    }
+}
+let b = @BadUnit()
+b.broken()
+`
+	lRet := lexer.New("bad_ret.xru", badRetCode)
+	pRet := parser.New(lRet)
+	progRet := pRet.ParseProgram()
+	_, errRet := ev.Eval(progRet, env)
+	if errRet == nil || !strings.Contains(errRet.Error(), "returned value of type 'string', expected 'bool'") {
+		t.Errorf("Expected runtime error for return type mismatch, got: %v", errRet)
+	}
+}
+
 
 
 

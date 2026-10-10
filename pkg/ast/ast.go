@@ -263,7 +263,25 @@ type WithStatement struct {
 func (s *WithStatement) statementNode()      {}
 func (s *WithStatement) Pos() lexer.Position { return s.Position }
 func (s *WithStatement) String() string {
-	return fmt.Sprintf("#WITH %s (%d stmts)", s.Target.String(), len(s.Body))
+	if s.Target != nil {
+		return fmt.Sprintf("with %s (%d stmts)", s.Target.String(), len(s.Body))
+	}
+	return fmt.Sprintf("with (%d stmts)", len(s.Body))
+}
+
+// WithExpression : with TargetExpr (lance TargetExpr en tâche asynchrone concurrente)
+type WithExpression struct {
+	Position lexer.Position
+	Target   Expression
+}
+
+func (e *WithExpression) expressionNode()      {}
+func (e *WithExpression) Pos() lexer.Position { return e.Position }
+func (e *WithExpression) String() string {
+	if e.Target != nil {
+		return fmt.Sprintf("with %s", e.Target.String())
+	}
+	return "with"
 }
 
 // CustomDirectiveInvocation : #DIR_NAME args... (ou #DIR_NAME key -> val)

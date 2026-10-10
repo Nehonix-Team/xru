@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -18,6 +20,7 @@ const (
 	ValList     ValueType = "list"
 	ValMap      ValueType = "map"
 	ValUnit     ValueType = "unit"
+	ValTask     ValueType = "task"
 	ValNil      ValueType = "nil"
 )
 
@@ -72,10 +75,50 @@ type UnitInstance struct {
 	Properties map[string]Value
 	Methods    map[string]NativeMethod
 	Directives map[string]NativeDirective
+	MethodDefs []*ast.FuncStatement
 }
 
 func (u *UnitInstance) Type() ValueType { return ValUnit }
 func (u *UnitInstance) String() string  { return fmt.Sprintf("@%s()", u.UnitName) }
+
+// TaskValue représente une tâche asynchrone concurrente lancée via 'with <expr>'
+type TaskValue struct {
+	done   chan struct{}
+	result Value
+	err    error
+	mu     sync.Mutex
+	isDone bool
+	cancel context.CancelFunc
+}
+
+func (t *TaskValue) Type() ValueType { return ValTask }
+func (t *TaskValue) String() string  { return "<Task>" }
+
+func (t *TaskValue) Wait() (Value, error) {
+	<-t.done
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.err != nil {
+		return NilValue{}, t.err
+	}
+	if t.result == nil {
+		return NilValue{}, nil
+	}
+	return t.result, nil
+}
+
+func (t *TaskValue) IsDone() BoolValue {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return BoolValue{Val: t.isDone}
+}
+
+func (t *TaskValue) Cancel() NilValue {
+	if t.cancel != nil {
+		t.cancel()
+	}
+	return NilValue{}
+}
 
 type NativeMethod func(args []Value) (Value, error)
 type NativeDirective func(key Value, val Value) error

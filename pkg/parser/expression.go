@@ -251,6 +251,18 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 		// Accès propriété interne &prop
 		p.nextToken()
 		return &ast.PropAccess{Position: p.curToken.Pos, Name: p.curToken.Literal}
+	case lexer.WITH:
+		pos := p.curToken.Pos
+		p.nextToken()
+		target := p.parseExpression()
+		if target == nil {
+			p.addError(pos, "expected expression after 'with'")
+			return nil
+		}
+		return &ast.WithExpression{
+			Position: pos,
+			Target:   target,
+		}
 	case lexer.AT:
 		// Instanciation @Unit(...)
 		pos := p.curToken.Pos

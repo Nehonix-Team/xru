@@ -46,6 +46,30 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.ILLEGAL:
 		p.addError(p.curToken.Pos, fmt.Sprintf("illegal character '%s'", p.curToken.Literal))
 		return nil
+	case lexer.AMP:
+		if p.peekTokenIs(lexer.IDENT) {
+			pos := p.curToken.Pos
+			p.nextToken() // saute '&', curToken est l'identifiant
+			propName := p.curToken.Literal
+			if p.peekTokenIs(lexer.MUT_ASSIGN) {
+				p.nextToken() // saute l'identifiant, curToken est '=:'
+				p.nextToken() // saute '=:', curToken est l'expression
+				val := p.parseExpression()
+				return &ast.ReassignStatement{
+					Position: pos,
+					Name:     "&" + propName,
+					Value:    val,
+				}
+			}
+			return &ast.ExpressionStatement{
+				Position: pos,
+				Expression: &ast.PropAccess{
+					Position: pos,
+					Name:     propName,
+				},
+			}
+		}
+		return p.parseExpressionStatement()
 	case lexer.IDENT:
 		if p.peekTokenIs(lexer.MUT_ASSIGN) {
 			return p.parseReassignStatement()

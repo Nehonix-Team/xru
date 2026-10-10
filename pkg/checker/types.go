@@ -32,6 +32,8 @@ func (c *Checker) inferType(expr ast.Expression) string {
 		return "function"
 	case *ast.InstantiationExpression:
 		return e.UnitName
+	case *ast.WithExpression:
+		return "task"
 	case *ast.Identifier:
 		if strings.EqualFold(e.Value, "nil") || strings.EqualFold(e.Value, "null") {
 			return "any"
@@ -79,11 +81,31 @@ func (c *Checker) inferType(expr ast.Expression) string {
 	case *ast.CallExpression:
 		if member, ok := e.Caller.(*ast.MemberExpression); ok {
 			if ident, ok := member.Object.(*ast.Identifier); ok {
-				if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Methods != nil {
-					for mName, mSym := range sym.Methods {
-						if strings.EqualFold(mName, member.Property) {
-							if mSym.Type != "" {
-								return mSym.Type
+				if sym, ok := c.scope.Resolve(ident.Value); ok {
+					if sym.Type == "task" {
+						propLower := strings.ToLower(member.Property)
+						if propLower == "isdone" || propLower == "done" {
+							return "bool"
+						}
+						if propLower == "cancel" {
+							return "void"
+						}
+						return "any"
+					}
+					var unitSym *Symbol
+					if sym.Methods != nil {
+						unitSym = sym
+					} else if sym.Type != "" {
+						if uSym, ok := c.scope.Resolve(sym.Type); ok && uSym.Methods != nil {
+							unitSym = uSym
+						}
+					}
+					if unitSym != nil {
+						for mName, mSym := range unitSym.Methods {
+							if strings.EqualFold(mName, member.Property) {
+								if mSym.Type != "" {
+									return mSym.Type
+								}
 							}
 						}
 					}

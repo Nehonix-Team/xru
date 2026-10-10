@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"strings"
 )
 
 type Environment struct {
@@ -17,9 +18,11 @@ type Environment struct {
 func NewEnvironment(parent *Environment) *Environment {
 	var g map[string]Value
 	var gc map[string]bool
+	var uRef *UnitInstance
 	if parent != nil {
 		g = parent.globals
 		gc = parent.globalConstants
+		uRef = parent.unitRef
 	} else {
 		g = make(map[string]Value)
 		gc = make(map[string]bool)
@@ -30,6 +33,7 @@ func NewEnvironment(parent *Environment) *Environment {
 		globals:         g,
 		constants:       make(map[string]bool),
 		globalConstants: gc,
+		unitRef:         uRef,
 	}
 }
 
@@ -93,6 +97,20 @@ func (e *Environment) IsConst(name string) bool {
 }
 
 func (e *Environment) Reassign(name string, val Value) error {
+	if strings.HasPrefix(name, "&") {
+		propName := strings.TrimPrefix(name, "&")
+		if e.unitRef != nil {
+			if _, ok := e.unitRef.Properties[propName]; ok {
+				e.unitRef.Properties[propName] = val
+				return nil
+			}
+			return fmt.Errorf("undefined property '&%s' on unit '%s'", propName, e.unitRef.UnitName)
+		}
+		if e.parent != nil {
+			return e.parent.Reassign(name, val)
+		}
+		return fmt.Errorf("cannot mutate internal property '%s' outside of unit context", name)
+	}
 	if e.IsConst(name) {
 		return fmt.Errorf("cannot reassign constant '%s': only variables defined with 'let' can be modified", name)
 	}

@@ -125,10 +125,19 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			Properties: make(map[string]Value),
 			Methods:    make(map[string]NativeMethod),
 			Directives: make(map[string]NativeDirective),
+			MethodDefs: n.Methods,
 		}
 		for _, prop := range n.Properties {
 			pVal, _ := ev.Eval(prop.Value, env)
 			unitInst.Properties[prop.Name] = pVal
+		}
+		for _, method := range n.Methods {
+			capturedMethod := method
+			unitInst.Methods[method.Name] = func(args []Value) (Value, error) {
+				methodEnv := NewEnvironment(env)
+				methodEnv.unitRef = unitInst
+				return ev.callUserFunction(UserFunction{Stmt: capturedMethod, Env: methodEnv}, args, methodEnv)
+			}
 		}
 		env.Set(n.Name, unitInst, true)
 		return unitInst, nil
@@ -146,11 +155,20 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		clone := &UnitInstance{
 			UnitName:   proto.UnitName,
 			Properties: make(map[string]Value),
-			Methods:    proto.Methods,
+			Methods:    make(map[string]NativeMethod),
 			Directives: proto.Directives,
+			MethodDefs: proto.MethodDefs,
 		}
 		for k, v := range proto.Properties {
 			clone.Properties[k] = v
+		}
+		for _, method := range proto.MethodDefs {
+			capturedMethod := method
+			clone.Methods[method.Name] = func(args []Value) (Value, error) {
+				methodEnv := NewEnvironment(env)
+				methodEnv.unitRef = clone
+				return ev.callUserFunction(UserFunction{Stmt: capturedMethod, Env: methodEnv}, args, methodEnv)
+			}
 		}
 		return clone, nil
 	case *ast.BlockStatement:
@@ -180,6 +198,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return nil, fmt.Errorf("undefined global variable '%s'", n.Name)
 	case *ast.WithStatement:
 		return ev.evalWith(n, env)
+	case *ast.WithExpression:
+		return ev.evalWithExpression(n, env)
 	case *ast.IfStatement:
 		return ev.evalIf(n, env)
 	case *ast.IfExpression:

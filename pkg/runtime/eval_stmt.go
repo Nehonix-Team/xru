@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -72,7 +73,63 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 	return NilValue{}, nil
 }
 
+func (ev *Evaluator) evalWithExpression(w *ast.WithExpression, env *Environment) (Value, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = ctx
+	task := &TaskValue{
+		done:   make(chan struct{}),
+		cancel: cancel,
+	}
+
+	asyncEnv := NewEnvironment(env)
+
+	go func() {
+		defer close(task.done)
+		res, err := ev.Eval(w.Target, asyncEnv)
+		task.mu.Lock()
+		defer task.mu.Unlock()
+		task.result = res
+		task.err = err
+		task.isDone = true
+	}()
+
+	return task, nil
+}
+
 func (ev *Evaluator) evalWith(with *ast.WithStatement, env *Environment) (Value, error) {
+	if with.Target == nil && len(with.Body) > 0 {
+		ctx, cancel := context.WithCancel(context.Background())
+		_ = ctx
+		task := &TaskValue{
+			done:   make(chan struct{}),
+			cancel: cancel,
+		}
+		asyncEnv := NewEnvironment(env)
+		go func() {
+			defer close(task.done)
+			var res Value = NilValue{}
+			var err error
+			for _, stmt := range with.Body {
+				r, e := ev.Eval(stmt, asyncEnv)
+				if e != nil {
+					err = e
+					break
+				}
+				if ret, ok := r.(ReturnValue); ok {
+					res = ret.Val
+					break
+				}
+				res = r
+			}
+			task.mu.Lock()
+			defer task.mu.Unlock()
+			task.result = res
+			task.err = err
+			task.isDone = true
+		}()
+		return task, nil
+	}
+
 	targetVal, err := ev.Eval(with.Target, env)
 	if err != nil {
 		return nil, err

@@ -5,29 +5,60 @@ import (
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 )
 
-// with Target { ... }
-func (p *Parser) parseWithStatement() *ast.WithStatement {
-	stmt := &ast.WithStatement{Position: p.curToken.Pos}
+// with Target { ... } ou with Target (asynchrone)
+func (p *Parser) parseWithStatement() ast.Statement {
+	pos := p.curToken.Pos
 	p.nextToken()
-	stmt.Target = p.parseExpression()
 
-	if !p.expectPeek(lexer.LBRACE) {
+	// Cas with { ... } (bloc concurrent sans cible explicite)
+	if p.curTokenIs(lexer.LBRACE) {
+		stmt := &ast.WithStatement{Position: pos}
+		p.nextToken()
+		for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+			bodyStmt := p.parseStatement()
+			if bodyStmt != nil {
+				stmt.Body = append(stmt.Body, bodyStmt)
+			}
+			p.nextToken()
+		}
+		if p.curTokenIs(lexer.EOF) {
+			p.addError(stmt.Position, "unclosed with block (missing '}')")
+		}
+		return stmt
+	}
+
+	target := p.parseExpression()
+	if target == nil {
+		p.addError(pos, "expected expression after 'with'")
 		return nil
 	}
 
-	p.nextToken()
-	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
-		bodyStmt := p.parseStatement()
-		if bodyStmt != nil {
-			stmt.Body = append(stmt.Body, bodyStmt)
-		}
+	// Si suivi d'un bloc '{' : bloc with avec cible
+	if p.peekTokenIs(lexer.LBRACE) {
+		stmt := &ast.WithStatement{Position: pos, Target: target}
+		p.nextToken() // saute sur '{'
 		p.nextToken()
+		for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+			bodyStmt := p.parseStatement()
+			if bodyStmt != nil {
+				stmt.Body = append(stmt.Body, bodyStmt)
+			}
+			p.nextToken()
+		}
+		if p.curTokenIs(lexer.EOF) {
+			p.addError(stmt.Position, "unclosed with block (missing '}')")
+		}
+		return stmt
 	}
 
-	if p.curTokenIs(lexer.EOF) {
-		p.addError(stmt.Position, "unclosed with block (missing '}')")
+	// Sinon : expression de tâche asynchrone autonome (ex: with Net.fetch("..."))
+	return &ast.ExpressionStatement{
+		Position: pos,
+		Expression: &ast.WithExpression{
+			Position: pos,
+			Target:   target,
+		},
 	}
-	return stmt
 }
 
 // Directive invocation (ex: set method = "GET", header "Accept" -> "...", on progress -> ...)

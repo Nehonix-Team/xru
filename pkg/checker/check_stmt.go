@@ -77,7 +77,11 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 }
 
 func (c *Checker) checkReassign(s *ast.ReassignStatement) {
-	sym, found := c.scope.Resolve(s.Name)
+	lookupName := s.Name
+	if strings.HasPrefix(lookupName, "&") {
+		lookupName = strings.TrimPrefix(lookupName, "&")
+	}
+	sym, found := c.scope.Resolve(lookupName)
 	if !found {
 		c.addError(s.Pos(), "ERR_UNDEFINED_VARIABLE", fmt.Sprintf("Variable '%s' is not defined", s.Name))
 		c.checkExpression(s.Value)

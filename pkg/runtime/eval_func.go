@@ -15,6 +15,18 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		if err != nil {
 			return nil, err
 		}
+		if task, ok := objVal.(*TaskValue); ok {
+			switch strings.ToLower(c.Property) {
+			case "wait", "await", "result":
+				return task.Wait()
+			case "isdone", "done":
+				return task.IsDone(), nil
+			case "cancel":
+				return task.Cancel(), nil
+			default:
+				return nil, fmt.Errorf("method '%s' not found on task", c.Property)
+			}
+		}
 		unit, ok := objVal.(*UnitInstance)
 		if !ok {
 			return nil, fmt.Errorf("'%s' is not an executable unit", c.Object.String())
@@ -155,6 +167,11 @@ func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *
 	}
 
 	fnEnv := NewEnvironment(fn.Env)
+	if fn.Env != nil && fn.Env.unitRef != nil {
+		fnEnv.unitRef = fn.Env.unitRef
+	} else if callerEnv != nil && callerEnv.unitRef != nil {
+		fnEnv.unitRef = callerEnv.unitRef
+	}
 	if callerEnv != nil {
 		fnEnv.SetCurrentDir(callerEnv.CurrentDir())
 		if dropVal, ok := callerEnv.Get("Drop"); ok {

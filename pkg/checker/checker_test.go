@@ -488,5 +488,36 @@ std.println(usedVar)
 	}
 }
 
+func TestIfExpressionChecker(t *testing.T) {
+	code := `
+let isProd = true
+let fallbackHost = "http://localhost:3000"
+let host: string = if isProd -> "https://api.xypriss.dev" else fallbackHost
+
+use std
+std.println(host)
+`
+	l := lexer.New("test_if_expr.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	c := checker.New()
+	c.Check(prog)
+
+	if len(c.Errors()) > 0 {
+		t.Errorf("Expected 0 checker errors, got: %v", c.Errors())
+	}
+
+	// Toutes les variables sont utilisées (isProd, fallbackHost, host, std)
+	unused := c.UnusedSymbols()
+	if len(unused) > 0 {
+		t.Errorf("Expected 0 unused symbols, got: %v", unused)
+	}
+}
+
+
 
 

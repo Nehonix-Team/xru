@@ -578,3 +578,18 @@ func (e *LambdaExpression) String() string {
 	return fmt.Sprintf("(%s) => %s", strings.Join(params, ", "), e.Body.String())
 }
 
+// IfExpression : if Condition -> Consequence else Alternative
+type IfExpression struct {
+	Position    lexer.Position
+	Condition   Expression
+	Consequence Expression
+	Alternative Expression
+}
+
+func (e *IfExpression) expressionNode()      {}
+func (e *IfExpression) Pos() lexer.Position { return e.Position }
+func (e *IfExpression) String() string {
+	return fmt.Sprintf("if %s -> %s else %s", e.Condition.String(), e.Consequence.String(), e.Alternative.String())
+}
+
+

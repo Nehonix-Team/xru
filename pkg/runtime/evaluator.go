@@ -182,6 +182,15 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return ev.evalWith(n, env)
 	case *ast.IfStatement:
 		return ev.evalIf(n, env)
+	case *ast.IfExpression:
+		condVal, err := ev.Eval(n.Condition, env)
+		if err != nil {
+			return nil, err
+		}
+		if bVal, ok := condVal.(BoolValue); ok && bVal.Val {
+			return ev.Eval(n.Consequence, env)
+		}
+		return ev.Eval(n.Alternative, env)
 	case *ast.Identifier:
 		if strings.EqualFold(n.Value, "nil") || strings.EqualFold(n.Value, "null") {
 			return NilValue{}, nil

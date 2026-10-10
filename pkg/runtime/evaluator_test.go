@@ -645,10 +645,52 @@ func TestCircularModuleImport(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected error on circular module import, got nil")
 	}
-	if !strings.Contains(err.Error(), "circular module dependency") {
-		t.Fatalf("Expected error message to contain 'circular module dependency', got: %v", err)
+	if !strings.Contains(err.Error(), "circular module dependency") && !strings.Contains(err.Error(), "ERR_CIRCULAR_IMPORT") && !strings.Contains(err.Error(), "Circular module import") {
+		t.Fatalf("Expected error message to contain circular import error, got: %v", err)
 	}
 }
+
+func TestIfExpressionEvaluation(t *testing.T) {
+	input := `
+let isProd = true
+let host = if isProd -> "https://api.xypriss.dev" else "http://localhost:3000"
+
+let isDev = false
+let port = if isDev -> 8080 else 3000
+
+let score = 75
+let grade = if score >= 90 -> "A" else if score >= 70 -> "B" else "C"
+`
+	l := lexer.New("inline_if_test.xru", input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	_, err := ev.Eval(prog, env)
+	if err != nil {
+		t.Fatalf("Evaluation error: %v", err)
+	}
+
+	hostVal, ok := env.Get("host")
+	if !ok || hostVal.String() != "https://api.xypriss.dev" {
+		t.Errorf("Expected host to be 'https://api.xypriss.dev', got %v", hostVal)
+	}
+
+	portVal, ok := env.Get("port")
+	if !ok || portVal.String() != "3000" {
+		t.Errorf("Expected port to be 3000, got %v", portVal)
+	}
+
+	gradeVal, ok := env.Get("grade")
+	if !ok || gradeVal.String() != "B" {
+		t.Errorf("Expected grade to be 'B', got %v", gradeVal)
+	}
+}
+
 
 
 

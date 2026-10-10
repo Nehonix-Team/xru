@@ -49,10 +49,43 @@ func (p *Parser) parseCustomDirective() *ast.CustomDirectiveInvocation {
 }
 
 // if condition { ... } elif condition { ... } else { ... }
-func (p *Parser) parseIfStatement() *ast.IfStatement {
-	stmt := &ast.IfStatement{Position: p.curToken.Pos}
+// ou inline: if condition -> consequence else alternative
+func (p *Parser) parseIfStatement() ast.Statement {
+	startPos := p.curToken.Pos
 	p.nextToken()
-	stmt.Condition = p.parseExpression()
+	condition := p.parseExpression()
+	if condition == nil {
+		return nil
+	}
+
+	// Si forme inline: if cond -> ... else ...
+	if p.peekTokenIs(lexer.ARROW) {
+		p.nextToken() // curToken devient '->'
+		p.nextToken() // début de consequence
+		consequence := p.parseExpression()
+		if consequence == nil {
+			return nil
+		}
+		if !p.expectPeek(lexer.ELSE) {
+			return nil
+		}
+		p.nextToken() // saute 'else'
+		alternative := p.parseExpression()
+		if alternative == nil {
+			return nil
+		}
+		return &ast.ExpressionStatement{
+			Position: startPos,
+			Expression: &ast.IfExpression{
+				Position:    startPos,
+				Condition:   condition,
+				Consequence: consequence,
+				Alternative: alternative,
+			},
+		}
+	}
+
+	stmt := &ast.IfStatement{Position: startPos, Condition: condition}
 
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil

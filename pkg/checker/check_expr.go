@@ -174,6 +174,11 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		for _, stmt := range e.Statements {
 			c.checkStatement(stmt)
 		}
+
+	case *ast.IfExpression:
+		c.checkExpression(e.Condition)
+		c.checkExpression(e.Consequence)
+		c.checkExpression(e.Alternative)
 	}
 }
 

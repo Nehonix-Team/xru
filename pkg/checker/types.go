@@ -109,6 +109,19 @@ func (c *Checker) inferType(expr ast.Expression) string {
 			return sym.Type
 		}
 		return "any"
+	case *ast.IfExpression:
+		conseqType := c.inferType(e.Consequence)
+		altType := c.inferType(e.Alternative)
+		if conseqType == altType {
+			return conseqType
+		}
+		if isTypeCompatible(conseqType, altType) {
+			return conseqType
+		}
+		if isTypeCompatible(altType, conseqType) {
+			return altType
+		}
+		return "any"
 	default:
 		return "any"
 	}

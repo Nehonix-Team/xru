@@ -277,6 +277,8 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 		return p.parseParenOrLambdaExpression()
 	case lexer.LBRACE:
 		return p.parseBlockStatement()
+	case lexer.IF:
+		return p.parseIfExpression()
 	case lexer.ILLEGAL:
 		p.addError(p.curToken.Pos, fmt.Sprintf("illegal character '%s'", p.curToken.Literal))
 		return nil
@@ -454,3 +456,42 @@ func (p *Parser) parseParenOrLambdaExpression() ast.Expression {
 	p.expectPeek(lexer.RPAREN)
 	return expr
 }
+
+// if <condition> -> <consequence> else <alternative>
+func (p *Parser) parseIfExpression() *ast.IfExpression {
+	startPos := p.curToken.Pos
+	p.nextToken() // saute 'if'
+
+	condition := p.parseExpression()
+	if condition == nil {
+		return nil
+	}
+
+	if !p.expectPeek(lexer.ARROW) {
+		return nil
+	}
+
+	p.nextToken() // saute '->'
+	consequence := p.parseExpression()
+	if consequence == nil {
+		return nil
+	}
+
+	if !p.expectPeek(lexer.ELSE) {
+		return nil
+	}
+
+	p.nextToken() // saute 'else'
+	alternative := p.parseExpression()
+	if alternative == nil {
+		return nil
+	}
+
+	return &ast.IfExpression{
+		Position:    startPos,
+		Condition:   condition,
+		Consequence: consequence,
+		Alternative: alternative,
+	}
+}
+

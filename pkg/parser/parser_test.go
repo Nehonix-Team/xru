@@ -168,3 +168,51 @@ with Net.Fetch("https://example.com") {
 		t.Errorf("Expected 'expected token '}' error, got: %v", p.Errors())
 	}
 }
+
+func TestIfExpression(t *testing.T) {
+	input := `
+let host = if isProd -> "https://api.xypriss.dev" else "http://localhost:3000"
+let status = if count > 10 -> "high" else if count > 0 -> "low" else "zero"
+`
+	l := lexer.New("inline_if.xru", input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Unexpected parser errors: %v", p.Errors())
+	}
+
+	if len(prog.Statements) != 2 {
+		t.Fatalf("Expected 2 statements, got %d", len(prog.Statements))
+	}
+
+	varStmt1, ok := prog.Statements[0].(*ast.VarStatement)
+	if !ok {
+		t.Fatalf("Expected VarStatement, got %T", prog.Statements[0])
+	}
+	ifExpr1, ok := varStmt1.Value.(*ast.IfExpression)
+	if !ok {
+		t.Fatalf("Expected IfExpression, got %T", varStmt1.Value)
+	}
+	if ifExpr1.Condition.String() != "isProd" {
+		t.Errorf("Expected condition 'isProd', got '%s'", ifExpr1.Condition.String())
+	}
+
+	varStmt2, ok := prog.Statements[1].(*ast.VarStatement)
+	if !ok {
+		t.Fatalf("Expected VarStatement, got %T", prog.Statements[1])
+	}
+	ifExpr2, ok := varStmt2.Value.(*ast.IfExpression)
+	if !ok {
+		t.Fatalf("Expected IfExpression, got %T", varStmt2.Value)
+	}
+	// Chained else if
+	nestedIf, ok := ifExpr2.Alternative.(*ast.IfExpression)
+	if !ok {
+		t.Fatalf("Expected nested IfExpression in alternative, got %T", ifExpr2.Alternative)
+	}
+	if nestedIf.Consequence.String() != "\"low\"" {
+		t.Errorf("Expected nested consequence '\"low\"', got '%s'", nestedIf.Consequence.String())
+	}
+}
+

@@ -38,6 +38,38 @@ func (s *Server) validateAndPublish(uri, text string) {
 			diag := parseErrorStringToDiagnostic(errStr)
 			diagnostics = append(diagnostics, diag)
 		}
+
+		// 3. Collect unused variable diagnostics (dimmed/flouté in IDE via DiagnosticTagUnnecessary)
+		for _, sym := range c.UnusedSymbols() {
+			line := sym.Pos.Line - 1
+			col := sym.Pos.Column - 1
+			if line < 0 {
+				line = 0
+			}
+			if col < 0 {
+				col = 0
+			}
+			length := len(sym.Name)
+			if length <= 0 {
+				length = 1
+			}
+
+			msg := fmt.Sprintf("Variable '%s' is declared but never used", sym.Name)
+			if sym.Kind == checker.SymConst {
+				msg = fmt.Sprintf("Constant '%s' is declared but never used", sym.Name)
+			}
+
+			diagnostics = append(diagnostics, Diagnostic{
+				Range: Range{
+					Start: Position{Line: line, Character: col},
+					End:   Position{Line: line, Character: col + length},
+				},
+				Severity: SeverityHint,
+				Source:   "xru",
+				Message:  msg,
+				Tags:     []DiagnosticTag{DiagnosticTagUnnecessary},
+			})
+		}
 	}
 
 	_ = s.writeNotification("textDocument/publishDiagnostics", PublishDiagnosticsParams{

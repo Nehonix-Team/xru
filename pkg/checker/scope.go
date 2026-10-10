@@ -27,6 +27,7 @@ type Symbol struct {
 	Directives map[string]bool    // Pour les #UNIT : directives déclarées
 	Params     []*ast.Parameter   // Pour les fonctions : paramètres
 	Methods    map[string]*Symbol // Pour les #UNIT : méthodes exposées
+	Used       bool               // Indique si le symbole a été utilisé
 }
 
 type Scope struct {

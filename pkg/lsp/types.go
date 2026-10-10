@@ -54,11 +54,19 @@ const (
 	SeverityHint        DiagnosticSeverity = 4
 )
 
+type DiagnosticTag int
+
+const (
+	DiagnosticTagUnnecessary DiagnosticTag = 1
+	DiagnosticTagDeprecated  DiagnosticTag = 2
+)
+
 type Diagnostic struct {
 	Range    Range              `json:"range"`
 	Severity DiagnosticSeverity `json:"severity"`
-	Source   string             `json:"source"`
+	Source   string             `json:"source,omitempty"`
 	Message  string             `json:"message"`
+	Tags     []DiagnosticTag    `json:"tags,omitempty"`
 }
 
 type PublishDiagnosticsParams struct {

@@ -47,6 +47,7 @@ func (c *Checker) checkMap(s *ast.MapStatement) {
 }
 
 func (c *Checker) checkMod(s *ast.ModStatement) {
+	c.hasModStmt = true
 	if s.Name == "_mod" {
 		c.addError(s.Pos(), "ERR_RESERVED_MOD_NAME", "Module name '_mod' is reserved for project mapping configuration")
 	}

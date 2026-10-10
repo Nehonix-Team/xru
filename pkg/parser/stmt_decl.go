@@ -60,6 +60,7 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 		return nil
 	}
 	stmt.Name = p.curToken.Literal
+	stmt.NamePos = p.curToken.Pos
 
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // mange ':'

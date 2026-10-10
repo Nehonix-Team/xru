@@ -152,17 +152,23 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 		inferredType = c.inferType(s.Value)
 	}
 
+	namePos := s.NamePos
+	if namePos.Line == 0 {
+		namePos = s.Pos()
+	}
+
 	sym := &Symbol{
 		Name:     s.Name,
 		Kind:     kind,
 		Type:     inferredType,
-		Pos:      s.Pos(),
+		Pos:      namePos,
 		IsGlobal: s.IsGlobal,
 		ValueStr: valStr,
 	}
 	if err := c.scope.Define(sym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 	}
+	c.declaredVars = append(c.declaredVars, sym)
 
 	c.checkExpression(s.Value)
 

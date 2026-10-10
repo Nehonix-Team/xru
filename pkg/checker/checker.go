@@ -14,6 +14,8 @@ type Checker struct {
 	currentFunc      *ast.FuncStatement
 	currentFile      string
 	availableModules map[string]*Symbol
+	hasModStmt       bool
+	declaredVars     []*Symbol
 }
 
 func New() *Checker {
@@ -21,6 +23,7 @@ func New() *Checker {
 		errors:           []string{},
 		scope:            NewScope(nil, false),
 		availableModules: make(map[string]*Symbol),
+		declaredVars:     []*Symbol{},
 	}
 	c.initBuiltinUnits()
 	return c
@@ -40,6 +43,24 @@ func (c *Checker) Errors() []string {
 
 func (c *Checker) GetScope() *Scope {
 	return c.scope
+}
+
+func (c *Checker) UnusedSymbols() []*Symbol {
+	var unused []*Symbol
+	for _, sym := range c.declaredVars {
+		if sym.Used {
+			continue
+		}
+		if sym.Name == "" || sym.Name[0] == '_' {
+			continue
+		}
+		// Si déclaré global dans un fichier module, c'est un export public destiné à l'extérieur
+		if sym.IsGlobal {
+			continue
+		}
+		unused = append(unused, sym)
+	}
+	return unused
 }
 
 func (c *Checker) addError(pos lexer.Position, code string, msg string) {

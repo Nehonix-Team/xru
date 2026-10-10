@@ -463,6 +463,39 @@ let plainVar = 123
 	}
 }
 
+func TestLSPUnusedVariableDiagnostic(t *testing.T) {
+	uri := "file:///test_unused_diag.xru"
+	testCode := `const r = 42
+let a = 1
+std.println(a)
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       testCode,
+		},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Should contain publishDiagnostics with unused variable message and tags: [1]
+	if !strings.Contains(outStr, "Constant 'r' is declared but never used") {
+		t.Errorf("Expected 'Constant \\'r\\' is declared but never used' in diagnostics, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"tags":[1]`) {
+		t.Errorf("Expected '\"tags\":[1]' in diagnostics, got: %s", outStr)
+	}
+}
+
+
 
 
 

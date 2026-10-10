@@ -130,14 +130,25 @@ async function startLspServer() {
       }
       const diags = items.map((d) => {
         const range = toVsCodeRange(d.range);
-        const diag = new vscode.Diagnostic(
-          range,
-          d.message,
-          d.severity === 1
-            ? vscode.DiagnosticSeverity.Error
-            : vscode.DiagnosticSeverity.Warning,
-        );
+        let severity = vscode.DiagnosticSeverity.Error;
+        if (d.severity === 2) {
+          severity = vscode.DiagnosticSeverity.Warning;
+        } else if (d.severity === 3) {
+          severity = vscode.DiagnosticSeverity.Information;
+        } else if (d.severity === 4) {
+          severity = vscode.DiagnosticSeverity.Hint;
+        }
+        const diag = new vscode.Diagnostic(range, d.message, severity);
         diag.source = d.source || "xru";
+        if (d.tags && Array.isArray(d.tags)) {
+          diag.tags = d.tags.map((t) =>
+            t === 1
+              ? vscode.DiagnosticTag.Unnecessary
+              : t === 2
+              ? vscode.DiagnosticTag.Deprecated
+              : t,
+          );
+        }
         return diag;
       });
       diagnosticCollection.set(targetUri, diags);

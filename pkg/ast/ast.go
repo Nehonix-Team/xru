@@ -132,6 +132,7 @@ func (s *FromUseStatement) String() string {
 // VarStatement : let/const name: type = expr
 type VarStatement struct {
 	Position lexer.Position
+	NamePos  lexer.Position
 	IsConst  bool
 	IsGlobal bool
 	Name     string

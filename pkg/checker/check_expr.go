@@ -3,13 +3,15 @@ package checker
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 )
 
 var (
-	durationRegex           = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(ms|s|m|h)$`)
-	reUnitPropInterpolation = regexp.MustCompile(`\{&([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+	durationRegex             = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(ms|s|m|h)$`)
+	reUnitPropInterpolation   = regexp.MustCompile(`\{&([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+	reInterpolationIdentifier = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
 )
 
 func (c *Checker) checkExpression(expr ast.Expression) {
@@ -47,6 +49,15 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 				}
 			}
 		}
+		masked := strings.ReplaceAll(e.Value, "{{", "\x00\x00")
+		masked = strings.ReplaceAll(masked, "}}", "\x01\x01")
+		for _, m := range reInterpolationIdentifier.FindAllStringSubmatch(masked, -1) {
+			if len(m) > 1 {
+				if sym, ok := c.scope.Resolve(m[1]); ok {
+					sym.Used = true
+				}
+			}
+		}
 
 	case *ast.DurationLiteral:
 		if !durationRegex.MatchString(e.Value) {
@@ -71,6 +82,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			}
 		} else if scopeAccess, ok := e.Caller.(*ast.ScopeAccessExpression); ok {
 			if sym, ok := c.scope.Resolve(scopeAccess.Scope); ok {
+				sym.Used = true
 				if sym.Kind == SymUnit && len(sym.Methods) > 0 {
 					if targetMethod, methodOk := sym.Methods[scopeAccess.Member]; !methodOk {
 						c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
@@ -85,6 +97,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			}
 		} else if ident, ok := e.Caller.(*ast.Identifier); ok {
 			if sym, ok := c.scope.Resolve(ident.Value); ok {
+				sym.Used = true
 				if sym.Kind == SymFunc {
 					c.validateCallArgs(e, ident.Value, sym.Params)
 				}
@@ -101,6 +114,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 
 	case *ast.ScopeAccessExpression:
 		if sym, ok := c.scope.Resolve(e.Scope); ok {
+			sym.Used = true
 			if sym.Kind == SymUnit && len(sym.Methods) > 0 {
 				if _, memberOk := sym.Methods[e.Member]; !memberOk {
 					c.addError(e.Pos(), "ERR_UNKNOWN_MEMBER",
@@ -138,9 +152,11 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		if e.Value == "nil" || e.Value == "null" || e.Value == "true" || e.Value == "false" {
 			return
 		}
-		if _, ok := c.scope.Resolve(e.Value); !ok {
+		if sym, ok := c.scope.Resolve(e.Value); !ok {
 			c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
 				fmt.Sprintf("Variable '%s' is not defined", e.Value))
+		} else {
+			sym.Used = true
 		}
 
 	case *ast.ListLiteral:

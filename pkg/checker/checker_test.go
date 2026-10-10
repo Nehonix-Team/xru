@@ -449,4 +449,44 @@ clean()
 	}
 }
 
+func TestCheckerUnusedVariables(t *testing.T) {
+	code := `
+use std
+let usedVar = 1
+const unusedConst = 42
+let unusedVar = "hello"
+std.println(usedVar)
+`
+	l := lexer.New("test_unused.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	c := checker.New()
+	c.Check(prog)
+
+	unused := c.UnusedSymbols()
+	if len(unused) != 2 {
+		t.Fatalf("Expected 2 unused symbols, got %d: %v", len(unused), unused)
+	}
+
+	names := make(map[string]bool)
+	for _, sym := range unused {
+		names[sym.Name] = true
+	}
+
+	if !names["unusedConst"] {
+		t.Errorf("Expected 'unusedConst' to be marked unused")
+	}
+	if !names["unusedVar"] {
+		t.Errorf("Expected 'unusedVar' to be marked unused")
+	}
+	if names["usedVar"] {
+		t.Errorf("Expected 'usedVar' to NOT be marked unused")
+	}
+}
+
+
 

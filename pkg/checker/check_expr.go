@@ -7,7 +7,10 @@ import (
 	"github.com/Nehonix-Team/xru/pkg/ast"
 )
 
-var durationRegex = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(ms|s|m|h)$`)
+var (
+	durationRegex           = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(ms|s|m|h)$`)
+	reUnitPropInterpolation = regexp.MustCompile(`\{&([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+)
 
 func (c *Checker) checkExpression(expr ast.Expression) {
 	if expr == nil {
@@ -32,6 +35,17 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		if !c.scope.InUnitScope() {
 			c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
 				fmt.Sprintf("Property access '&%s' is only allowed inside a #UNIT definition", e.Name))
+		}
+
+	case *ast.StringLiteral:
+		if !c.scope.InUnitScope() {
+			matches := reUnitPropInterpolation.FindAllStringSubmatch(e.Value, -1)
+			for _, m := range matches {
+				if len(m) > 1 {
+					c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
+						fmt.Sprintf("Property access '&%s' is only allowed inside a #UNIT definition", m[1]))
+				}
+			}
 		}
 
 	case *ast.DurationLiteral:

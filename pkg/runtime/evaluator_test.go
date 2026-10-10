@@ -597,3 +597,28 @@ Fs.remove("/path/does/not/exist/ever_67890.txt")
 	}
 }
 
+func TestUnitPropertyRestriction(t *testing.T) {
+	// 1. &prop outside unit should fail
+	code1 := `let a = &baseDir`
+	l1 := lexer.New("test1.xru", code1)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	ev1 := runtime.NewEvaluator()
+	env1 := runtime.NewEnvironment(nil)
+	if _, err := ev1.Eval(prog1, env1); err == nil {
+		t.Fatalf("Expected error evaluating &baseDir outside unit, got nil")
+	}
+
+	// 2. {&prop} in string interpolation outside unit should fail
+	code2 := `let a = "{&baseDir}/target"`
+	l2 := lexer.New("test2.xru", code2)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev2.Eval(prog2, env2); err == nil {
+		t.Fatalf("Expected error evaluating '{&baseDir}/target' outside unit, got nil")
+	}
+}
+
+

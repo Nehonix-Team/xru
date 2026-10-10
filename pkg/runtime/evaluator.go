@@ -191,8 +191,9 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			if val, ok := env.unitRef.Properties[n.Name]; ok {
 				return val, nil
 			}
+			return nil, fmt.Errorf("undefined property '&%s' on unit '%s'", n.Name, env.unitRef.UnitName)
 		}
-		return nil, fmt.Errorf("undefined property '&%s'", n.Name)
+		return nil, fmt.Errorf("property '&%s' cannot be accessed outside a unit definition", n.Name)
 	case *ast.StringLiteral:
 		// Interpolation {var} ou {module::prop}
 		res := n.Value
@@ -211,8 +212,13 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				placeholder := fmt.Sprintf("{&%s}", pName)
 				res = strings.ReplaceAll(res, placeholder, pVal.String())
 			}
+			if matches := reUnitPropInterpolation.FindAllStringSubmatch(res, -1); len(matches) > 0 {
+				return NilValue{}, fmt.Errorf("undefined property '&%s' on unit '%s'", matches[0][1], env.unitRef.UnitName)
+			}
 		} else {
-			res = strings.ReplaceAll(res, "{&baseDir}", ".")
+			if matches := reUnitPropInterpolation.FindAllStringSubmatch(res, -1); len(matches) > 0 {
+				return NilValue{}, fmt.Errorf("property '&%s' cannot be accessed outside a unit definition", matches[0][1])
+			}
 		}
 		if unk := findUndefinedInterpolations(res); len(unk) > 0 {
 			return NilValue{}, fmt.Errorf("undefined variable '{%s}' in string interpolation: \"%s\"", strings.Join(unk, ", {"), n.Value)
@@ -442,7 +448,10 @@ func valMatchesType(val Value, expected string) bool {
 	}
 }
 
-var reInterpolationIdentifier = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+var (
+	reInterpolationIdentifier = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+	reUnitPropInterpolation   = regexp.MustCompile(`\{&([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+)
 
 func findUndefinedInterpolations(str string) []string {
 	// Masquer temporairement les accolades doubles {{...}} (placeholders de fichiers)

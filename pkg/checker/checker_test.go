@@ -35,6 +35,27 @@ let x = &baseDir
 		t.Errorf("Expected ERR_INVALID_PROP_ACCESS, got: %v", c1.Errors())
 	}
 
+	// 1b. Test violation : {&prop} dans une string interpolation hors d'une unit
+	badCode1b := `
+let s = "{&baseDir}/target"
+`
+	l1b := lexer.New("bad1b.xru", badCode1b)
+	p1b := parser.New(l1b)
+	prog1b := p1b.ParseProgram()
+
+	c1b := checker.New()
+	c1b.Check(prog1b)
+
+	foundInterpPropErr := false
+	for _, err := range c1b.Errors() {
+		if strings.Contains(err, "ERR_INVALID_PROP_ACCESS") {
+			foundInterpPropErr = true
+		}
+	}
+	if !foundInterpPropErr {
+		t.Errorf("Expected ERR_INVALID_PROP_ACCESS for interpolation, got: %v", c1b.Errors())
+	}
+
 	// 2. Test violation : Directive orpheline dans with Net
 	badCode2 := `
 use net as Net

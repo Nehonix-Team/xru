@@ -29,8 +29,12 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 	bVal, ok := condVal.(BoolValue)
 	if ok && bVal.Val {
 		for _, s := range ifStmt.Consequence {
-			if _, err := ev.Eval(s, env); err != nil {
+			res, err := ev.Eval(s, env)
+			if err != nil {
 				return nil, err
+			}
+			if ret, ok := res.(ReturnValue); ok {
+				return ret, nil
 			}
 		}
 		return NilValue{}, nil
@@ -44,8 +48,12 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 		ebVal, ok := eVal.(BoolValue)
 		if ok && ebVal.Val {
 			for _, s := range elif.Body {
-				if _, err := ev.Eval(s, env); err != nil {
+				res, err := ev.Eval(s, env)
+				if err != nil {
 					return nil, err
+				}
+				if ret, ok := res.(ReturnValue); ok {
+					return ret, nil
 				}
 			}
 			return NilValue{}, nil
@@ -53,8 +61,12 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 	}
 
 	for _, s := range ifStmt.Alternative {
-		if _, err := ev.Eval(s, env); err != nil {
+		res, err := ev.Eval(s, env)
+		if err != nil {
 			return nil, err
+		}
+		if ret, ok := res.(ReturnValue); ok {
+			return ret, nil
 		}
 	}
 	return NilValue{}, nil
@@ -72,9 +84,12 @@ func (ev *Evaluator) evalWith(with *ast.WithStatement, env *Environment) (Value,
 	}
 
 	for _, stmt := range with.Body {
-		_, err := ev.Eval(stmt, withEnv)
+		res, err := ev.Eval(stmt, withEnv)
 		if err != nil {
 			return nil, err
+		}
+		if ret, ok := res.(ReturnValue); ok {
+			return ret, nil
 		}
 	}
 

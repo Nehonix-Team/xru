@@ -51,8 +51,9 @@ const (
 	MOD           TokenType = "mod"
 
 	// Operators & Symbols
-	ASSIGN    TokenType = "="
-	ARROW     TokenType = "->"
+	ASSIGN     TokenType = "="
+	MUT_ASSIGN TokenType = "=:"
+	ARROW      TokenType = "->"
 	FAT_ARROW TokenType = "=>"
 	AT        TokenType = "@" // Instanciation @Unit()
 	AMP       TokenType = "&" // Propriété interne &prop

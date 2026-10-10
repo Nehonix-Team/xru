@@ -5,31 +5,40 @@ import (
 )
 
 type Environment struct {
-	parent     *Environment
-	store      map[string]Value
-	globals    map[string]Value
-	constants  map[string]bool
-	unitRef    *UnitInstance // Pointeur vers l'unité courante si dans #UNIT
-	currentDir string
+	parent          *Environment
+	store           map[string]Value
+	globals         map[string]Value
+	constants       map[string]bool
+	globalConstants map[string]bool
+	unitRef         *UnitInstance // Pointeur vers l'unité courante si dans #UNIT
+	currentDir      string
 }
 
 func NewEnvironment(parent *Environment) *Environment {
 	var g map[string]Value
+	var gc map[string]bool
 	if parent != nil {
 		g = parent.globals
+		gc = parent.globalConstants
 	} else {
 		g = make(map[string]Value)
+		gc = make(map[string]bool)
 	}
 	return &Environment{
-		parent:    parent,
-		store:     make(map[string]Value),
-		globals:   g,
-		constants: make(map[string]bool),
+		parent:          parent,
+		store:           make(map[string]Value),
+		globals:         g,
+		constants:       make(map[string]bool),
+		globalConstants: gc,
 	}
 }
 
 func (e *Environment) SetGlobal(name string, val Value) {
 	e.globals[name] = val
+}
+
+func (e *Environment) SetGlobalConst(name string) {
+	e.globalConstants[name] = true
 }
 
 func (e *Environment) SetCurrentDir(dir string) {
@@ -64,13 +73,41 @@ func (e *Environment) All() map[string]Value {
 
 func (e *Environment) Set(name string, val Value, isConst bool) error {
 	if e.constants[name] {
-		return fmt.Errorf("cannot reassign constant '%s'", name)
+		return fmt.Errorf("cannot reassign constant '%s': only variables defined with 'let' can be modified", name)
 	}
 	e.store[name] = val
 	if isConst {
 		e.constants[name] = true
 	}
 	return nil
+}
+
+func (e *Environment) IsConst(name string) bool {
+	if e.constants[name] || e.globalConstants[name] {
+		return true
+	}
+	if e.parent != nil {
+		return e.parent.IsConst(name)
+	}
+	return false
+}
+
+func (e *Environment) Reassign(name string, val Value) error {
+	if e.IsConst(name) {
+		return fmt.Errorf("cannot reassign constant '%s': only variables defined with 'let' can be modified", name)
+	}
+	if _, ok := e.store[name]; ok {
+		e.store[name] = val
+		return nil
+	}
+	if _, ok := e.globals[name]; ok {
+		e.globals[name] = val
+		return nil
+	}
+	if e.parent != nil {
+		return e.parent.Reassign(name, val)
+	}
+	return fmt.Errorf("cannot reassign undefined variable '%s'", name)
 }
 
 func (e *Environment) Get(name string) (Value, bool) {

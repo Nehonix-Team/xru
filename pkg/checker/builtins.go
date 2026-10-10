@@ -57,8 +57,6 @@ func (c *Checker) initBuiltinUnits() {
 			"Warn":           {Name: "Warn", Kind: SymFunc, Type: "void"},
 			"error":          {Name: "error", Kind: SymFunc, Type: "void"},
 			"Error":          {Name: "Error", Kind: SymFunc, Type: "void"},
-			"getRandomBytes": {Name: "getRandomBytes", Kind: SymFunc, Type: "string"},
-			"GetRandomBytes": {Name: "GetRandomBytes", Kind: SymFunc, Type: "string"},
 		},
 	}
 	sysUnit := &Symbol{

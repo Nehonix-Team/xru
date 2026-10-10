@@ -152,6 +152,19 @@ func (s *VarStatement) String() string {
 	return fmt.Sprintf("%s %s = %s", keyword, s.Name, s.Value.String())
 }
 
+// ReassignStatement : name =: expr (mutation of let variables)
+type ReassignStatement struct {
+	Position lexer.Position
+	Name     string
+	Value    Expression
+}
+
+func (s *ReassignStatement) statementNode()      {}
+func (s *ReassignStatement) Pos() lexer.Position { return s.Position }
+func (s *ReassignStatement) String() string {
+	return fmt.Sprintf("%s =: %s", s.Name, s.Value.String())
+}
+
 // -----------------------------------------------------------------------------
 // Déclarations #UNIT, #DECLARE, #DIRECTIVE, #FUNC, #RETURN
 // -----------------------------------------------------------------------------

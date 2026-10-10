@@ -310,14 +310,14 @@ function activate(context) {
           if (changeDebounce) {
             clearTimeout(changeDebounce);
             changeDebounce = null;
-            syncDocumentToLsp(document, false);
           }
+          syncDocumentToLsp(document, false);
           const res = await lspClient.request("textDocument/completion", {
             textDocument: { uri: document.uri.toString() },
             position: { line: position.line, character: position.character },
           });
           if (res && Array.isArray(res.items)) {
-            return res.items.map((it) => {
+            const items = res.items.map((it) => {
               const item = new vscode.CompletionItem(it.label);
               item.detail = it.detail;
               if (it.documentation) {
@@ -347,6 +347,7 @@ function activate(context) {
               }
               return item;
             });
+            return new vscode.CompletionList(items, true);
           }
         } catch (e) {}
         return null;

@@ -47,6 +47,13 @@ func (p *Parser) parseStatement() ast.Statement {
 		p.addError(p.curToken.Pos, fmt.Sprintf("illegal character '%s'", p.curToken.Literal))
 		return nil
 	case lexer.IDENT:
+		if p.peekTokenIs(lexer.MUT_ASSIGN) {
+			return p.parseReassignStatement()
+		}
+		if p.peekTokenIs(lexer.ASSIGN) {
+			p.addError(p.peekToken.Pos, fmt.Sprintf("cannot assign with '=': use '=:' to mutate variable '%s' (e.g. %s =: <value>)", p.curToken.Literal, p.curToken.Literal))
+			return nil
+		}
 		if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.STRING) {
 			return p.parseCustomDirective()
 		}
@@ -55,6 +62,20 @@ func (p *Parser) parseStatement() ast.Statement {
 		// Expression libre (ex: appel de fonction ou méthode)
 		return p.parseExpressionStatement()
 	}
+}
+
+// ident =: expr
+func (p *Parser) parseReassignStatement() *ast.ReassignStatement {
+	stmt := &ast.ReassignStatement{
+		Position: p.curToken.Pos,
+		Name:     p.curToken.Literal,
+	}
+	if !p.expectPeek(lexer.MUT_ASSIGN) {
+		return nil
+	}
+	p.nextToken() // saute '=:'
+	stmt.Value = p.parseExpression()
+	return stmt
 }
 
 // { stmt1; stmt2; ... }

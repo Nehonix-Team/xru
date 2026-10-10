@@ -202,7 +202,7 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 						InsertTextFormat: InsertTextFormatPlainText,
 					})
 				}
-				return &CompletionList{Items: items}
+				return &CompletionList{IsIncomplete: true, Items: items}
 			}
 
 			// 2.B Workspace module from _mod.xru (e.g. cdn., auth.)
@@ -231,7 +231,7 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 									InsertTextFormat: InsertTextFormatPlainText,
 								})
 							}
-							return &CompletionList{Items: items}
+							return &CompletionList{IsIncomplete: true, Items: items}
 						}
 					}
 				}
@@ -239,7 +239,7 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 
 			// 2.C Strictly return member items or empty list.
 			// Do NOT fall through to global snippets or keywords after dot!
-			return &CompletionList{Items: items}
+			return &CompletionList{IsIncomplete: true, Items: items}
 		}
 	}
 
@@ -391,7 +391,7 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 		}
 	}
 
-	return &CompletionList{Items: items}
+	return &CompletionList{IsIncomplete: true, Items: items}
 }
 
 func isInsideWithNet(lines []string, currentLine int) bool {

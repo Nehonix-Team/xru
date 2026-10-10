@@ -148,6 +148,12 @@ func (ev *Evaluator) evalFunc(fn *ast.FuncStatement, env *Environment) (Value, e
 }
 
 func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *Environment) (Value, error) {
+	expectedCount := len(fn.Stmt.Parameters)
+	actualCount := len(args)
+	if actualCount != expectedCount {
+		return NilValue{}, fmt.Errorf("function '%s' expects %d arguments, but got %d", fn.Stmt.Name, expectedCount, actualCount)
+	}
+
 	fnEnv := NewEnvironment(fn.Env)
 	if callerEnv != nil {
 		fnEnv.SetCurrentDir(callerEnv.CurrentDir())
@@ -165,20 +171,46 @@ func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *
 		}
 	}
 	for i, param := range fn.Stmt.Parameters {
-		if i < len(args) {
-			_ = fnEnv.Set(param.Name, args[i], false)
+		argVal := args[i]
+		if param.Type != "" && param.Type != "any" {
+			if !valMatchesType(argVal, param.Type) {
+				return NilValue{}, fmt.Errorf("argument %d ('%s') of function '%s' expects type '%s', got '%s'", i+1, param.Name, fn.Stmt.Name, param.Type, argVal.Type())
+			}
 		}
+		_ = fnEnv.Set(param.Name, argVal, false)
 	}
+
+	var retVal Value = NilValue{}
+	hasReturn := false
 	for _, stmt := range fn.Stmt.Body {
 		res, err := ev.Eval(stmt, fnEnv)
 		if err != nil {
 			return NilValue{}, err
 		}
 		if ret, ok := res.(ReturnValue); ok {
-			return ret.Val, nil
+			retVal = ret.Val
+			hasReturn = true
+			break
 		}
 	}
-	return NilValue{}, nil
+
+	expectedRet := fn.Stmt.ReturnType
+	if expectedRet != "" && expectedRet != "void" {
+		if !hasReturn {
+			return NilValue{}, fmt.Errorf("function '%s' declared return type '%s' but did not return a value", fn.Stmt.Name, expectedRet)
+		}
+		if !valMatchesType(retVal, expectedRet) {
+			return NilValue{}, fmt.Errorf("function '%s' returned value of type '%s', expected '%s'", fn.Stmt.Name, retVal.Type(), expectedRet)
+		}
+		return retVal, nil
+	} else if expectedRet == "void" {
+		if hasReturn && retVal != (NilValue{}) {
+			return NilValue{}, fmt.Errorf("function '%s' has return type 'void' but returned a value", fn.Stmt.Name)
+		}
+		return NilValue{}, nil
+	}
+
+	return retVal, nil
 }
 
 func (ev *Evaluator) CallLambda(l LambdaValue, args []Value) (Value, error) {

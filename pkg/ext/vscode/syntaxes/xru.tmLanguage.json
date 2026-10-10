@@ -207,7 +207,7 @@
         },
         {
           "name": "keyword.operator.assignment.xru",
-          "match": "="
+          "match": "=:|="
         },
         {
           "name": "keyword.operator.logical.xru",

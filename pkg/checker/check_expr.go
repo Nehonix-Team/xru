@@ -46,9 +46,11 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			if ident, ok := member.Object.(*ast.Identifier); ok {
 				if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Kind == SymUnit {
 					if sym.Methods != nil {
-						if _, methodOk := sym.Methods[member.Property]; !methodOk {
+						if targetMethod, methodOk := sym.Methods[member.Property]; !methodOk {
 							c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
 								fmt.Sprintf("Method '%s' not found on unit '%s'", member.Property, sym.Name))
+						} else if targetMethod.Kind == SymFunc && len(targetMethod.Params) > 0 {
+							c.validateCallArgs(e, member.Property, targetMethod.Params)
 						}
 					}
 				}
@@ -56,14 +58,25 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		} else if scopeAccess, ok := e.Caller.(*ast.ScopeAccessExpression); ok {
 			if sym, ok := c.scope.Resolve(scopeAccess.Scope); ok {
 				if sym.Kind == SymUnit && len(sym.Methods) > 0 {
-					if _, methodOk := sym.Methods[scopeAccess.Member]; !methodOk {
+					if targetMethod, methodOk := sym.Methods[scopeAccess.Member]; !methodOk {
 						c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
 							fmt.Sprintf("Method '%s' not found on module '%s'", scopeAccess.Member, sym.Name))
+					} else if targetMethod.Kind == SymFunc {
+						c.validateCallArgs(e, scopeAccess.Member, targetMethod.Params)
 					}
 				}
 			} else {
 				c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
 					fmt.Sprintf("Module or scope '%s' is not defined", scopeAccess.Scope))
+			}
+		} else if ident, ok := e.Caller.(*ast.Identifier); ok {
+			if sym, ok := c.scope.Resolve(ident.Value); ok {
+				if sym.Kind == SymFunc {
+					c.validateCallArgs(e, ident.Value, sym.Params)
+				}
+			} else {
+				c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
+					fmt.Sprintf("Function '%s' is not defined", ident.Value))
 			}
 		} else {
 			c.checkExpression(e.Caller)
@@ -130,6 +143,28 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	case *ast.BlockStatement:
 		for _, stmt := range e.Statements {
 			c.checkStatement(stmt)
+		}
+	}
+}
+
+func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, params []*ast.Parameter) {
+	if params == nil {
+		return
+	}
+	expectedCount := len(params)
+	actualCount := len(call.Arguments)
+	if actualCount != expectedCount {
+		c.addError(call.Pos(), "ERR_ARG_COUNT",
+			fmt.Sprintf("Function '%s' expects %d arguments, but got %d", name, expectedCount, actualCount))
+		return
+	}
+	for i, param := range params {
+		if param.Type != "" && param.Type != "any" {
+			argType := c.inferType(call.Arguments[i])
+			if !isTypeCompatible(param.Type, argType) {
+				c.addError(call.Arguments[i].Pos(), "ERR_TYPE_MISMATCH",
+					fmt.Sprintf("Argument %d ('%s') of function '%s' expects type '%s', got '%s'", i+1, param.Name, name, param.Type, argType))
+			}
 		}
 	}
 }

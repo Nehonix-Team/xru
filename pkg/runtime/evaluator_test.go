@@ -246,7 +246,7 @@ use std
 
 let secret1 = Crypto.GetRandomBytes(32)
 let secret2 = Crypto.getRandomBytes(16)
-let secret3 = std.getRandomBytes(32)
+let secret3 = Crypto.randomHex(32)
 `
 	l := lexer.New("test_crypto.xru", code)
 	p := parser.New(l)
@@ -391,5 +391,136 @@ let negVal = -a
 	checkBool("orTrue", true)
 	checkBool("orWord", true)
 	checkBool("notVal", false)
+}
+
+func TestMutationAndConstProtection(t *testing.T) {
+	codeLet := `
+let x = 10
+x =: 42
+global let g = "initial"
+g =: "updated"
+`
+	l := lexer.New("test_mut.xru", codeLet)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	xVal, ok := env.Get("x")
+	if !ok || xVal.(runtime.NumberValue).Val != 42 {
+		t.Fatalf("Expected x = 42, got %v", xVal)
+	}
+	gVal, ok := env.Get("g")
+	if !ok || gVal.(runtime.StringValue).Val != "updated" {
+		t.Fatalf("Expected g = updated, got %v", gVal)
+	}
+
+	// Const re-assignment must fail
+	codeConst := `
+const pi = 3.14
+pi =: 3.14159
+`
+	l2 := lexer.New("test_const.xru", codeConst)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	if len(p2.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p2.Errors())
+	}
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev2.Eval(prog2, env2); err == nil {
+		t.Fatalf("Expected error when mutating const, got nil")
+	}
+}
+
+func TestEarlyReturnInIfBlock(t *testing.T) {
+	code := `
+let executedAfterReturn = false
+func checkLocked(locked: bool) -> bool {
+	if locked == true {
+		return false
+	}
+	executedAfterReturn =: true
+	return true
+}
+
+let res = checkLocked(true)
+`
+	l := lexer.New("test_ret.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	resVal, ok := env.Get("res")
+	if !ok || resVal.(runtime.BoolValue).Val != false {
+		t.Fatalf("Expected res = false, got %v", resVal)
+	}
+	afterVal, ok := env.Get("executedAfterReturn")
+	if !ok || afterVal.(runtime.BoolValue).Val != false {
+		t.Fatalf("Code after return was executed! Expected executedAfterReturn = false, got %v", afterVal)
+	}
+}
+
+func TestFunctionSignatureValidation(t *testing.T) {
+	// 1. Missing argument
+	codeMissingArg := `
+func greet(name: string) -> string {
+	return "Hello " + name
+}
+greet()
+`
+	l := lexer.New("test_sig1.xru", codeMissingArg)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err == nil {
+		t.Fatalf("Expected error when calling function with 0 args instead of 1, got nil")
+	}
+
+	// 2. Argument type mismatch
+	codeTypeMismatch := `
+func square(n: number) -> number {
+	return n * n
+}
+square("not_a_number")
+`
+	l2 := lexer.New("test_sig2.xru", codeTypeMismatch)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev2.Eval(prog2, env2); err == nil {
+		t.Fatalf("Expected error when passing string to number param, got nil")
+	}
+
+	// 3. Return type mismatch
+	codeRetMismatch := `
+func getFlag() -> bool {
+	return "invalid_string"
+}
+getFlag()
+`
+	l3 := lexer.New("test_sig3.xru", codeRetMismatch)
+	p3 := parser.New(l3)
+	prog3 := p3.ParseProgram()
+	ev3 := runtime.NewEvaluator()
+	env3 := runtime.NewEnvironment(nil)
+	if _, err := ev3.Eval(prog3, env3); err == nil {
+		t.Fatalf("Expected error when returning string for bool return type, got nil")
+	}
 }
 

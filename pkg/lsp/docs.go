@@ -44,10 +44,6 @@ var BuiltinUnitsDocs = map[string]struct {
 				Detail: "std.error(message: any) -> void",
 				Doc:    "Prints an error message to standard error with a red [ERROR] tag.",
 			},
-			"getrandombytes": {
-				Detail: "std.getRandomBytes(length: number = 32) -> string",
-				Doc:    "Generates cryptographically secure random hexadecimal characters.",
-			},
 		},
 	},
 	"net": {

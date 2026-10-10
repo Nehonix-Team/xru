@@ -68,19 +68,6 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		fmt.Println(formatTerminalColors("<red>[ERROR]</> " + args[0].String()))
 		return NilValue{}, nil
 	}
-	getRandomBytesFn := func(args []Value) (Value, error) {
-		length := 32
-		if len(args) > 0 {
-			if n, ok := args[0].(NumberValue); ok {
-				length = int(n.Val)
-			}
-		}
-		hexStr, err := generateSecureRandomBytes(length)
-		if err != nil {
-			return NilValue{}, err
-		}
-		return StringValue{Val: hexStr}, nil
-	}
 
 	stdUnit := &UnitInstance{
 		UnitName:   "std",
@@ -98,8 +85,6 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Warn":           warnFn,
 			"error":          errorFn,
 			"Error":          errorFn,
-			"getRandomBytes": getRandomBytesFn,
-			"GetRandomBytes": getRandomBytesFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}

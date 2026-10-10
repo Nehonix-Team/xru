@@ -368,4 +368,64 @@ let e: number = -(a + b * 2)
 	}
 }
 
+func TestCheckerMutationAndSignatures(t *testing.T) {
+	// 1. Valid let mutation with =:
+	validCode := `
+let x = 10
+x =: 20
+`
+	l := lexer.New("test_mut_valid.xru", validCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) != 0 {
+		t.Errorf("Expected 0 errors for valid =:, got: %v", c.Errors())
+	}
+
+	// 2. Const mutation error
+	constCode := `
+const secret = "abc"
+secret =: "xyz"
+`
+	l2 := lexer.New("test_const_mut.xru", constCode)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+	foundConstErr := false
+	for _, e := range c2.Errors() {
+		if strings.Contains(e, "ERR_CONST_REASSIGNMENT") {
+			foundConstErr = true
+			break
+		}
+	}
+	if !foundConstErr {
+		t.Errorf("Expected ERR_CONST_REASSIGNMENT for mutating const, got: %v", c2.Errors())
+	}
+
+	// 3. Argument count mismatch
+	callArgCode := `
+func clean(target: string) -> bool {
+	return true
+}
+clean()
+`
+	l3 := lexer.New("test_arg_count.xru", callArgCode)
+	p3 := parser.New(l3)
+	prog3 := p3.ParseProgram()
+	c3 := checker.New()
+	c3.Check(prog3)
+	foundArgErr := false
+	for _, e := range c3.Errors() {
+		if strings.Contains(e, "ERR_ARG_COUNT") {
+			foundArgErr = true
+			break
+		}
+	}
+	if !foundArgErr {
+		t.Errorf("Expected ERR_ARG_COUNT for clean(), got: %v", c3.Errors())
+	}
+}
+
 

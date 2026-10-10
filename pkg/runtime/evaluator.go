@@ -45,6 +45,13 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		if n.Type != "" && !valMatchesType(val, n.Type) {
 			return nil, fmt.Errorf("cannot assign value of type '%s' to variable '%s' declared as '%s'", val.Type(), n.Name, n.Type)
 		}
+		if n.IsGlobal {
+			if n.IsConst {
+				env.SetGlobalConst(n.Name)
+			}
+			env.SetGlobal(n.Name, val)
+			return val, nil
+		}
 		if _, exists := env.GetLocal(n.Name); exists {
 			return nil, fmt.Errorf("variable '%s' is already declared in this scope", n.Name)
 		}
@@ -54,6 +61,15 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			}
 		}
 		return val, env.Set(n.Name, val, n.IsConst)
+	case *ast.ReassignStatement:
+		val, err := ev.Eval(n.Value, env)
+		if err != nil {
+			return nil, err
+		}
+		if err := env.Reassign(n.Name, val); err != nil {
+			return nil, err
+		}
+		return val, nil
 	case *ast.ArgStatement:
 		// S'il existe déjà dans l'environnement (fourni par les CLI args), on le valide
 		if v, exists := env.Get(n.Name); exists {

@@ -41,16 +41,64 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		}
 	case *ast.DispatchTreeStatement:
 		// DispatchTree statement is valid
+	case *ast.ReassignStatement:
+		c.checkReassign(s)
 	case *ast.ReturnStatement:
-		if s.Value != nil {
-			c.checkExpression(s.Value)
-			if c.currentFunc != nil && c.currentFunc.ReturnType != "" && c.currentFunc.ReturnType != "void" {
-				actualType := c.inferType(s.Value)
-				if !isTypeCompatible(c.currentFunc.ReturnType, actualType) {
+		if c.currentFunc != nil && c.currentFunc.ReturnType != "" {
+			expectedType := c.currentFunc.ReturnType
+			if expectedType == "void" {
+				if s.Value != nil {
+					c.checkExpression(s.Value)
+					actualType := c.inferType(s.Value)
+					if actualType != "void" && actualType != "nil" {
+						c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Function '%s' has return type 'void', but returns value of type '%s'", c.currentFunc.Name, actualType))
+					}
+				}
+			} else {
+				if s.Value == nil {
 					c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
-						fmt.Sprintf("Cannot return value of type '%s' from function '%s' expecting '%s'", actualType, c.currentFunc.Name, c.currentFunc.ReturnType))
+						fmt.Sprintf("Function '%s' expects return type '%s', but return statement has no value", c.currentFunc.Name, expectedType))
+				} else {
+					c.checkExpression(s.Value)
+					actualType := c.inferType(s.Value)
+					if !isTypeCompatible(expectedType, actualType) {
+						c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Cannot return value of type '%s' from function '%s' expecting '%s'", actualType, c.currentFunc.Name, expectedType))
+					}
 				}
 			}
+		} else {
+			if s.Value != nil {
+				c.checkExpression(s.Value)
+			}
+		}
+	}
+}
+
+func (c *Checker) checkReassign(s *ast.ReassignStatement) {
+	sym, found := c.scope.Resolve(s.Name)
+	if !found {
+		c.addError(s.Pos(), "ERR_UNDEFINED_VARIABLE", fmt.Sprintf("Variable '%s' is not defined", s.Name))
+		c.checkExpression(s.Value)
+		return
+	}
+
+	if sym.Kind == SymConst {
+		c.addError(s.Pos(), "ERR_CONST_REASSIGNMENT",
+			fmt.Sprintf("Cannot reassign constant '%s': only variables defined with 'let' can be modified", s.Name))
+	} else if sym.Kind != SymVar {
+		c.addError(s.Pos(), "ERR_INVALID_ASSIGNMENT",
+			fmt.Sprintf("Cannot reassign '%s' which is a %s", s.Name, sym.Kind))
+	}
+
+	c.checkExpression(s.Value)
+
+	if s.Value != nil && sym.Type != "" && sym.Type != "any" {
+		actualType := c.inferType(s.Value)
+		if !isTypeCompatible(sym.Type, actualType) {
+			c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
+				fmt.Sprintf("Cannot assign expression of type '%s' to variable '%s' declared as '%s'", actualType, s.Name, sym.Type))
 		}
 	}
 }

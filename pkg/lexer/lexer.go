@@ -127,6 +127,11 @@ func (l *Lexer) NextToken() Token {
 			l.readChar()
 			return Token{Type: FAT_ARROW, Literal: "=>", Pos: startPos}
 		}
+		if l.peekChar() == ':' {
+			l.readChar()
+			l.readChar()
+			return Token{Type: MUT_ASSIGN, Literal: "=:", Pos: startPos}
+		}
 		l.readChar()
 		return Token{Type: ASSIGN, Literal: "=", Pos: startPos}
 	case '!':

@@ -21,11 +21,15 @@ type TreeDispatcherFunc func(dt *ast.DispatchTreeStatement, eval *Evaluator, env
 type Evaluator struct {
 	builtins       map[string]*UnitInstance
 	treeDispatcher TreeDispatcherFunc
+	loadedModules  map[string]*UnitInstance
+	loadingModules map[string]bool
 }
 
 func NewEvaluator() *Evaluator {
 	return &Evaluator{
-		builtins: NewBuiltinUnits(),
+		builtins:       NewBuiltinUnits(),
+		loadedModules:  make(map[string]*UnitInstance),
+		loadingModules: make(map[string]bool),
 	}
 }
 
@@ -279,6 +283,19 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			if err != nil {
 				return nil, err
 			}
+			absPath, _ := filepath.Abs(modDetails.FilePath)
+			if ev.loadingModules[absPath] {
+				return nil, fmt.Errorf("circular module dependency detected: '%s' (from '%s') is already being loaded", modName, n.Source)
+			}
+			if cached, ok := ev.loadedModules[absPath]; ok {
+				return cached, nil
+			}
+
+			ev.loadingModules[absPath] = true
+			defer func() {
+				delete(ev.loadingModules, absPath)
+			}()
+
 			modEnv := NewEnvironment(nil)
 			modEnv.SetCurrentDir(filepath.Dir(modDetails.FilePath))
 			content, err := os.ReadFile(modDetails.FilePath)
@@ -327,6 +344,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 					}
 				}
 			}
+			ev.loadedModules[absPath] = unitInst
 			return unitInst, nil
 		}
 

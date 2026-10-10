@@ -2,11 +2,14 @@ package checker
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/lexer"
 	"github.com/Nehonix-Team/xru/pkg/modules"
+	"github.com/Nehonix-Team/xru/pkg/parser"
 )
 
 func (c *Checker) checkUse(s *ast.UseStatement) {
@@ -85,6 +88,10 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 				c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", modName, s.Source, err))
 				continue
 			}
+			if c.hasCircularImport(modDetails.FilePath, c.currentFile, modCfg) {
+				c.addError(s.Pos(), "ERR_CIRCULAR_IMPORT", fmt.Sprintf("Circular module import detected between '%s' and '%s'", filepath.Base(c.currentFile), filepath.Base(modDetails.FilePath)))
+				continue
+			}
 			methods := make(map[string]*Symbol)
 			for expName, exp := range modDetails.Exports {
 				symKind := SymVar
@@ -121,6 +128,10 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 			c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
 			return
 		}
+		if c.hasCircularImport(modDetails.FilePath, c.currentFile, modCfg) {
+			c.addError(s.Pos(), "ERR_CIRCULAR_IMPORT", fmt.Sprintf("Circular module import detected between '%s' and '%s'", filepath.Base(c.currentFile), filepath.Base(modDetails.FilePath)))
+			return
+		}
 		exp, ok := modDetails.Exports[s.Member]
 		if !ok {
 			c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", s.Member, s.Module))
@@ -155,6 +166,10 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
 		return
 	}
+	if c.hasCircularImport(modDetails.FilePath, c.currentFile, modCfg) {
+		c.addError(s.Pos(), "ERR_CIRCULAR_IMPORT", fmt.Sprintf("Circular module import detected between '%s' and '%s'", filepath.Base(c.currentFile), filepath.Base(modDetails.FilePath)))
+		return
+	}
 	methods := make(map[string]*Symbol)
 	for expName, exp := range modDetails.Exports {
 		symKind := SymVar
@@ -180,4 +195,50 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 	if err := c.scope.Define(modSym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 	}
+}
+
+func (c *Checker) hasCircularImport(targetFilePath, currentFilePath string, modCfg *modules.ModConfig) bool {
+	if targetFilePath == "" || currentFilePath == "" {
+		return false
+	}
+	absTarget, err1 := filepath.Abs(targetFilePath)
+	absCurrent, err2 := filepath.Abs(currentFilePath)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	if absTarget == absCurrent {
+		return true
+	}
+
+	content, err := os.ReadFile(targetFilePath)
+	if err != nil {
+		return false
+	}
+	l := lexer.New(targetFilePath, string(content))
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	for _, stmt := range prog.Statements {
+		fromStmt, ok := stmt.(*ast.FromUseStatement)
+		if !ok {
+			continue
+		}
+		var modsToCheck []string
+		if len(fromStmt.Modules) > 0 {
+			modsToCheck = append(modsToCheck, fromStmt.Modules...)
+		} else if fromStmt.Module != "" {
+			modsToCheck = append(modsToCheck, fromStmt.Module)
+		} else if fromStmt.Alias != "" {
+			modsToCheck = append(modsToCheck, fromStmt.Alias)
+		}
+		for _, m := range modsToCheck {
+			subDetails, err := modCfg.ResolveModule(fromStmt.Source, m)
+			if err == nil && subDetails != nil {
+				subAbs, err := filepath.Abs(subDetails.FilePath)
+				if err == nil && subAbs == absCurrent {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

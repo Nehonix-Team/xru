@@ -621,4 +621,34 @@ func TestUnitPropertyRestriction(t *testing.T) {
 	}
 }
 
+func TestCircularModuleImport(t *testing.T) {
+	tempDir := t.TempDir()
+	modCfg := `map {
+	ns -> "./*"
+}`
+	_ = os.WriteFile(filepath.Join(tempDir, "_mod.xru"), []byte(modCfg), 0644)
+	m1Code := `from "ns" use m2`
+	m2Code := `from "ns" use m1`
+	_ = os.WriteFile(filepath.Join(tempDir, "m1.xru"), []byte(m1Code), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "m2.xru"), []byte(m2Code), 0644)
+
+	mainCode := `from "ns" use m1`
+	l := lexer.New("main.xru", mainCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	env.SetCurrentDir(tempDir)
+
+	_, err := ev.Eval(prog, env)
+	if err == nil {
+		t.Fatalf("Expected error on circular module import, got nil")
+	}
+	if !strings.Contains(err.Error(), "circular module dependency") {
+		t.Fatalf("Expected error message to contain 'circular module dependency', got: %v", err)
+	}
+}
+
+
 

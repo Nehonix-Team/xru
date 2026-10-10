@@ -64,7 +64,9 @@ function findLspBinary() {
 function syncDocumentToLsp(document, isNew = false) {
   if (
     !document ||
-    (document.languageId !== "xru" && !document.fileName.endsWith(".xru"))
+    (document.languageId !== "xru" &&
+      document.languageId !== "xru-mod" &&
+      !document.fileName.endsWith(".xru"))
   ) {
     return;
   }
@@ -257,9 +259,12 @@ function activate(context) {
     }),
   );
 
+  // Document selector supporting both standard .xru and _mod.xru
+  const XRU_SELECTOR = ["xru", "xru-mod"];
+
   // 3. Definition Provider (Ctrl+Click / F12)
   const definitionProvider = vscode.languages.registerDefinitionProvider(
-    "xru",
+    XRU_SELECTOR,
     {
       async provideDefinition(document, position, token) {
         if (!lspClient || !lspClient.isAlive()) return null;
@@ -287,7 +292,7 @@ function activate(context) {
   context.subscriptions.push(definitionProvider);
 
   // 4. Hover Provider
-  const hoverProvider = vscode.languages.registerHoverProvider("xru", {
+  const hoverProvider = vscode.languages.registerHoverProvider(XRU_SELECTOR, {
     async provideHover(document, position, token) {
       if (!lspClient || !lspClient.isAlive()) return null;
       try {
@@ -313,7 +318,7 @@ function activate(context) {
 
   // 5. Completion Item Provider
   const completionProvider = vscode.languages.registerCompletionItemProvider(
-    "xru",
+    XRU_SELECTOR,
     {
       async provideCompletionItems(document, position, token, context) {
         if (!lspClient || !lspClient.isAlive()) return null;
@@ -374,7 +379,7 @@ function activate(context) {
 
   // 6. Code Action Provider (Quick Fix / Auto-Import on Lightbulb & Ctrl+.)
   const codeActionProvider = vscode.languages.registerCodeActionsProvider(
-    "xru",
+    XRU_SELECTOR,
     {
       async provideCodeActions(document, range, context, token) {
         if (!lspClient || !lspClient.isAlive()) return [];
@@ -442,7 +447,7 @@ function activate(context) {
 
   // 7. Document Highlight Provider (Highlight occurrences of word at cursor)
   const highlightProvider = vscode.languages.registerDocumentHighlightProvider(
-    "xru",
+    XRU_SELECTOR,
     {
       async provideDocumentHighlights(document, position, token) {
         if (!lspClient || !lspClient.isAlive()) return [];
@@ -471,7 +476,7 @@ function activate(context) {
   context.subscriptions.push(highlightProvider);
 
   // 8. Reference Provider (Find All References)
-  const referenceProvider = vscode.languages.registerReferenceProvider("xru", {
+  const referenceProvider = vscode.languages.registerReferenceProvider(XRU_SELECTOR, {
     async provideReferences(document, position, context, token) {
       if (!lspClient || !lspClient.isAlive()) return [];
       try {
@@ -497,7 +502,7 @@ function activate(context) {
 
   // 9. Document Symbol Provider (Outline & Breadcrumbs)
   const symbolProvider = vscode.languages.registerDocumentSymbolProvider(
-    "xru",
+    XRU_SELECTOR,
     {
       async provideDocumentSymbols(document, token) {
         if (!lspClient || !lspClient.isAlive()) return [];

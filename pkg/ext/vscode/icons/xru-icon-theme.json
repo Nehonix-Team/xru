@@ -1,0 +1,30 @@
+{
+  "iconDefinitions": {
+    "_xru_file": {
+      "iconPath": "../assets/xru-dark.svg"
+    },
+    "_xru_file_light": {
+      "iconPath": "../assets/xru-light.svg"
+    },
+    "_xru_mod": {
+      "iconPath": "../assets/xru-mod-dark.svg"
+    },
+    "_xru_mod_light": {
+      "iconPath": "../assets/xru-mod-light.svg"
+    }
+  },
+  "fileExtensions": {
+    "xru": "_xru_file"
+  },
+  "fileNames": {
+    "_mod.xru": "_xru_mod"
+  },
+  "light": {
+    "fileExtensions": {
+      "xru": "_xru_file_light"
+    },
+    "fileNames": {
+      "_mod.xru": "_xru_mod_light"
+    }
+  }
+}

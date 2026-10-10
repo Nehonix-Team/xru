@@ -7,6 +7,7 @@
   "main": "./extension.js",
   "activationEvents": [
     "onLanguage:xru",
+    "onLanguage:xru-mod",
     "onLanguage:markdown",
     "workspaceContains:**/*.xru"
   ],
@@ -17,6 +18,13 @@
     "Programming Languages"
   ],
   "contributes": {
+    "iconThemes": [
+      {
+        "id": "xru-icons",
+        "label": "XRU File Icons",
+        "path": "./icons/xru-icon-theme.json"
+      }
+    ],
     "languages": [
       {
         "id": "xru",
@@ -30,6 +38,21 @@
         "icon": {
           "dark": "./assets/xru-dark.svg",
           "light": "./assets/xru-light.svg"
+        },
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "xru-mod",
+        "aliases": [
+          "XRU Module Config",
+          "xru-mod"
+        ],
+        "filenames": [
+          "_mod.xru"
+        ],
+        "icon": {
+          "dark": "./assets/xru-mod-dark.svg",
+          "light": "./assets/xru-mod-light.svg"
         },
         "configuration": "./language-configuration.json"
       }
@@ -47,11 +70,28 @@
           "source.go": "go",
           "text.html.basic": "html"
         }
+      },
+      {
+        "language": "xru-mod",
+        "scopeName": "source.xru",
+        "path": "./syntaxes/xru.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.ts": "typescript",
+          "source.js": "javascript",
+          "source.json": "json",
+          "source.css": "css",
+          "source.go": "go",
+          "text.html.basic": "html"
+        }
       }
     ],
     "snippets": [
       {
         "language": "xru",
+        "path": "./snippets/xru.code-snippets"
+      },
+      {
+        "language": "xru-mod",
         "path": "./snippets/xru.code-snippets"
       },
       {

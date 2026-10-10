@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -494,6 +495,66 @@ std.println(a)
 		t.Errorf("Expected '\"tags\":[1]' in diagnostics, got: %s", outStr)
 	}
 }
+
+func TestLocalSymbolsCompletion(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "test.xru")
+	uri := "file://" + filePath
+
+	testCode := `use std
+use net as Net
+from "services" use (auth, cdn)
+from "services" use cdn::deploy
+
+let a = 3
+const isProd = true
+let host = "https://api.xypriss.dev"
+
+func clean(target: string) -> bool {
+    const d = "package.json"
+    
+    return true
+}
+`
+
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       testCode,
+		},
+	})
+
+	// Complétion à l'intérieur de la fonction `clean` (ligne 11, col 4)
+	compReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 11, "character": 4},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + compReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Doit proposer les variables locales
+	expectedSymbols := []string{"a", "isProd", "host", "clean", "target", "d", "Net", "auth", "cdn", "deploy"}
+	for _, sym := range expectedSymbols {
+		expectedLabel := fmt.Sprintf(`"label":"%s"`, sym)
+		if !strings.Contains(outStr, expectedLabel) {
+			t.Errorf("Expected local symbol '%s' in completions, got: %s", sym, outStr)
+		}
+	}
+
+	// Doit avoir isIncomplete: false
+	if !strings.Contains(outStr, `"isIncomplete":false`) {
+		t.Errorf("Expected '\"isIncomplete\":false' in completions, got: %s", outStr)
+	}
+}
+
 
 
 

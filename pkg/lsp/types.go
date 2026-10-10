@@ -211,6 +211,7 @@ const (
 	CompletionItemKindKeyword     CompletionItemKind = 14
 	CompletionItemKindSnippet     CompletionItemKind = 15
 	CompletionItemKindFolder      CompletionItemKind = 19
+	CompletionItemKindConstant    CompletionItemKind = 21
 	CompletionItemKindEvent       CompletionItemKind = 23
 )
 
@@ -231,6 +232,7 @@ type CompletionItem struct {
 	Documentation       any                `json:"documentation,omitempty"` // MarkupContent or string
 	InsertText          string             `json:"insertText,omitempty"`
 	FilterText          string             `json:"filterText,omitempty"`
+	SortText            string             `json:"sortText,omitempty"`
 	InsertTextFormat    int                `json:"insertTextFormat,omitempty"` // 1 = PlainText, 2 = Snippet
 	AdditionalTextEdits []TextEdit         `json:"additionalTextEdits,omitempty"`
 }

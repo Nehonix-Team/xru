@@ -334,8 +334,18 @@ function activate(context) {
           });
           if (res && Array.isArray(res.items)) {
             const items = res.items.map((it) => {
-              const item = new vscode.CompletionItem(it.label);
+              const itemKind =
+                typeof it.kind === "number" && it.kind > 0
+                  ? it.kind - 1
+                  : undefined;
+              const item = new vscode.CompletionItem(it.label, itemKind);
               item.detail = it.detail;
+              if (it.sortText) {
+                item.sortText = it.sortText;
+              }
+              if (it.filterText) {
+                item.filterText = it.filterText;
+              }
               if (it.documentation) {
                 item.documentation = new vscode.MarkdownString(
                   typeof it.documentation === "string"
@@ -363,7 +373,7 @@ function activate(context) {
               }
               return item;
             });
-            return new vscode.CompletionList(items, true);
+            return new vscode.CompletionList(items, Boolean(res.isIncomplete));
           }
         } catch (e) {}
         return null;
@@ -372,7 +382,6 @@ function activate(context) {
     ".",
     "@",
     ":",
-    " ",
     "\"",
   );
   context.subscriptions.push(completionProvider);

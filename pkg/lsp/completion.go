@@ -3,6 +3,7 @@ package lsp
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/modules"
@@ -40,9 +41,7 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 	// 0.1 Handle double colon `::` member completion (e.g. auth::login)
 	if colonIdx := strings.LastIndex(prefixLine, "::"); colonIdx != -1 {
 		memberItems := s.handleScopeMemberCompletion(uri, prefixLine[:colonIdx])
-		if len(memberItems) > 0 {
-			return &CompletionList{Items: memberItems}
-		}
+		return &CompletionList{Items: memberItems}
 	}
 
 	// 0.2 Handle `use ` statement for builtin units
@@ -171,7 +170,7 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 		return &CompletionList{Items: items}
 	}
 
-	// 2. Member completion: e.g. "Utils." or "Net." or "Crypto." or "Fs."
+	// 2. Member completion: e.g. "Utils." or "Net." or "Crypto." or "Fs." or "cdn."
 	dotIdx := strings.LastIndex(prefixLine, ".")
 	if dotIdx >= 0 {
 		beforeDot := strings.TrimSpace(prefixLine[:dotIdx])
@@ -186,18 +185,60 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 			}
 		}
 
-		unitKey := strings.ToLower(unitName)
-		if unitDoc, ok := BuiltinUnitsDocs[unitKey]; ok {
-			for mName, mDoc := range unitDoc.Methods {
-				items = append(items, CompletionItem{
-					Label:            mName,
-					Kind:             CompletionItemKindMethod,
-					Detail:           mDoc.Detail,
-					Documentation:    MarkupContent{Kind: "markdown", Value: mDoc.Doc},
-					InsertText:       mName,
-					InsertTextFormat: InsertTextFormatPlainText,
-				})
+		if unitName != "" {
+			// Resolve alias if imported via `use <unit> as <alias>`
+			resolvedName := resolveUnitAlias(lines, unitName)
+			unitKey := strings.ToLower(resolvedName)
+
+			// 2.A Built-in units
+			if unitDoc, ok := BuiltinUnitsDocs[unitKey]; ok {
+				for mName, mDoc := range unitDoc.Methods {
+					items = append(items, CompletionItem{
+						Label:            mName,
+						Kind:             CompletionItemKindMethod,
+						Detail:           mDoc.Detail,
+						Documentation:    MarkupContent{Kind: "markdown", Value: mDoc.Doc},
+						InsertText:       mName,
+						InsertTextFormat: InsertTextFormatPlainText,
+					})
+				}
+				return &CompletionList{Items: items}
 			}
+
+			// 2.B Workspace module from _mod.xru (e.g. cdn., auth.)
+			filePath := uriToPath(uri)
+			fileDir := filepath.Dir(filePath)
+			if modFilePath := modules.FindModConfigFile(fileDir); modFilePath != "" {
+				if modCfg, errs := modules.LoadModConfig(modFilePath); len(errs) == 0 && modCfg != nil {
+					for ns := range modCfg.Mappings {
+						mDetails, err := modCfg.ResolveModule(ns, resolvedName)
+						if err == nil && mDetails != nil {
+							for _, exp := range mDetails.Exports {
+								kind := CompletionItemKindProperty
+								insertText := exp.Name
+								detail := fmt.Sprintf("%s %s: %s", exp.Kind, exp.Name, exp.Type)
+								if exp.Kind == "func" {
+									kind = CompletionItemKindMethod
+									insertText = exp.Name + "()"
+									detail = fmt.Sprintf("func %s(...) %s", exp.Name, exp.Type)
+								}
+								items = append(items, CompletionItem{
+									Label:            exp.Name,
+									Kind:             kind,
+									Detail:           detail,
+									Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Exported from `%s` in namespace `%s`", mDetails.Name, ns)},
+									InsertText:       insertText,
+									InsertTextFormat: InsertTextFormatPlainText,
+								})
+							}
+							return &CompletionList{Items: items}
+						}
+					}
+				}
+			}
+
+			// 2.C Strictly return member items or empty list.
+			// Do NOT fall through to global snippets or keywords after dot!
 			return &CompletionList{Items: items}
 		}
 	}
@@ -534,3 +575,14 @@ func (s *Server) handleScopeMemberCompletion(uri, beforeColon string) []Completi
 	}
 	return items
 }
+
+func resolveUnitAlias(lines []string, alias string) string {
+	re := regexp.MustCompile(fmt.Sprintf(`\buse\s+([a-zA-Z0-9_]+)\s+as\s+%s\b`, regexp.QuoteMeta(alias)))
+	for _, l := range lines {
+		if m := re.FindStringSubmatch(l); len(m) > 1 {
+			return m[1]
+		}
+	}
+	return alias
+}
+

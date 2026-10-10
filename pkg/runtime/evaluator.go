@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/checker"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 	"github.com/Nehonix-Team/xru/pkg/modules"
 	"github.com/Nehonix-Team/xru/pkg/parser"
@@ -250,9 +251,6 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			}
 			modEnv := NewEnvironment(nil)
 			modEnv.SetCurrentDir(filepath.Dir(modDetails.FilePath))
-			for bName, bUnit := range ev.builtins {
-				_ = modEnv.Set(bName, bUnit, true)
-			}
 			content, err := os.ReadFile(modDetails.FilePath)
 			if err != nil {
 				return nil, err
@@ -261,8 +259,17 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			p := parser.New(l)
 			prog := p.ParseProgram()
 			if len(p.Errors()) > 0 {
-				return nil, fmt.Errorf("syntax error in %s: %s", modDetails.FilePath, p.Errors()[0])
+				return nil, fmt.Errorf("syntax error in %s:\n  • %s", modDetails.FilePath, strings.Join(p.Errors(), "\n  • "))
 			}
+
+			// Validation sémantique stricte du module (ex: use std requis si std est utilisé)
+			c := checker.New()
+			c.SetCurrentFile(modDetails.FilePath)
+			c.Check(prog)
+			if len(c.Errors()) > 0 {
+				return nil, fmt.Errorf("validation error in %s:\n  • %s", modDetails.FilePath, strings.Join(c.Errors(), "\n  • "))
+			}
+
 			_, err = ev.Eval(prog, modEnv)
 			if err != nil {
 				return nil, err

@@ -339,5 +339,70 @@ from "services" use "auth"
 	}
 }
 
+func TestLSPModuleDotCompletionStrict(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	uri := "file:///home/idevo/Documents/projects/XTemplates/test_dot.xru"
+	content := `from "services" use cdn
+cdn.
+`
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       content,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// Completion right after `cdn.` (line 1, col 4)
+	compPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 1, "character": 4},
+		},
+	}
+	compData, _ := json.Marshal(compPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(compData), string(compData)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Should contain cdn's exports: deploy and cacheDir
+	if !strings.Contains(outStr, `"label":"deploy"`) {
+		t.Errorf("Expected 'deploy' in cdn. completions, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"cacheDir"`) {
+		t.Errorf("Expected 'cacheDir' in cdn. completions, got: %s", outStr)
+	}
+
+	// Must NOT contain global snippets, surgical methods or other modules
+	if strings.Contains(outStr, `"label":"append"`) {
+		t.Errorf("Completions for cdn. should NOT contain 'append'")
+	}
+	if strings.Contains(outStr, `"label":"auth"`) {
+		t.Errorf("Completions for cdn. should NOT contain 'auth'")
+	}
+	if strings.Contains(outStr, `"label":"const"`) {
+		t.Errorf("Completions for cdn. should NOT contain 'const'")
+	}
+}
+
+
 
 

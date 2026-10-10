@@ -193,13 +193,16 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 	exports := make(map[string]*ExportedMember)
 
 	for _, stmt := range prog.Statements {
+		if stmt == nil {
+			continue
+		}
 		switch s := stmt.(type) {
 		case *ast.ModStatement:
-			if s.Name != "" {
+			if s != nil && s.Name != "" {
 				modName = s.Name
 			}
 		case *ast.VarStatement:
-			if s.IsGlobal {
+			if s != nil && s.IsGlobal {
 				kind := "var"
 				if s.IsConst {
 					kind = "const"
@@ -212,7 +215,7 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 				}
 			}
 		case *ast.FuncStatement:
-			if s.IsGlobal {
+			if s != nil && s.IsGlobal {
 				exports[s.Name] = &ExportedMember{
 					Name:     s.Name,
 					Kind:     "func",

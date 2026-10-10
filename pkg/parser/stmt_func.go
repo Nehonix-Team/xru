@@ -94,15 +94,17 @@ func (p *Parser) parseGlobalStatement() ast.Statement {
 		fnStmt := p.parseFuncStatement()
 		if fnStmt != nil {
 			fnStmt.IsGlobal = true
+			return fnStmt
 		}
-		return fnStmt
+		return nil
 	}
 	if p.curTokenIs(lexer.LET) || p.curTokenIs(lexer.CONST) {
 		varStmt := p.parseVarStatement()
 		if varStmt != nil {
 			varStmt.IsGlobal = true
+			return varStmt
 		}
-		return varStmt
+		return nil
 	}
 	stmt := p.parseStatement()
 	return stmt

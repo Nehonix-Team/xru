@@ -253,6 +253,11 @@ function activate(context) {
       async provideDefinition(document, position, token) {
         if (!lspClient || !lspClient.isAlive()) return null;
         try {
+          if (changeDebounce) {
+            clearTimeout(changeDebounce);
+            changeDebounce = null;
+            syncDocumentToLsp(document, false);
+          }
           const res = await lspClient.request("textDocument/definition", {
             textDocument: { uri: document.uri.toString() },
             position: { line: position.line, character: position.character },
@@ -275,6 +280,11 @@ function activate(context) {
     async provideHover(document, position, token) {
       if (!lspClient || !lspClient.isAlive()) return null;
       try {
+        if (changeDebounce) {
+          clearTimeout(changeDebounce);
+          changeDebounce = null;
+          syncDocumentToLsp(document, false);
+        }
         const res = await lspClient.request("textDocument/hover", {
           textDocument: { uri: document.uri.toString() },
           position: { line: position.line, character: position.character },
@@ -297,6 +307,11 @@ function activate(context) {
       async provideCompletionItems(document, position, token, context) {
         if (!lspClient || !lspClient.isAlive()) return null;
         try {
+          if (changeDebounce) {
+            clearTimeout(changeDebounce);
+            changeDebounce = null;
+            syncDocumentToLsp(document, false);
+          }
           const res = await lspClient.request("textDocument/completion", {
             textDocument: { uri: document.uri.toString() },
             position: { line: position.line, character: position.character },

@@ -206,6 +206,14 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				}
 			}
 		}
+		if env.unitRef != nil {
+			for pName, pVal := range env.unitRef.Properties {
+				placeholder := fmt.Sprintf("{&%s}", pName)
+				res = strings.ReplaceAll(res, placeholder, pVal.String())
+			}
+		} else {
+			res = strings.ReplaceAll(res, "{&baseDir}", ".")
+		}
 		if unk := findUndefinedInterpolations(res); len(unk) > 0 {
 			return NilValue{}, fmt.Errorf("undefined variable '{%s}' in string interpolation: \"%s\"", strings.Join(unk, ", {"), n.Value)
 		}

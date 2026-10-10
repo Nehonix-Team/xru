@@ -1,7 +1,9 @@
 package runtime_test
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -521,6 +523,77 @@ getFlag()
 	env3 := runtime.NewEnvironment(nil)
 	if _, err := ev3.Eval(prog3, env3); err == nil {
 		t.Fatalf("Expected error when returning string for bool return type, got nil")
+	}
+}
+
+func TestFsOperationsAndErrors(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_fs_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	filePath := filepath.Join(tempDir, "sample.txt")
+	destPath := filepath.Join(tempDir, "sample_copy.txt")
+
+	code := fmt.Sprintf(`
+use fs as Fs
+
+Fs.write("%s", "hello world")
+let exists = Fs.exists("%s")
+let isF = Fs.isFile("%s")
+let isD = Fs.isDir("%s")
+let content = Fs.read("%s")
+let sz = Fs.size("%s")
+Fs.copy("%s", "%s")
+Fs.remove("%s")
+Fs.remove("%s")
+`, filePath, filePath, filePath, tempDir, filePath, filePath, filePath, destPath, filePath, destPath)
+
+	l := lexer.New("test_fs.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on valid Fs operations: %v", err)
+	}
+
+	cVal, _ := env.Get("content")
+	if cVal.String() != "hello world" {
+		t.Fatalf("Expected content 'hello world', got '%s'", cVal.String())
+	}
+
+	// Test that Fs.read on non-existent file returns OS error
+	codeReadNonExistent := `
+use fs as Fs
+Fs.read("/path/does/not/exist/ever_12345.txt")
+`
+	l2 := lexer.New("test_fs_err.xru", codeReadNonExistent)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev2.Eval(prog2, env2); err == nil {
+		t.Fatalf("Expected OS error on Fs.read non-existent file, got nil")
+	}
+
+	// Test that Fs.remove on non-existent file returns OS error
+	codeRemoveNonExistent := `
+use fs as Fs
+Fs.remove("/path/does/not/exist/ever_67890.txt")
+`
+	l3 := lexer.New("test_fs_err2.xru", codeRemoveNonExistent)
+	p3 := parser.New(l3)
+	prog3 := p3.ParseProgram()
+	ev3 := runtime.NewEvaluator()
+	env3 := runtime.NewEnvironment(nil)
+	if _, err := ev3.Eval(prog3, env3); err == nil {
+		t.Fatalf("Expected OS error on Fs.remove non-existent file, got nil")
 	}
 }
 

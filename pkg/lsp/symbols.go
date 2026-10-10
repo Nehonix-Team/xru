@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -62,8 +63,9 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 							retType = "void"
 						}
 						md.WriteString(fmt.Sprintf("```xru\n(method) %s::%s(%s): %s\n```\n", scopeName, memberName, strings.Join(params, ", "), retType))
-						if method.Pos.Line > 0 {
-							md.WriteString(fmt.Sprintf("\n*Declared in module '%s'*", scopeName))
+						fileContent := s.getFileContentForPos(uri, method.Pos.Filename)
+						if doc := extractDocComment(fileContent, method.Pos.Line); doc != "" {
+							md.WriteString("\n" + doc + "\n")
 						}
 						return &Hover{
 							Contents: MarkupContent{Kind: "markdown", Value: md.String()},
@@ -127,8 +129,9 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 			default:
 				md.WriteString(fmt.Sprintf("```xru\n%s: %s\n```\n", sym.Name, sym.Type))
 			}
-			if sym.Pos.Line > 0 {
-				md.WriteString(fmt.Sprintf("\n*Declared at line %d, column %d*", sym.Pos.Line, sym.Pos.Column))
+			fileContent := s.getFileContentForPos(uri, sym.Pos.Filename)
+			if doc := extractDocComment(fileContent, sym.Pos.Line); doc != "" {
+				md.WriteString("\n" + doc + "\n")
 			}
 			return &Hover{
 				Contents: MarkupContent{
@@ -271,4 +274,86 @@ func (s *Server) handleDocumentSymbols(uri string) []DocumentSymbol {
 	}
 
 	return symbols
+}
+
+func (s *Server) getFileContentForPos(uri string, filename string) string {
+	if filename != "" {
+		if content, ok := s.docs[pathToURI(filename)]; ok {
+			return content
+		}
+		if data, err := os.ReadFile(filename); err == nil {
+			return string(data)
+		}
+	}
+	if content, ok := s.docs[uri]; ok {
+		return content
+	}
+	return ""
+}
+
+func extractDocComment(fileContent string, targetLine int) string {
+	if targetLine <= 1 || fileContent == "" {
+		return ""
+	}
+	lines := strings.Split(fileContent, "\n")
+	idx := targetLine - 2 // 0-indexed line immediately before declaration
+	if idx < 0 || idx >= len(lines) {
+		return ""
+	}
+
+	var commentLines []string
+	inBlockComment := false
+
+	for idx >= 0 {
+		rawLine := lines[idx]
+		line := strings.TrimSpace(rawLine)
+
+		if inBlockComment {
+			if strings.HasPrefix(line, "/*") {
+				cleaned := strings.TrimPrefix(line, "/*")
+				cleaned = strings.TrimPrefix(cleaned, "*")
+				cleaned = strings.TrimSpace(cleaned)
+				if cleaned != "" {
+					commentLines = append([]string{cleaned}, commentLines...)
+				}
+				break
+			}
+			cleaned := strings.TrimPrefix(line, "*")
+			cleaned = strings.TrimSpace(cleaned)
+			commentLines = append([]string{cleaned}, commentLines...)
+			idx--
+			continue
+		}
+
+		if strings.HasSuffix(line, "*/") {
+			inBlockComment = true
+			cleaned := strings.TrimSuffix(line, "*/")
+			cleaned = strings.TrimPrefix(cleaned, "/*")
+			cleaned = strings.TrimPrefix(cleaned, "*")
+			cleaned = strings.TrimSpace(cleaned)
+			if cleaned != "" {
+				commentLines = append([]string{cleaned}, commentLines...)
+			}
+			if strings.HasPrefix(line, "/*") {
+				break
+			}
+			idx--
+			continue
+		}
+
+		if strings.HasPrefix(line, "//") {
+			cleaned := strings.TrimPrefix(line, "//")
+			cleaned = strings.TrimSpace(cleaned)
+			if cleaned != "" {
+				commentLines = append([]string{cleaned}, commentLines...)
+			}
+			idx--
+			continue
+		}
+
+		// Non-comment line -> stop scanning
+		break
+	}
+
+	return strings.Join(commentLines, "\n\n")
 }

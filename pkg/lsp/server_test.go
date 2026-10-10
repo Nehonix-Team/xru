@@ -403,6 +403,66 @@ cdn.
 	}
 }
 
+func formatLSPMessage(method string, params any) string {
+	payloadMap := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  method,
+		"params":  params,
+	}
+	data, _ := json.Marshal(payloadMap)
+	return fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(data), string(data))
+}
+
+func TestLSPHoverDocComments(t *testing.T) {
+	testCode := `
+// Helper to clean targets
+// Returns true on success
+func clean(target: string) -> bool {
+	return true
+}
+
+let plainVar = 123
+`
+	uri := "file:///test_hover.xru"
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       testCode,
+		},
+	})
+
+	hoverReqFunc := formatLSPMessage("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 3, "character": 6}, // on "clean"
+	})
+
+	hoverReqVar := formatLSPMessage("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 7, "character": 5}, // on "plainVar"
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + hoverReqFunc + hoverReqVar)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// 1. Should contain comments above clean
+	if !strings.Contains(outStr, "Helper to clean targets") {
+		t.Errorf("Expected doc comment 'Helper to clean targets' in hover, got: %s", outStr)
+	}
+
+	// 2. Should NOT contain 'Declared at line'
+	if strings.Contains(outStr, "Declared at line") {
+		t.Errorf("Hover output should NOT contain 'Declared at line', got: %s", outStr)
+	}
+}
+
 
 
 

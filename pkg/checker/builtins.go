@@ -37,8 +37,11 @@ func (c *Checker) initBuiltinUnits() {
 			"move":      {Name: "move", Kind: SymFunc, Type: "void"},
 			"Copy":      {Name: "Copy", Kind: SymFunc, Type: "void"},
 			"copy":      {Name: "copy", Kind: SymFunc, Type: "void"},
+			"Write":     {Name: "Write", Kind: SymFunc, Type: "bool"},
+			"write":     {Name: "write", Kind: SymFunc, Type: "bool"},
 			"EnsureDir": {Name: "EnsureDir", Kind: SymFunc, Type: "void"},
 			"ensureDir": {Name: "ensureDir", Kind: SymFunc, Type: "void"},
+			"ensuredir": {Name: "ensuredir", Kind: SymFunc, Type: "void"},
 		},
 	}
 	stdUnit := &Symbol{

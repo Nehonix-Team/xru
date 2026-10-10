@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"fmt"
+
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 )
@@ -35,6 +37,15 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseCustomDirective()
 	case lexer.RETURN:
 		return p.parseReturnStatement()
+	case lexer.MAP:
+		return p.parseMapStatement()
+	case lexer.MOD:
+		return p.parseModStatement()
+	case lexer.FROM:
+		return p.parseFromUseStatement()
+	case lexer.ILLEGAL:
+		p.addError(p.curToken.Pos, fmt.Sprintf("illegal character '%s'", p.curToken.Literal))
+		return nil
 	case lexer.IDENT:
 		if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.STRING) {
 			return p.parseCustomDirective()

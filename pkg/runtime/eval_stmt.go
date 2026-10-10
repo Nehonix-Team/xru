@@ -91,11 +91,11 @@ func (ev *Evaluator) evalCustomDirective(dir *ast.CustomDirectiveInvocation, env
 	var keyVal Value = NilValue{}
 	var err error
 	if dir.Key != nil {
-		keyVal, err = ev.Eval(dir.Key, env)
-		if err != nil {
-			if ident, ok := dir.Key.(*ast.Identifier); ok {
-				keyVal = StringValue{Val: ident.Value}
-			} else {
+		if ident, ok := dir.Key.(*ast.Identifier); ok {
+			keyVal = StringValue{Val: ident.Value}
+		} else {
+			keyVal, err = ev.Eval(dir.Key, env)
+			if err != nil {
 				return nil, err
 			}
 		}

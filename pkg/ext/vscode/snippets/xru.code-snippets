@@ -2,7 +2,7 @@
   "Xru Use Module": {
     "prefix": "use",
     "body": [
-      "use ${1:utils} as ${2:Utils}"
+      "use ${1:std}"
     ],
     "description": "Import a native or external unit module"
   },
@@ -70,12 +70,12 @@
       "\theader \"Accept\" -> \"application/vnd.github.v3+json\"",
       "\theader \"User-Agent\" -> \"XRU-Engine\"",
       "\t",
-      "\ton progress -> (percent, speed) => Utils.log(\"<cyan>[PROGRESS]</> {percent}% à {speed}\")",
+      "\ton progress -> (percent, speed) => std.println(\"<cyan>[PROGRESS]</> {percent}% à {speed}\")",
       "\ton complete -> (data, err) => {",
       "\t\tif err != nil {",
-      "\t\t\tUtils.log(\"<red>[ERROR]</> {err}\")",
+      "\t\t\tstd.println(\"<red>[ERROR]</> {err}\")",
       "\t\t} else {",
-      "\t\t\tUtils.log(\"<green>[DONE]</> Download complete!\")",
+      "\t\t\tstd.println(\"<green>[DONE]</> Download complete!\")",
       "\t\t\t$0",
       "\t\t}",
       "\t}",
@@ -153,8 +153,38 @@
   "Xru Log": {
     "prefix": "log",
     "body": [
-      "Utils.log(\"${1:message}\")"
+      "std.println(\"${1:message}\")"
     ],
     "description": "Log colored message to terminal"
+  },
+  "Xru Map": {
+    "prefix": "map",
+    "body": [
+      "map {",
+      "\t${1:services} -> \"${2:./src/services/*}\"",
+      "}"
+    ],
+    "description": "Map module alias to directory path"
+  },
+  "Xru Mod": {
+    "prefix": "mod",
+    "body": [
+      "mod ${1:name}"
+    ],
+    "description": "Declare file module identity"
+  },
+  "Xru From Use": {
+    "prefix": "from",
+    "body": [
+      "from \"${1:services}\" use ${2:module} as ${3:alias}"
+    ],
+    "description": "Import a module from mapped path"
+  },
+  "Xru From Use Member": {
+    "prefix": "fromm",
+    "body": [
+      "from \"${1:services}\" use ${2:module}::${3:member}"
+    ],
+    "description": "Import a member from module"
   }
 }

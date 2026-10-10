@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -8,10 +9,57 @@ import (
 )
 
 // -----------------------------------------------------------------------------
-// Analyseur d'Expressions
+// Niveaux de précédence pour les opérateurs
 // -----------------------------------------------------------------------------
 
+const (
+	_ int = iota
+	LOWEST
+	LOGICAL_OR  // || or
+	LOGICAL_AND // &&
+	EQUALS      // == !=
+	LESSGREATER // > < >= <=
+	SUM         // + -
+	PRODUCT     // * / %
+	PREFIX      // !X, -X
+)
+
+var precedences = map[lexer.TokenType]int{
+	lexer.OR:         LOGICAL_OR,
+	lexer.OR_LOGICAL: LOGICAL_OR,
+	lexer.AND:        LOGICAL_AND,
+	lexer.EQ:         EQUALS,
+	lexer.NEQ:        EQUALS,
+	lexer.LT:         LESSGREATER,
+	lexer.LTE:        LESSGREATER,
+	lexer.GT:         LESSGREATER,
+	lexer.GTE:        LESSGREATER,
+	lexer.PLUS:       SUM,
+	lexer.MINUS:      SUM,
+	lexer.SLASH:      PRODUCT,
+	lexer.ASTERISK:   PRODUCT,
+	lexer.PERCENT:    PRODUCT,
+}
+
+func (p *Parser) peekPrecedence() int {
+	if prec, ok := precedences[p.peekToken.Type]; ok {
+		return prec
+	}
+	return LOWEST
+}
+
+func (p *Parser) curPrecedence() int {
+	if prec, ok := precedences[p.curToken.Type]; ok {
+		return prec
+	}
+	return LOWEST
+}
+
 func (p *Parser) parseExpression() ast.Expression {
+	return p.parseExpressionWithPrecedence(LOWEST)
+}
+
+func (p *Parser) parseExpressionWithPrecedence(precedence int) ast.Expression {
 	expr := p.parsePrimaryExpression()
 	if expr == nil {
 		return nil
@@ -42,13 +90,13 @@ func (p *Parser) parseExpression() ast.Expression {
 		}
 	}
 
-	// Gestion des opérateurs de comparaison (==, !=, <, <=, >, >=)
-	if p.peekTokenIs(lexer.EQ) || p.peekTokenIs(lexer.NEQ) || p.peekTokenIs(lexer.LT) ||
-		p.peekTokenIs(lexer.LTE) || p.peekTokenIs(lexer.GT) || p.peekTokenIs(lexer.GTE) {
+	// Gestion des opérateurs infixes (arithmétique +, -, *, /, % et comparaisons ==, !=, <, <=, >, >=)
+	for precedence < p.peekPrecedence() {
 		p.nextToken()
 		op := p.curToken.Literal
+		opPrec := p.curPrecedence()
 		p.nextToken()
-		right := p.parseExpression()
+		right := p.parseExpressionWithPrecedence(opPrec)
 		if right == nil {
 			return expr
 		}
@@ -135,7 +183,35 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 			}
 		}
 
-		ident := &ast.Identifier{Position: p.curToken.Pos, Value: p.curToken.Literal}
+		identName := p.curToken.Literal
+		pos := p.curToken.Pos
+
+		// Support 'a::b' ou 'a::login(...)'
+		if p.peekTokenIs(lexer.DOUBLE_COLON) {
+			p.nextToken() // saute ident (curToken devient '::')
+			if !p.expectPeek(lexer.IDENT) {
+				p.addError(pos, "expected identifier after '::'")
+				return nil
+			}
+			member := p.curToken.Literal
+			scopeExpr := &ast.ScopeAccessExpression{
+				Position: pos,
+				Scope:    identName,
+				Member:   member,
+			}
+			if p.peekTokenIs(lexer.LPAREN) {
+				p.nextToken()
+				args := p.parseExpressionList(lexer.RPAREN)
+				return &ast.CallExpression{
+					Position:  pos,
+					Caller:    scopeExpr,
+					Arguments: args,
+				}
+			}
+			return scopeExpr
+		}
+
+		ident := &ast.Identifier{Position: pos, Value: identName}
 		// Appel direct : Func(...)
 		if p.peekTokenIs(lexer.LPAREN) {
 			p.nextToken()
@@ -147,6 +223,30 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 			}
 		}
 		return ident
+	case lexer.BANG:
+		pos := p.curToken.Pos
+		p.nextToken()
+		right := p.parseExpressionWithPrecedence(PREFIX)
+		if right == nil {
+			return nil
+		}
+		return &ast.PrefixExpression{
+			Position: pos,
+			Operator: "!",
+			Right:    right,
+		}
+	case lexer.MINUS:
+		pos := p.curToken.Pos
+		p.nextToken()
+		right := p.parseExpressionWithPrecedence(PREFIX)
+		if right == nil {
+			return nil
+		}
+		return &ast.PrefixExpression{
+			Position: pos,
+			Operator: "-",
+			Right:    right,
+		}
 	case lexer.AMP:
 		// Accès propriété interne &prop
 		p.nextToken()
@@ -177,7 +277,11 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 		return p.parseParenOrLambdaExpression()
 	case lexer.LBRACE:
 		return p.parseBlockStatement()
+	case lexer.ILLEGAL:
+		p.addError(p.curToken.Pos, fmt.Sprintf("illegal character '%s'", p.curToken.Literal))
+		return nil
 	default:
+		p.addError(p.curToken.Pos, fmt.Sprintf("unexpected token '%s'", p.curToken.Literal))
 		return nil
 	}
 }

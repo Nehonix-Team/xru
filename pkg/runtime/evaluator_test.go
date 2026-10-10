@@ -13,13 +13,13 @@ import (
 
 func TestEvaluatorBasic(t *testing.T) {
 	code := `
-use utils as Utils
+use std
 use fs as Fs
 
 arg app_name: string = "demo-app"
 let version = "1.0.0"
 
-Utils.Log("<green>[TEST]</> Orchestration {app_name} v{version}")
+std.println("<green>[TEST]</> Orchestration {app_name} v{version}")
 `
 	l := lexer.New("runtime_test.xru", code)
 	p := parser.New(l)
@@ -242,11 +242,11 @@ let fail2 = ::LocalGreet("Dave")
 func TestCryptoUnitGetRandomBytes(t *testing.T) {
 	code := `
 use crypto as Crypto
-use utils as Utils
+use std
 
 let secret1 = Crypto.GetRandomBytes(32)
 let secret2 = Crypto.getRandomBytes(16)
-let secret3 = Utils.GetRandomBytes(32)
+let secret3 = std.getRandomBytes(32)
 `
 	l := lexer.New("test_crypto.xru", code)
 	p := parser.New(l)
@@ -281,3 +281,115 @@ let secret3 = Utils.GetRandomBytes(32)
 		t.Errorf("Expected two different random byte sequences")
 	}
 }
+
+func TestRuntimeCollisions(t *testing.T) {
+	// 1. Two imports with same alias
+	code1 := `
+use net as client
+use fs as client
+`
+	l1 := lexer.New("t1.xru", code1)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	ev := runtime.NewEvaluator()
+	env1 := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog1, env1); err == nil {
+		t.Fatalf("Expected runtime error on duplicate import collision, got nil")
+	}
+
+	// 2. Variable collides with imported module
+	code2 := `
+use net
+let net = "string"
+`
+	l2 := lexer.New("t2.xru", code2)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog2, env2); err == nil {
+		t.Fatalf("Expected runtime error on variable colliding with module, got nil")
+	}
+}
+
+func TestArithmeticAndLogicalExpressions(t *testing.T) {
+	code := `
+use std
+
+let a = 10
+let b = 5
+
+let sum = a + 1
+let diff = a - b
+let prod = a * 2
+let div = a / 2
+let rem = a % 3
+
+let isLess = b < 10
+let isLeq = b <= 5
+let isGreater = a > 5
+let isGeq = a >= 10
+let isEqual = a == 10
+let isNeq = a != b
+
+let andTrue = (a > 5) && (b < 10)
+let andFalse = (a > 5) && (b > 10)
+let orTrue = (a < 5) || (b == 5)
+let orWord = (a < 5) or (b == 5)
+
+let notVal = !isLess
+let negVal = -a
+`
+	l := lexer.New("test_math.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	checkNum := func(name string, expected float64) {
+		v, ok := env.Get(name)
+		if !ok {
+			t.Fatalf("Variable %s not found", name)
+		}
+		if nv, ok := v.(runtime.NumberValue); !ok || nv.Val != expected {
+			t.Errorf("Expected %s = %f, got %v", name, expected, v)
+		}
+	}
+
+	checkBool := func(name string, expected bool) {
+		v, ok := env.Get(name)
+		if !ok {
+			t.Fatalf("Variable %s not found", name)
+		}
+		if bv, ok := v.(runtime.BoolValue); !ok || bv.Val != expected {
+			t.Errorf("Expected %s = %t, got %v", name, expected, v)
+		}
+	}
+
+	checkNum("sum", 11)
+	checkNum("diff", 5)
+	checkNum("prod", 20)
+	checkNum("div", 5)
+	checkNum("rem", 1)
+	checkNum("negVal", -10)
+
+	checkBool("isLess", true)
+	checkBool("isLeq", true)
+	checkBool("isGreater", true)
+	checkBool("isGeq", true)
+	checkBool("isEqual", true)
+	checkBool("isNeq", true)
+
+	checkBool("andTrue", true)
+	checkBool("andFalse", false)
+	checkBool("orTrue", true)
+	checkBool("orWord", true)
+	checkBool("notVal", false)
+}
+

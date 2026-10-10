@@ -82,10 +82,58 @@ func (s *ArgStatement) String() string {
 	return fmt.Sprintf("#ARG %s: %s", s.Name, s.Type)
 }
 
+// MapStatement : map { alias -> path }
+type MapStatement struct {
+	Position lexer.Position
+	Mappings map[string]string
+}
+
+func (s *MapStatement) statementNode()      {}
+func (s *MapStatement) Pos() lexer.Position { return s.Position }
+func (s *MapStatement) String() string {
+	return fmt.Sprintf("map (%d mappings)", len(s.Mappings))
+}
+
+// ModStatement : mod name
+type ModStatement struct {
+	Position lexer.Position
+	Name     string
+}
+
+func (s *ModStatement) statementNode()      {}
+func (s *ModStatement) Pos() lexer.Position { return s.Position }
+func (s *ModStatement) String() string      { return fmt.Sprintf("mod %s", s.Name) }
+
+// FromUseStatement : from "source" use ...
+type FromUseStatement struct {
+	Position lexer.Position
+	Source   string   // e.g. "services"
+	Module   string   // e.g. "auth"
+	Member   string   // e.g. "b" (when from "services" use auth::b)
+	Alias    string   // e.g. "a" (when from "services" use auth as a)
+	Modules  []string // e.g. ["auth", "cdn", "db"] (when from "services" use (auth, cdn, db))
+}
+
+func (s *FromUseStatement) statementNode()      {}
+func (s *FromUseStatement) Pos() lexer.Position { return s.Position }
+func (s *FromUseStatement) String() string {
+	if len(s.Modules) > 0 {
+		return fmt.Sprintf("from %q use (%s)", s.Source, strings.Join(s.Modules, ", "))
+	}
+	if s.Member != "" {
+		return fmt.Sprintf("from %q use %s::%s", s.Source, s.Module, s.Member)
+	}
+	if s.Alias != "" {
+		return fmt.Sprintf("from %q use %s as %s", s.Source, s.Module, s.Alias)
+	}
+	return fmt.Sprintf("from %q use %s", s.Source, s.Module)
+}
+
 // VarStatement : let/const name: type = expr
 type VarStatement struct {
 	Position lexer.Position
 	IsConst  bool
+	IsGlobal bool
 	Name     string
 	Type     string
 	Value    Expression
@@ -434,6 +482,19 @@ func (e *MapLiteral) expressionNode()      {}
 func (e *MapLiteral) Pos() lexer.Position { return e.Position }
 func (e *MapLiteral) String() string      { return fmt.Sprintf("[%d pairs]", len(e.Pairs)) }
 
+// PrefixExpression : !expr ou -expr
+type PrefixExpression struct {
+	Position lexer.Position
+	Operator string
+	Right    Expression
+}
+
+func (e *PrefixExpression) expressionNode()      {}
+func (e *PrefixExpression) Pos() lexer.Position { return e.Position }
+func (e *PrefixExpression) String() string {
+	return fmt.Sprintf("(%s%s)", e.Operator, e.Right.String())
+}
+
 // InfixExpression (opérateurs de comparaison, assignation, etc.)
 type InfixExpression struct {
 	Position lexer.Position
@@ -474,6 +535,17 @@ type GlobalAccessExpression struct {
 func (e *GlobalAccessExpression) expressionNode()      {}
 func (e *GlobalAccessExpression) Pos() lexer.Position { return e.Position }
 func (e *GlobalAccessExpression) String() string      { return fmt.Sprintf("::%s", e.Name) }
+
+// ScopeAccessExpression : Module::Member (ex: auth::b ou a::login)
+type ScopeAccessExpression struct {
+	Position lexer.Position
+	Scope    string
+	Member   string
+}
+
+func (e *ScopeAccessExpression) expressionNode()      {}
+func (e *ScopeAccessExpression) Pos() lexer.Position { return e.Position }
+func (e *ScopeAccessExpression) String() string      { return fmt.Sprintf("%s::%s", e.Scope, e.Member) }
 
 // LambdaExpression : (params...) => Expr ou () => Expr
 type LambdaExpression struct {

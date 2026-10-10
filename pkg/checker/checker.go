@@ -2,11 +2,13 @@ package checker
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
+	"github.com/Nehonix-Team/xru/pkg/modules"
 )
 
 type SymbolKind string
@@ -24,6 +26,8 @@ type Symbol struct {
 	Kind       SymbolKind
 	Type       string // Pour les variables/constantes: type. Pour les fonctions: return type.
 	Pos        lexer.Position
+	IsGlobal   bool               // Déclaré avec 'global'
+	ValueStr   string             // Valeur initiale / par défaut pour inspection
 	Directives map[string]bool    // Pour les #UNIT : directives déclarées
 	Params     []*ast.Parameter   // Pour les fonctions : paramètres
 	Methods    map[string]*Symbol // Pour les #UNIT : méthodes exposées
@@ -44,9 +48,39 @@ func NewScope(parent *Scope, isUnit bool) *Scope {
 }
 
 func (s *Scope) Define(sym *Symbol) error {
-	if existing, exists := s.symbols[sym.Name]; exists {
-		return fmt.Errorf("[ERR_DUPLICATE_SYMBOL] Identifier '%s' is already declared at %s", sym.Name, existing.Pos)
+	formatPos := func(pos lexer.Position) string {
+		if pos.Line > 0 {
+			return fmt.Sprintf(" at %s", pos)
+		}
+		return ""
 	}
+
+	// 1. Collision in current scope
+	if existing, exists := s.symbols[sym.Name]; exists {
+		if existing.Kind == SymUnit && sym.Kind == SymUnit {
+			return fmt.Errorf("Module alias '%s' is already imported%s", sym.Name, formatPos(existing.Pos))
+		} else if existing.Kind == SymUnit {
+			return fmt.Errorf("Variable '%s' collides with imported module '%s'%s", sym.Name, existing.Name, formatPos(existing.Pos))
+		} else if sym.Kind == SymUnit {
+			return fmt.Errorf("Imported module '%s' collides with variable '%s'%s", sym.Name, existing.Name, formatPos(existing.Pos))
+		}
+		return fmt.Errorf("Identifier '%s' is already declared%s", sym.Name, formatPos(existing.Pos))
+	}
+
+	// 2. Collision with outer scope (e.g. imported module in parent scope)
+	// Do not check parent collision if this is an isolated unit scope (properties accessed via &)
+	if !s.isUnit && s.parent != nil {
+		if existing, exists := s.parent.Resolve(sym.Name); exists {
+			if existing.Kind == SymUnit && sym.Kind == SymUnit {
+				return fmt.Errorf("Module alias '%s' is already imported%s", sym.Name, formatPos(existing.Pos))
+			} else if existing.Kind == SymUnit {
+				return fmt.Errorf("Variable '%s' collides with imported module '%s'%s", sym.Name, existing.Name, formatPos(existing.Pos))
+			} else if sym.Kind == SymUnit {
+				return fmt.Errorf("Imported module '%s' collides with existing identifier '%s'%s", sym.Name, existing.Name, formatPos(existing.Pos))
+			}
+		}
+	}
+
 	s.symbols[sym.Name] = sym
 	return nil
 }
@@ -61,6 +95,7 @@ func (s *Scope) Resolve(name string) (*Symbol, bool) {
 	return nil, false
 }
 
+
 func (s *Scope) InUnitScope() bool {
 	if s.isUnit {
 		return true
@@ -72,15 +107,22 @@ func (s *Scope) InUnitScope() bool {
 }
 
 type Checker struct {
-	errors      []string
-	scope       *Scope
-	currentFunc *ast.FuncStatement
+	errors           []string
+	scope            *Scope
+	currentFunc      *ast.FuncStatement
+	currentFile      string
+	availableModules map[string]*Symbol
+}
+
+func (c *Checker) SetCurrentFile(file string) {
+	c.currentFile = file
 }
 
 func New() *Checker {
 	c := &Checker{
-		errors: []string{},
-		scope:  NewScope(nil, false),
+		errors:           []string{},
+		scope:            NewScope(nil, false),
+		availableModules: make(map[string]*Symbol),
 	}
 	c.initBuiltinUnits()
 	return c
@@ -93,8 +135,11 @@ func (c *Checker) initBuiltinUnits() {
 		Directives: map[string]bool{"set": true, "header": true, "on": true},
 		Methods: map[string]*Symbol{
 			"Fetch": {Name: "Fetch", Kind: SymFunc, Type: "any"},
+			"fetch": {Name: "fetch", Kind: SymFunc, Type: "any"},
 			"Clone": {Name: "Clone", Kind: SymFunc, Type: "bool"},
+			"clone": {Name: "clone", Kind: SymFunc, Type: "bool"},
 			"Get":   {Name: "Get", Kind: SymFunc, Type: "string"},
+			"get":   {Name: "get", Kind: SymFunc, Type: "string"},
 		},
 	}
 	fsUnit := &Symbol{
@@ -103,21 +148,43 @@ func (c *Checker) initBuiltinUnits() {
 		Directives: map[string]bool{"set": true},
 		Methods: map[string]*Symbol{
 			"Exists":    {Name: "Exists", Kind: SymFunc, Type: "bool"},
+			"exists":    {Name: "exists", Kind: SymFunc, Type: "bool"},
 			"IsDir":     {Name: "IsDir", Kind: SymFunc, Type: "bool"},
+			"isDir":     {Name: "isDir", Kind: SymFunc, Type: "bool"},
 			"IsFile":    {Name: "IsFile", Kind: SymFunc, Type: "bool"},
+			"isFile":    {Name: "isFile", Kind: SymFunc, Type: "bool"},
 			"Read":      {Name: "Read", Kind: SymFunc, Type: "string"},
+			"read":      {Name: "read", Kind: SymFunc, Type: "string"},
 			"Size":      {Name: "Size", Kind: SymFunc, Type: "number"},
+			"size":      {Name: "size", Kind: SymFunc, Type: "number"},
 			"Remove":    {Name: "Remove", Kind: SymFunc, Type: "void"},
+			"remove":    {Name: "remove", Kind: SymFunc, Type: "void"},
 			"Move":      {Name: "Move", Kind: SymFunc, Type: "void"},
+			"move":      {Name: "move", Kind: SymFunc, Type: "void"},
 			"Copy":      {Name: "Copy", Kind: SymFunc, Type: "void"},
+			"copy":      {Name: "copy", Kind: SymFunc, Type: "void"},
 			"EnsureDir": {Name: "EnsureDir", Kind: SymFunc, Type: "void"},
+			"ensureDir": {Name: "ensureDir", Kind: SymFunc, Type: "void"},
 		},
 	}
-	utilsUnit := &Symbol{
-		Name: "Utils",
+	stdUnit := &Symbol{
+		Name: "std",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"Log": {Name: "Log", Kind: SymFunc, Type: "void"},
+			"println":        {Name: "println", Kind: SymFunc, Type: "void"},
+			"Println":        {Name: "Println", Kind: SymFunc, Type: "void"},
+			"print":          {Name: "print", Kind: SymFunc, Type: "void"},
+			"Print":          {Name: "Print", Kind: SymFunc, Type: "void"},
+			"info":           {Name: "info", Kind: SymFunc, Type: "void"},
+			"Info":           {Name: "Info", Kind: SymFunc, Type: "void"},
+			"success":        {Name: "success", Kind: SymFunc, Type: "void"},
+			"Success":        {Name: "Success", Kind: SymFunc, Type: "void"},
+			"warn":           {Name: "warn", Kind: SymFunc, Type: "void"},
+			"Warn":           {Name: "Warn", Kind: SymFunc, Type: "void"},
+			"error":          {Name: "error", Kind: SymFunc, Type: "void"},
+			"Error":          {Name: "Error", Kind: SymFunc, Type: "void"},
+			"getRandomBytes": {Name: "getRandomBytes", Kind: SymFunc, Type: "string"},
+			"GetRandomBytes": {Name: "GetRandomBytes", Kind: SymFunc, Type: "string"},
 		},
 	}
 	sysUnit := &Symbol{
@@ -125,8 +192,11 @@ func (c *Checker) initBuiltinUnits() {
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
 			"GetEnv": {Name: "GetEnv", Kind: SymFunc, Type: "string"},
+			"getEnv": {Name: "getEnv", Kind: SymFunc, Type: "string"},
 			"Os":     {Name: "Os", Kind: SymFunc, Type: "string"},
+			"os":     {Name: "os", Kind: SymFunc, Type: "string"},
 			"Arch":   {Name: "Arch", Kind: SymFunc, Type: "string"},
+			"arch":   {Name: "arch", Kind: SymFunc, Type: "string"},
 		},
 	}
 	cmdUnit := &Symbol{
@@ -134,6 +204,7 @@ func (c *Checker) initBuiltinUnits() {
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
 			"Exec": {Name: "Exec", Kind: SymFunc, Type: "string"},
+			"exec": {Name: "exec", Kind: SymFunc, Type: "string"},
 		},
 	}
 	cryptoUnit := &Symbol{
@@ -141,21 +212,63 @@ func (c *Checker) initBuiltinUnits() {
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
 			"GetRandomBytes": {Name: "GetRandomBytes", Kind: SymFunc, Type: "string"},
+			"getRandomBytes": {Name: "getRandomBytes", Kind: SymFunc, Type: "string"},
 			"RandomBytes":    {Name: "RandomBytes", Kind: SymFunc, Type: "string"},
+			"randomBytes":    {Name: "randomBytes", Kind: SymFunc, Type: "string"},
 			"RandomHex":      {Name: "RandomHex", Kind: SymFunc, Type: "string"},
+			"randomHex":      {Name: "randomHex", Kind: SymFunc, Type: "string"},
 			"RandomBase64":   {Name: "RandomBase64", Kind: SymFunc, Type: "string"},
+			"randomBase64":   {Name: "randomBase64", Kind: SymFunc, Type: "string"},
 			"Sha256":         {Name: "Sha256", Kind: SymFunc, Type: "string"},
+			"sha256":         {Name: "sha256", Kind: SymFunc, Type: "string"},
 			"Uuid":           {Name: "Uuid", Kind: SymFunc, Type: "string"},
+			"uuid":           {Name: "uuid", Kind: SymFunc, Type: "string"},
 		},
 	}
 
-	c.scope.Define(netUnit)
-	c.scope.Define(fsUnit)
-	c.scope.Define(utilsUnit)
-	c.scope.Define(sysUnit)
-	c.scope.Define(cmdUnit)
-	c.scope.Define(cryptoUnit)
+	localUnit := &Symbol{
+		Name: "Local",
+		Kind: SymUnit,
+		Methods: map[string]*Symbol{
+			"Keep":       {Name: "Keep", Kind: SymFunc, Type: "void"},
+			"Drop":       {Name: "Drop", Kind: SymFunc, Type: "void"},
+			"UseVariant": {Name: "UseVariant", Kind: SymFunc, Type: "void"},
+		},
+	}
+
+	c.availableModules["Net"] = netUnit
+	c.availableModules["Fs"] = fsUnit
+	c.availableModules["std"] = stdUnit
+	c.availableModules["Std"] = stdUnit
+	c.availableModules["Sys"] = sysUnit
+	c.availableModules["Cmd"] = cmdUnit
+	c.availableModules["Crypto"] = cryptoUnit
+	c.availableModules["Local"] = localUnit
+
+	topLevelFuncs := []string{
+		"Drop", "drop", "Keep", "keep",
+		"replace", "replaceLine", "remove", "removeLines", "removeBlock",
+		"removeUntil", "commentOut", "append", "prepend", "jsonSet", "jsonRemove",
+	}
+	for _, fn := range topLevelFuncs {
+		c.scope.Define(&Symbol{Name: fn, Kind: SymFunc, Type: "any"})
+	}
 }
+
+func (c *Checker) DefineVar(name string) {
+	_ = c.scope.Define(&Symbol{Name: name, Kind: SymVar, Type: "any"})
+}
+
+func (c *Checker) DefineUnit(name string) {
+	for mName, sym := range c.availableModules {
+		if strings.EqualFold(mName, name) {
+			_ = c.scope.Define(sym)
+			return
+		}
+	}
+}
+
+
 
 func (c *Checker) Errors() []string {
 	return c.errors
@@ -166,6 +279,20 @@ func (c *Checker) addError(pos lexer.Position, code string, msg string) {
 }
 
 func (c *Checker) Check(prog *ast.Program) {
+	if c.currentFile == "" && len(prog.Statements) > 0 {
+		c.currentFile = prog.Statements[0].Pos().Filename
+	}
+
+	// 1. Règle stricte pour _mod.xru : SEULES les déclarations 'map { ... }' y sont autorisées
+	if c.currentFile != "" && modules.IsModConfigFile(c.currentFile) {
+		for _, stmt := range prog.Statements {
+			if _, ok := stmt.(*ast.MapStatement); !ok {
+				c.addError(stmt.Pos(), "ERR_INVALID_MOD_DECLARATION",
+					"'_mod.xru' is strictly reserved for module mapping definitions ('map { ... }'). Executable code, statements, variables, and imports are not allowed.")
+			}
+		}
+	}
+
 	for _, stmt := range prog.Statements {
 		c.checkStatement(stmt)
 	}
@@ -187,6 +314,12 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		c.checkFunc(s)
 	case *ast.IfStatement:
 		c.checkIf(s)
+	case *ast.MapStatement:
+		c.checkMap(s)
+	case *ast.ModStatement:
+		c.checkMod(s)
+	case *ast.FromUseStatement:
+		c.checkFromUse(s)
 	case *ast.BlockStatement:
 		for _, bodyStmt := range s.Statements {
 			c.checkStatement(bodyStmt)
@@ -214,12 +347,16 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 }
 
 func (c *Checker) checkUse(s *ast.UseStatement) {
+	if s.Module == "_mod" {
+		c.addError(s.Pos(), "ERR_RESERVED_MOD_NAME", "'_mod' is a module mapping configuration file and cannot be imported via 'use'")
+		return
+	}
 	alias := s.Alias
 	if alias == "" {
 		alias = s.Module
 	}
 	var sourceSym *Symbol
-	for name, sym := range c.scope.symbols {
+	for name, sym := range c.availableModules {
 		if strings.EqualFold(name, s.Module) {
 			sourceSym = sym
 			break
@@ -234,7 +371,9 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 			Directives: sourceSym.Directives,
 			Methods:    sourceSym.Methods,
 		}
-		c.scope.Define(aliasSym)
+		if err := c.scope.Define(aliasSym); err != nil {
+			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+		}
 	} else {
 		c.addError(s.Pos(), "ERR_UNKNOWN_MODULE", fmt.Sprintf("Module '%s' does not exist", s.Module))
 	}
@@ -242,7 +381,22 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 
 func (c *Checker) checkArg(s *ast.ArgStatement) {
 	kind := SymVar
-	sym := &Symbol{Name: s.Name, Kind: kind, Type: s.Type, Pos: s.Pos()}
+	valStr := ""
+	if s.DefaultValue != nil {
+		valStr = s.DefaultValue.String()
+	}
+	inferredType := s.Type
+	if inferredType == "" && s.DefaultValue != nil {
+		inferredType = c.inferType(s.DefaultValue)
+	}
+
+	sym := &Symbol{
+		Name:     s.Name,
+		Kind:     kind,
+		Type:     inferredType,
+		Pos:      s.Pos(),
+		ValueStr: valStr,
+	}
 	if err := c.scope.Define(sym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 	}
@@ -265,7 +419,23 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 		kind = SymConst
 	}
 
-	sym := &Symbol{Name: s.Name, Kind: kind, Type: s.Type, Pos: s.Pos()}
+	valStr := ""
+	if s.Value != nil {
+		valStr = s.Value.String()
+	}
+	inferredType := s.Type
+	if inferredType == "" && s.Value != nil {
+		inferredType = c.inferType(s.Value)
+	}
+
+	sym := &Symbol{
+		Name:     s.Name,
+		Kind:     kind,
+		Type:     inferredType,
+		Pos:      s.Pos(),
+		IsGlobal: s.IsGlobal,
+		ValueStr: valStr,
+	}
 	if err := c.scope.Define(sym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 	}
@@ -395,13 +565,16 @@ func (c *Checker) checkWith(s *ast.WithStatement) {
 
 func (c *Checker) checkFunc(s *ast.FuncStatement) {
 	fnSym := &Symbol{
-		Name:   s.Name,
-		Kind:   SymFunc,
-		Type:   s.ReturnType,
-		Pos:    s.Pos(),
-		Params: s.Parameters,
+		Name:     s.Name,
+		Kind:     SymFunc,
+		Type:     s.ReturnType,
+		Pos:      s.Pos(),
+		Params:   s.Parameters,
+		IsGlobal: s.IsGlobal,
 	}
-	c.scope.Define(fnSym)
+	if err := c.scope.Define(fnSym); err != nil {
+		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+	}
 
 	oldFunc := c.currentFunc
 	c.currentFunc = s
@@ -412,8 +585,10 @@ func (c *Checker) checkFunc(s *ast.FuncStatement) {
 	defer func() { c.scope = c.scope.parent }()
 
 	for _, p := range s.Parameters {
-		paramSym := &Symbol{Name: p.Name, Kind: SymVar, Type: p.Type}
-		c.scope.Define(paramSym)
+		paramSym := &Symbol{Name: p.Name, Kind: SymVar, Type: p.Type, Pos: s.Pos()}
+		if err := c.scope.Define(paramSym); err != nil {
+			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+		}
 	}
 
 	for _, bodyStmt := range s.Body {
@@ -449,7 +624,10 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		defer func() { c.scope = c.scope.parent }()
 
 		for _, p := range e.Parameters {
-			c.scope.Define(&Symbol{Name: p.Name, Kind: SymVar, Type: p.Type})
+			paramSym := &Symbol{Name: p.Name, Kind: SymVar, Type: p.Type, Pos: e.Pos()}
+			if err := c.scope.Define(paramSym); err != nil {
+				c.addError(e.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+			}
 		}
 		c.checkExpression(e.Body)
 	case *ast.PropAccess:
@@ -464,15 +642,84 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 				fmt.Sprintf("Invalid duration format '%s' (expected format: 500ms, 30s, 2m, 1h)", e.Value))
 		}
 	case *ast.CallExpression:
-		c.checkExpression(e.Caller)
+		if member, ok := e.Caller.(*ast.MemberExpression); ok {
+			c.checkExpression(member.Object)
+			if ident, ok := member.Object.(*ast.Identifier); ok {
+				if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Kind == SymUnit {
+					if sym.Methods != nil {
+						if _, methodOk := sym.Methods[member.Property]; !methodOk {
+							c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+								fmt.Sprintf("Method '%s' not found on unit '%s'", member.Property, sym.Name))
+						}
+					}
+				}
+			}
+		} else if scopeAccess, ok := e.Caller.(*ast.ScopeAccessExpression); ok {
+			if sym, ok := c.scope.Resolve(scopeAccess.Scope); ok {
+				if sym.Kind == SymUnit && len(sym.Methods) > 0 {
+					if _, methodOk := sym.Methods[scopeAccess.Member]; !methodOk {
+						c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+							fmt.Sprintf("Method '%s' not found on module '%s'", scopeAccess.Member, sym.Name))
+					}
+				}
+			} else {
+				c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
+					fmt.Sprintf("Module or scope '%s' is not defined", scopeAccess.Scope))
+			}
+		} else {
+			c.checkExpression(e.Caller)
+		}
 		for _, arg := range e.Arguments {
 			c.checkExpression(arg)
 		}
+	case *ast.ScopeAccessExpression:
+		if sym, ok := c.scope.Resolve(e.Scope); ok {
+			if sym.Kind == SymUnit && len(sym.Methods) > 0 {
+				if _, memberOk := sym.Methods[e.Member]; !memberOk {
+					c.addError(e.Pos(), "ERR_UNKNOWN_MEMBER",
+						fmt.Sprintf("Member '%s' not found on module '%s'", e.Member, e.Scope))
+				}
+			}
+		} else {
+			c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
+				fmt.Sprintf("Module or scope '%s' is not defined", e.Scope))
+		}
 	case *ast.MemberExpression:
 		c.checkExpression(e.Object)
+		if ident, ok := e.Object.(*ast.Identifier); ok {
+			if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Kind == SymUnit {
+				if sym.Methods != nil {
+					if _, methodOk := sym.Methods[e.Property]; !methodOk {
+						if _, dirOk := sym.Directives[e.Property]; !dirOk {
+							c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+								fmt.Sprintf("Method or property '%s' not found on unit '%s'", e.Property, sym.Name))
+						}
+					}
+				}
+			}
+		}
+	case *ast.PrefixExpression:
+		c.checkExpression(e.Right)
 	case *ast.InfixExpression:
 		c.checkExpression(e.Left)
 		c.checkExpression(e.Right)
+	case *ast.Identifier:
+		if e.Value == "nil" || e.Value == "null" || e.Value == "true" || e.Value == "false" {
+			return
+		}
+		if _, ok := c.scope.Resolve(e.Value); !ok {
+			c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
+				fmt.Sprintf("Variable '%s' is not defined", e.Value))
+		}
+	case *ast.ListLiteral:
+		for _, el := range e.Elements {
+			c.checkExpression(el)
+		}
+	case *ast.MapLiteral:
+		for _, pair := range e.Pairs {
+			c.checkExpression(pair.Key)
+			c.checkExpression(pair.Value)
+		}
 	case *ast.BlockStatement:
 		for _, stmt := range e.Statements {
 			c.checkStatement(stmt)
@@ -527,9 +774,17 @@ func (c *Checker) inferType(expr ast.Expression) string {
 			return sym.Type
 		}
 		return "any"
+	case *ast.PrefixExpression:
+		if e.Operator == "!" {
+			return "bool"
+		}
+		if e.Operator == "-" {
+			return "number"
+		}
+		return "any"
 	case *ast.InfixExpression:
 		switch e.Operator {
-		case "==", "!=", "<", "<=", ">", ">=", "&&", "||":
+		case "==", "!=", "<", "<=", ">", ">=", "&&", "||", "or":
 			return "bool"
 		case "+":
 			leftType := c.inferType(e.Left)
@@ -610,3 +865,147 @@ func isTypeCompatible(expected, actual string) bool {
 	}
 	return false
 }
+
+func (c *Checker) checkMap(s *ast.MapStatement) {
+	// Map enregistre des correspondances de modules
+}
+
+func (c *Checker) checkMod(s *ast.ModStatement) {
+	if s.Name == "_mod" {
+		c.addError(s.Pos(), "ERR_RESERVED_MOD_NAME", "Module name '_mod' is reserved for project mapping configuration")
+	}
+}
+
+func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
+	fileDir := "."
+	if c.currentFile != "" {
+		fileDir = filepath.Dir(c.currentFile)
+	}
+	modFilePath := modules.FindModConfigFile(fileDir)
+	if modFilePath == "" {
+		c.addError(s.Pos(), "ERR_MISSING_MOD_FILE", "No '_mod.xru' configuration file found in workspace for module resolution")
+		return
+	}
+
+	modCfg, modErrs := modules.LoadModConfig(modFilePath)
+	if len(modErrs) > 0 {
+		for _, errStr := range modErrs {
+			c.addError(s.Pos(), "ERR_INVALID_MOD_CONFIG", errStr)
+		}
+		return
+	}
+
+	if _, ok := modCfg.Mappings[s.Source]; !ok {
+		c.addError(s.Pos(), "ERR_UNKNOWN_NAMESPACE", fmt.Sprintf("Module namespace '%s' is not mapped in _mod.xru", s.Source))
+		return
+	}
+
+	// Cas 1 : multi-modules from "services" use (auth, cdn)
+	if len(s.Modules) > 0 {
+		for _, modName := range s.Modules {
+			modDetails, err := modCfg.ResolveModule(s.Source, modName)
+			if err != nil {
+				c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", modName, s.Source, err))
+				continue
+			}
+			methods := make(map[string]*Symbol)
+			for expName, exp := range modDetails.Exports {
+				symKind := SymVar
+				if exp.Kind == "func" {
+					symKind = SymFunc
+				} else if exp.Kind == "const" {
+					symKind = SymConst
+				}
+				methods[expName] = &Symbol{
+					Name:   expName,
+					Kind:   symKind,
+					Type:   exp.Type,
+					Params: exp.Params,
+					Pos:    exp.Position,
+				}
+			}
+			modSym := &Symbol{
+				Name:    modName,
+				Kind:    SymUnit,
+				Pos:     s.Pos(),
+				Methods: methods,
+			}
+			if err := c.scope.Define(modSym); err != nil {
+				c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+			}
+		}
+		return
+	}
+
+	// Cas 2 : membre individuel from "services" use auth::b
+	if s.Member != "" {
+		modDetails, err := modCfg.ResolveModule(s.Source, s.Module)
+		if err != nil {
+			c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
+			return
+		}
+		exp, ok := modDetails.Exports[s.Member]
+		if !ok {
+			c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", s.Member, s.Module))
+			return
+		}
+		symKind := SymVar
+		if exp.Kind == "func" {
+			symKind = SymFunc
+		} else if exp.Kind == "const" {
+			symKind = SymConst
+		}
+		memberSym := &Symbol{
+			Name:   s.Member,
+			Kind:   symKind,
+			Type:   exp.Type,
+			Params: exp.Params,
+			Pos:    s.Pos(),
+		}
+		if err := c.scope.Define(memberSym); err != nil {
+			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+		}
+		return
+	}
+
+	// Cas 3 : module complet from "services" use auth as a (ou use auth)
+	alias := s.Alias
+	if alias == "" {
+		alias = s.Module
+	}
+	modDetails, err := modCfg.ResolveModule(s.Source, s.Module)
+	if err != nil {
+		c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
+		return
+	}
+	methods := make(map[string]*Symbol)
+	for expName, exp := range modDetails.Exports {
+		symKind := SymVar
+		if exp.Kind == "func" {
+			symKind = SymFunc
+		} else if exp.Kind == "const" {
+			symKind = SymConst
+		}
+		methods[expName] = &Symbol{
+			Name:   expName,
+			Kind:   symKind,
+			Type:   exp.Type,
+			Params: exp.Params,
+			Pos:    exp.Position,
+		}
+	}
+	modSym := &Symbol{
+		Name:    alias,
+		Kind:    SymUnit,
+		Pos:     s.Pos(),
+		Methods: methods,
+	}
+	if err := c.scope.Define(modSym); err != nil {
+		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+	}
+}
+
+func (c *Checker) GetScope() *Scope {
+	return c.scope
+}
+

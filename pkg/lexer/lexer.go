@@ -96,17 +96,26 @@ func (l *Lexer) NextToken() Token {
 
 	// 3. Opérateurs composites (->, =>, ==, !=, <=, >=)
 	switch l.ch {
+	case '+':
+		l.readChar()
+		return Token{Type: PLUS, Literal: "+", Pos: startPos}
 	case '-':
 		if l.peekChar() == '>' {
 			l.readChar()
 			l.readChar()
 			return Token{Type: ARROW, Literal: "->", Pos: startPos}
 		}
-		// Négatif possible pour les nombres
-		if unicode.IsDigit(l.peekChar()) {
-			num := l.readNumberOrDuration()
-			return Token{Type: NUMBER, Literal: "-" + num, Pos: startPos}
-		}
+		l.readChar()
+		return Token{Type: MINUS, Literal: "-", Pos: startPos}
+	case '*':
+		l.readChar()
+		return Token{Type: ASTERISK, Literal: "*", Pos: startPos}
+	case '/':
+		l.readChar()
+		return Token{Type: SLASH, Literal: "/", Pos: startPos}
+	case '%':
+		l.readChar()
+		return Token{Type: PERCENT, Literal: "%", Pos: startPos}
 	case '=':
 		if l.peekChar() == '=' {
 			l.readChar()
@@ -126,6 +135,8 @@ func (l *Lexer) NextToken() Token {
 			l.readChar()
 			return Token{Type: NEQ, Literal: "!=", Pos: startPos}
 		}
+		l.readChar()
+		return Token{Type: BANG, Literal: "!", Pos: startPos}
 	case '<':
 		if l.peekChar() == '<' && l.peekChar2() == '<' {
 			str := l.readChevronHeredoc()
@@ -150,8 +161,22 @@ func (l *Lexer) NextToken() Token {
 		l.readChar()
 		return Token{Type: AT, Literal: "@", Pos: startPos}
 	case '&':
+		if l.peekChar() == '&' {
+			l.readChar()
+			l.readChar()
+			return Token{Type: AND, Literal: "&&", Pos: startPos}
+		}
 		l.readChar()
 		return Token{Type: AMP, Literal: "&", Pos: startPos}
+	case '|':
+		if l.peekChar() == '|' {
+			l.readChar()
+			l.readChar()
+			return Token{Type: OR_LOGICAL, Literal: "||", Pos: startPos}
+		}
+		illegalChar := string(l.ch)
+		l.readChar()
+		return Token{Type: ILLEGAL, Literal: illegalChar, Pos: startPos}
 	case '(':
 		l.readChar()
 		return Token{Type: LPAREN, Literal: "(", Pos: startPos}

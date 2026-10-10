@@ -73,6 +73,14 @@ func (d *Dispatcher) executeDescriptor(dir string, descriptorPath string) error 
 	}
 
 	c := checker.New()
+	c.DefineUnit("Local")
+	if d.parentEnv != nil {
+		for varName := range d.parentEnv.All() {
+			c.DefineVar(varName)
+			c.DefineVar(strings.ToLower(varName))
+			c.DefineVar(strings.ToUpper(varName))
+		}
+	}
 	c.Check(prog)
 	if len(c.Errors()) > 0 {
 		return fmt.Errorf("descriptor validation error in %s: %s", descriptorPath, c.Errors()[0])
@@ -81,6 +89,12 @@ func (d *Dispatcher) executeDescriptor(dir string, descriptorPath string) error 
 	// Création du scope local hérité du scope parent
 	localEnv := runtime.NewEnvironment(d.parentEnv)
 	localEnv.SetCurrentDir(dir)
+	if d.parentEnv != nil {
+		for k, v := range d.parentEnv.All() {
+			_ = localEnv.Set(strings.ToLower(k), v, false)
+			_ = localEnv.Set(strings.ToUpper(k), v, false)
+		}
+	}
 
 	// Injection des primitives locales confinées : Keep, Drop, UseVariant
 	d.injectLocalPrimitives(dir, localEnv)

@@ -22,81 +22,141 @@ import (
 func NewBuiltinUnits() map[string]*UnitInstance {
 	units := make(map[string]*UnitInstance)
 
-	// 1. #UNIT Utils
-	utilsUnit := &UnitInstance{
-		UnitName:   "Utils",
+	// 1. #UNIT std (Standard Library I/O & Output)
+	printlnFn := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			fmt.Println()
+			return NilValue{}, nil
+		}
+		msg := formatTerminalColors(args[0].String())
+		fmt.Println(msg)
+		return NilValue{}, nil
+	}
+	printFn := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, nil
+		}
+		msg := formatTerminalColors(args[0].String())
+		fmt.Print(msg)
+		return NilValue{}, nil
+	}
+	infoFn := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, nil
+		}
+		fmt.Println(formatTerminalColors("<cyan>[INFO]</> " + args[0].String()))
+		return NilValue{}, nil
+	}
+	successFn := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, nil
+		}
+		fmt.Println(formatTerminalColors("<green>[DONE]</> " + args[0].String()))
+		return NilValue{}, nil
+	}
+	warnFn := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, nil
+		}
+		fmt.Println(formatTerminalColors("<yellow>[WARN]</> " + args[0].String()))
+		return NilValue{}, nil
+	}
+	errorFn := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, nil
+		}
+		fmt.Println(formatTerminalColors("<red>[ERROR]</> " + args[0].String()))
+		return NilValue{}, nil
+	}
+	getRandomBytesFn := func(args []Value) (Value, error) {
+		length := 32
+		if len(args) > 0 {
+			if n, ok := args[0].(NumberValue); ok {
+				length = int(n.Val)
+			}
+		}
+		hexStr, err := generateSecureRandomBytes(length)
+		if err != nil {
+			return NilValue{}, err
+		}
+		return StringValue{Val: hexStr}, nil
+	}
+
+	stdUnit := &UnitInstance{
+		UnitName:   "std",
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
-			"Log": func(args []Value) (Value, error) {
-				if len(args) == 0 {
-					return NilValue{}, nil
-				}
-				msg := formatTerminalColors(args[0].String())
-				fmt.Println(msg)
-				return NilValue{}, nil
-			},
-			"GetRandomBytes": func(args []Value) (Value, error) {
-				length := 32
-				if len(args) > 0 {
-					if n, ok := args[0].(NumberValue); ok {
-						length = int(n.Val)
-					}
-				}
-				hexStr, err := generateSecureRandomBytes(length)
-				if err != nil {
-					return NilValue{}, err
-				}
-				return StringValue{Val: hexStr}, nil
-			},
+			"println":        printlnFn,
+			"Println":        printlnFn,
+			"print":          printFn,
+			"Print":          printFn,
+			"info":           infoFn,
+			"Info":           infoFn,
+			"success":        successFn,
+			"Success":        successFn,
+			"warn":           warnFn,
+			"Warn":           warnFn,
+			"error":          errorFn,
+			"Error":          errorFn,
+			"getRandomBytes": getRandomBytesFn,
+			"GetRandomBytes": getRandomBytesFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}
-	units["Utils"] = utilsUnit
+	units["std"] = stdUnit
+	units["Std"] = stdUnit
+
+	// 2. #UNIT Fs
+	ensureDirFn := func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("Fs.EnsureDir requires directory path")
+		}
+		err := os.MkdirAll(args[0].String(), 0755)
+		return BoolValue{Val: err == nil}, err
+	}
+	removeFn := func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("Fs.Remove requires target path")
+		}
+		err := os.RemoveAll(args[0].String())
+		return BoolValue{Val: err == nil}, err
+	}
+	moveFn := func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("Fs.Move requires src and dest path")
+		}
+		err := os.Rename(args[0].String(), args[1].String())
+		return BoolValue{Val: err == nil}, err
+	}
+	existsFn := func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return BoolValue{Val: false}, nil
+		}
+		_, err := os.Stat(args[0].String())
+		return BoolValue{Val: !os.IsNotExist(err)}, nil
+	}
 
 	// 2. #UNIT Fs
 	fsUnit := &UnitInstance{
 		UnitName:   "Fs",
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
-			"EnsureDir": func(args []Value) (Value, error) {
-				if len(args) < 1 {
-					return NilValue{}, fmt.Errorf("Fs.EnsureDir requires directory path")
-				}
-				err := os.MkdirAll(args[0].String(), 0755)
-				return BoolValue{Val: err == nil}, err
-			},
-			"Remove": func(args []Value) (Value, error) {
-				if len(args) < 1 {
-					return NilValue{}, fmt.Errorf("Fs.Remove requires target path")
-				}
-				err := os.RemoveAll(args[0].String())
-				return BoolValue{Val: err == nil}, err
-			},
-			"Move": func(args []Value) (Value, error) {
-				if len(args) < 2 {
-					return NilValue{}, fmt.Errorf("Fs.Move requires src and dest path")
-				}
-				err := os.Rename(args[0].String(), args[1].String())
-				return BoolValue{Val: err == nil}, err
-			},
-			"Exists": func(args []Value) (Value, error) {
-				if len(args) < 1 {
-					return BoolValue{Val: false}, nil
-				}
-				_, err := os.Stat(args[0].String())
-				return BoolValue{Val: !os.IsNotExist(err)}, nil
-			},
+			"EnsureDir": ensureDirFn,
+			"ensureDir": ensureDirFn,
+			"Remove":    removeFn,
+			"remove":    removeFn,
+			"Move":      moveFn,
+			"move":      moveFn,
+			"Exists":    existsFn,
+			"exists":    existsFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}
 	units["Fs"] = fsUnit
+	units["fs"] = fsUnit
 
 	// 3. #UNIT Net
-	netUnit := &UnitInstance{
-		UnitName:   "Net",
-		Properties: make(map[string]Value),
-		Methods: map[string]NativeMethod{
-			"Fetch": func(args []Value) (Value, error) {
+	fetchFn := func(args []Value) (Value, error) {
 				if len(args) < 1 {
 					return NilValue{}, fmt.Errorf("Net.Fetch requires url")
 				}
@@ -309,34 +369,34 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 					},
 				}
 				return fetchCtx, nil
-			},
-			"Clone": func(args []Value) (Value, error) {
-				if len(args) < 2 {
-					return NilValue{}, fmt.Errorf("Net.Clone requires repo url and dest")
-				}
-				repo := args[0].String()
-				dest := args[1].String()
+			}
+	cloneFn := func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("Net.Clone requires repo url and dest")
+		}
+		repo := args[0].String()
+		dest := args[1].String()
 
-				cmd := exec.Command("git", "clone", "--depth", "1", repo, dest)
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				err := cmd.Run()
-				return BoolValue{Val: err == nil}, err
-			},
+		cmd := exec.Command("git", "clone", "--depth", "1", repo, dest)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		return BoolValue{Val: err == nil}, err
+	}
+
+	netUnit := &UnitInstance{
+		UnitName:   "Net",
+		Properties: make(map[string]Value),
+		Methods: map[string]NativeMethod{
+			"Fetch": fetchFn,
+			"fetch": fetchFn,
+			"Clone": cloneFn,
+			"clone": cloneFn,
 		},
-		Directives: map[string]NativeDirective{
-			"#SET": func(key Value, val Value) error {
-				return nil
-			},
-			"#HEADER": func(key Value, val Value) error {
-				return nil
-			},
-			"#ON": func(key Value, val Value) error {
-				return nil
-			},
-		},
+		Directives: map[string]NativeDirective{},
 	}
 	units["Net"] = netUnit
+	units["net"] = netUnit
 
 	// 4. #UNIT Sys
 	sysUnit := &UnitInstance{

@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"fmt"
-	"strings"
 )
 
 type Environment struct {
@@ -81,21 +80,12 @@ func (e *Environment) Get(name string) (Value, bool) {
 	if val, ok := e.globals[name]; ok {
 		return val, true
 	}
-	for k, v := range e.store {
-		if strings.EqualFold(k, name) {
-			return v, true
-		}
-	}
-	for k, v := range e.globals {
-		if strings.EqualFold(k, name) {
-			return v, true
-		}
-	}
 	if e.parent != nil {
 		return e.parent.Get(name)
 	}
 	return nil, false
 }
+
 
 func (e *Environment) GetLocal(name string) (Value, bool) {
 	if val, ok := e.store[name]; ok {

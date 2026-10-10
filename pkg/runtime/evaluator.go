@@ -2,11 +2,17 @@ package runtime
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/lexer"
+	"github.com/Nehonix-Team/xru/pkg/modules"
+	"github.com/Nehonix-Team/xru/pkg/parser"
 )
 
 type TreeDispatcherFunc func(dt *ast.DispatchTreeStatement, eval *Evaluator, env *Environment) error
@@ -37,6 +43,14 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		}
 		if n.Type != "" && !valMatchesType(val, n.Type) {
 			return nil, fmt.Errorf("cannot assign value of type '%s' to variable '%s' declared as '%s'", val.Type(), n.Name, n.Type)
+		}
+		if _, exists := env.GetLocal(n.Name); exists {
+			return nil, fmt.Errorf("variable '%s' is already declared in this scope", n.Name)
+		}
+		if val, exists := env.Get(n.Name); exists {
+			if _, isUnit := val.(*UnitInstance); isUnit {
+				return nil, fmt.Errorf("variable '%s' collides with imported module '%s'", n.Name, n.Name)
+			}
 		}
 		return val, env.Set(n.Name, val, n.IsConst)
 	case *ast.ArgStatement:
@@ -69,7 +83,12 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		found := false
 		for bName, bUnit := range ev.builtins {
 			if strings.EqualFold(bName, unitName) {
-				env.Set(alias, bUnit, true)
+				if _, exists := env.Get(alias); exists {
+					return nil, fmt.Errorf("module alias '%s' collides with an existing variable or import", alias)
+				}
+				if err := env.Set(alias, bUnit, true); err != nil {
+					return nil, err
+				}
 				found = true
 				break
 			}
@@ -158,11 +177,17 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		}
 		return nil, fmt.Errorf("undefined property '&%s'", n.Name)
 	case *ast.StringLiteral:
-		// Interpolation {var}
+		// Interpolation {var} ou {module::prop}
 		res := n.Value
 		for k, v := range env.All() {
 			placeholder := fmt.Sprintf("{%s}", k)
 			res = strings.ReplaceAll(res, placeholder, v.String())
+			if unit, ok := v.(*UnitInstance); ok {
+				for pName, pVal := range unit.Properties {
+					scopedPlaceholder := fmt.Sprintf("{%s::%s}", k, pName)
+					res = strings.ReplaceAll(res, scopedPlaceholder, pVal.String())
+				}
+			}
 		}
 		if unk := findUndefinedInterpolations(res); len(unk) > 0 {
 			return NilValue{}, fmt.Errorf("undefined variable '{%s}' in string interpolation: \"%s\"", strings.Join(unk, ", {"), n.Value)
@@ -176,6 +201,12 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return NumberValue{Val: num}, nil
 	case *ast.BoolLiteral:
 		return BoolValue{Val: n.Value}, nil
+	case *ast.DurationLiteral:
+		dur, err := time.ParseDuration(n.Value)
+		if err != nil {
+			return nil, err
+		}
+		return DurationValue{Val: dur}, nil
 	case *ast.ListLiteral:
 		var elements []Value
 		for _, el := range n.Elements {
@@ -186,6 +217,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			elements = append(elements, val)
 		}
 		return ListValue{Elements: elements}, nil
+	case *ast.PrefixExpression:
+		return ev.evalPrefix(n, env)
 	case *ast.InfixExpression:
 		return ev.evalInfix(n, env)
 	case *ast.LambdaExpression:
@@ -196,6 +229,134 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		}, nil
 	case *ast.CustomDirectiveInvocation:
 		return ev.evalCustomDirective(n, env)
+	case *ast.MapStatement:
+		return NilValue{}, nil
+	case *ast.ModStatement:
+		return NilValue{}, nil
+	case *ast.FromUseStatement:
+		modFilePath := modules.FindModConfigFile(env.CurrentDir())
+		if modFilePath == "" {
+			return nil, fmt.Errorf("no '_mod.xru' file found in workspace")
+		}
+		modCfg, errs := modules.LoadModConfig(modFilePath)
+		if len(errs) > 0 {
+			return nil, fmt.Errorf("error in '_mod.xru': %s", errs[0])
+		}
+
+		loadModuleInstance := func(modName string) (*UnitInstance, error) {
+			modDetails, err := modCfg.ResolveModule(n.Source, modName)
+			if err != nil {
+				return nil, err
+			}
+			modEnv := NewEnvironment(nil)
+			modEnv.SetCurrentDir(filepath.Dir(modDetails.FilePath))
+			for bName, bUnit := range ev.builtins {
+				_ = modEnv.Set(bName, bUnit, true)
+			}
+			content, err := os.ReadFile(modDetails.FilePath)
+			if err != nil {
+				return nil, err
+			}
+			l := lexer.New(modDetails.FilePath, string(content))
+			p := parser.New(l)
+			prog := p.ParseProgram()
+			if len(p.Errors()) > 0 {
+				return nil, fmt.Errorf("syntax error in %s: %s", modDetails.FilePath, p.Errors()[0])
+			}
+			_, err = ev.Eval(prog, modEnv)
+			if err != nil {
+				return nil, err
+			}
+
+			unitInst := &UnitInstance{
+				UnitName:   modName,
+				Properties: make(map[string]Value),
+				Methods:    make(map[string]NativeMethod),
+				Directives: make(map[string]NativeDirective),
+			}
+			for expName, exp := range modDetails.Exports {
+				if exp.Kind == "func" {
+					if fnVal, ok := modEnv.Get(expName); ok {
+						if uFn, ok := fnVal.(UserFunction); ok {
+							capturedFn := uFn
+							unitInst.Methods[expName] = func(args []Value) (Value, error) {
+								return ev.callUserFunction(capturedFn, args, env)
+							}
+						}
+					}
+				} else {
+					if val, ok := modEnv.Get(expName); ok {
+						unitInst.Properties[expName] = val
+					}
+				}
+			}
+			return unitInst, nil
+		}
+
+		// Cas 1: multi-modules (auth, cdn)
+		if len(n.Modules) > 0 {
+			for _, mName := range n.Modules {
+				unit, err := loadModuleInstance(mName)
+				if err != nil {
+					return nil, err
+				}
+				if err := env.Set(mName, unit, true); err != nil {
+					return nil, err
+				}
+			}
+			return NilValue{}, nil
+		}
+
+		// Cas 2: membre individuel (auth::b)
+		if n.Member != "" {
+			unit, err := loadModuleInstance(n.Module)
+			if err != nil {
+				return nil, err
+			}
+			if prop, ok := unit.Properties[n.Member]; ok {
+				if err := env.Set(n.Member, prop, false); err != nil {
+					return nil, err
+				}
+				return prop, nil
+			}
+			if method, ok := unit.Methods[n.Member]; ok {
+				fnVal := FunctionValue{Name: n.Member, Fn: method}
+				if err := env.Set(n.Member, fnVal, false); err != nil {
+					return nil, err
+				}
+				return fnVal, nil
+			}
+			return nil, fmt.Errorf("member '%s' not found on module '%s'", n.Member, n.Module)
+		}
+
+		// Cas 3: module complet (auth as a ou auth)
+		alias := n.Alias
+		if alias == "" {
+			alias = n.Module
+		}
+		unit, err := loadModuleInstance(n.Module)
+		if err != nil {
+			return nil, err
+		}
+		if err := env.Set(alias, unit, true); err != nil {
+			return nil, err
+		}
+		return unit, nil
+	case *ast.ScopeAccessExpression:
+		scopeVal, ok := env.Get(n.Scope)
+		if !ok {
+			return nil, fmt.Errorf("module or scope '%s' not found", n.Scope)
+		}
+		if unit, ok := scopeVal.(*UnitInstance); ok {
+			if prop, exists := unit.Properties[n.Member]; exists {
+				return prop, nil
+			}
+			if method, exists := unit.Methods[n.Member]; exists {
+				return FunctionValue{Name: n.Member, Fn: method}, nil
+			}
+			return nil, fmt.Errorf("member '%s' not found on module '%s'", n.Member, n.Scope)
+		}
+		return nil, fmt.Errorf("'%s' is not a module", n.Scope)
 	}
 	return NilValue{}, nil
 }

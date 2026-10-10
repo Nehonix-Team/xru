@@ -46,6 +46,9 @@ const (
 	PASS          TokenType = "pass"
 	AS            TokenType = "as"
 	OR            TokenType = "or"
+	MAP           TokenType = "map"
+	FROM          TokenType = "from"
+	MOD           TokenType = "mod"
 
 	// Operators & Symbols
 	ASSIGN    TokenType = "="
@@ -53,14 +56,22 @@ const (
 	FAT_ARROW TokenType = "=>"
 	AT        TokenType = "@" // Instanciation @Unit()
 	AMP       TokenType = "&" // Propriété interne &prop
+	PLUS      TokenType = "+"
+	MINUS     TokenType = "-"
+	ASTERISK  TokenType = "*"
+	SLASH     TokenType = "/"
+	PERCENT   TokenType = "%"
 
 	// Comparaisons
-	EQ  TokenType = "=="
-	NEQ TokenType = "!="
-	LT  TokenType = "<"
-	LTE TokenType = "<="
-	GT  TokenType = ">"
-	GTE TokenType = ">="
+	EQ         TokenType = "=="
+	NEQ        TokenType = "!="
+	LT         TokenType = "<"
+	LTE        TokenType = "<="
+	GT         TokenType = ">"
+	GTE        TokenType = ">="
+	BANG       TokenType = "!"
+	AND        TokenType = "&&"
+	OR_LOGICAL TokenType = "||"
 
 	// Delimiters
 	LPAREN       TokenType = "("
@@ -123,6 +134,9 @@ var keywords = map[string]TokenType{
 	"file":          FILE,
 	"global":        GLOBAL,
 	"pass":          PASS,
+	"map":           MAP,
+	"from":          FROM,
+	"mod":           MOD,
 }
 
 func LookupIdent(ident string) TokenType {

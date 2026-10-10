@@ -12,6 +12,7 @@ import (
 	"github.com/Nehonix-Team/xru/pkg/checker"
 	"github.com/Nehonix-Team/xru/pkg/dispatcher"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
+	"github.com/Nehonix-Team/xru/pkg/lsp"
 	"github.com/Nehonix-Team/xru/pkg/packager"
 	"github.com/Nehonix-Team/xru/pkg/parser"
 	"github.com/Nehonix-Team/xru/pkg/runtime"
@@ -22,6 +23,7 @@ func printUsage() {
 
 Usage:
   xru run <file.xru> [flags...]     Execute an XRU 2.0 rule file
+  xru lsp                           Start language server (LSP) for editor integration
   xru pack [output.xpack]           Package project into a structured .xpack bundle
   xru unpack <file.xpack> [dest]    Unpack an .xpack bundle to destination
   xru version                       Show XRU version
@@ -66,6 +68,13 @@ func main() {
 
 	case "help", "--help", "-h":
 		printUsage()
+
+	case "lsp", "language-server":
+		srv := lsp.NewServer(os.Stdin, os.Stdout)
+		if err := srv.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "LSP server error: %v\n", err)
+			os.Exit(1)
+		}
 
 	case "pack":
 		handlePack(cmdArgs, verbose)

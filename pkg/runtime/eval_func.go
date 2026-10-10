@@ -49,6 +49,37 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 			}
 		}
 		return method(args)
+	case *ast.ScopeAccessExpression:
+		scopeVal, ok := env.Get(c.Scope)
+		if !ok {
+			return nil, fmt.Errorf("module or scope '%s' not found", c.Scope)
+		}
+		unit, ok := scopeVal.(*UnitInstance)
+		if !ok {
+			return nil, fmt.Errorf("'%s' is not an executable module", c.Scope)
+		}
+		method, ok := unit.Methods[c.Member]
+		if !ok {
+			for mName, mFn := range unit.Methods {
+				if strings.EqualFold(mName, c.Member) {
+					method = mFn
+					ok = true
+					break
+				}
+			}
+		}
+		if !ok {
+			return nil, fmt.Errorf("method '%s' not found on module '%s'", c.Member, c.Scope)
+		}
+		var args []Value
+		for _, arg := range call.Arguments {
+			a, err := ev.Eval(arg, env)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, a)
+		}
+		return method(args)
 	case *ast.Identifier:
 		val, ok := env.GetLocal(c.Value)
 		if !ok {

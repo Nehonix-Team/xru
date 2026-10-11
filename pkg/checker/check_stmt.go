@@ -41,8 +41,15 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		for _, bodyStmt := range s.Body {
 			c.checkStatement(bodyStmt)
 		}
+	case *ast.MatchStatement:
+		c.checkMatch(s)
 	case *ast.DispatchTreeStatement:
-		// DispatchTree statement is valid
+		if s.PathExpr != nil {
+			c.checkExpression(s.PathExpr)
+		}
+		if s.PatternExpr != nil {
+			c.checkExpression(s.PatternExpr)
+		}
 	case *ast.ReassignStatement:
 		c.checkReassign(s)
 	case *ast.ReturnStatement:
@@ -383,5 +390,28 @@ func (c *Checker) checkFor(s *ast.ForStatement) {
 
 	for _, stmt := range s.Body {
 		c.checkStatement(stmt)
+	}
+}
+
+func (c *Checker) checkMatch(s *ast.MatchStatement) {
+	if s.Target != nil {
+		c.checkExpression(s.Target)
+	}
+	for _, kase := range s.Cases {
+		if kase.Pattern != nil {
+			c.checkExpression(kase.Pattern)
+		}
+		c.scope = NewScope(c.scope, false)
+		for _, stmt := range kase.Body {
+			c.checkStatement(stmt)
+		}
+		c.scope = c.scope.parent
+	}
+	if len(s.DefaultBlock) > 0 {
+		c.scope = NewScope(c.scope, false)
+		for _, stmt := range s.DefaultBlock {
+			c.checkStatement(stmt)
+		}
+		c.scope = c.scope.parent
 	}
 }

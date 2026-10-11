@@ -28,8 +28,7 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 	if err != nil {
 		return nil, err
 	}
-	bVal, ok := condVal.(BoolValue)
-	if ok && bVal.Val {
+	if isTruthy(condVal) {
 		for _, s := range ifStmt.Consequence {
 			res, err := ev.Eval(s, env)
 			if err != nil {
@@ -47,8 +46,7 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 		if err != nil {
 			return nil, err
 		}
-		ebVal, ok := eVal.(BoolValue)
-		if ok && ebVal.Val {
+		if isTruthy(eVal) {
 			for _, s := range elif.Body {
 				res, err := ev.Eval(s, env)
 				if err != nil {
@@ -199,6 +197,24 @@ func (ev *Evaluator) evalCustomDirective(dir *ast.CustomDirectiveInvocation, env
 }
 
 func (ev *Evaluator) evalDispatchTree(dt *ast.DispatchTreeStatement, env *Environment) (Value, error) {
+	if dt.PathExpr != nil {
+		pathVal, err := ev.Eval(dt.PathExpr, env)
+		if err != nil {
+			return NilValue{}, err
+		}
+		dt.Path = pathVal.String()
+	}
+
+	if dt.PatternExpr != nil {
+		patVal, err := ev.Eval(dt.PatternExpr, env)
+		if err != nil {
+			return NilValue{}, err
+		}
+		dt.Pattern = patVal.String()
+	} else if dt.Pattern == "" {
+		dt.Pattern = ".rules.xru"
+	}
+
 	treeEnv := NewEnvironment(env)
 	for k, expr := range dt.PassArgs {
 		val, err := ev.Eval(expr, env)
@@ -287,6 +303,56 @@ func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, erro
 		}
 	default:
 		return nil, fmt.Errorf("cannot iterate over '%s', expected list or range", iterVal.Type())
+	}
+
+	return NilValue{}, nil
+}
+
+func (ev *Evaluator) evalMatch(m *ast.MatchStatement, env *Environment) (Value, error) {
+	targetVal, err := ev.Eval(m.Target, env)
+	if err != nil {
+		return NilValue{}, err
+	}
+
+	for _, kase := range m.Cases {
+		patternVal, err := ev.Eval(kase.Pattern, env)
+		if err != nil {
+			return NilValue{}, err
+		}
+
+		matched := false
+		if targetVal != nil && patternVal != nil {
+			if targetVal.String() == patternVal.String() {
+				matched = true
+			}
+		}
+
+		if matched {
+			caseEnv := NewEnvironment(env)
+			for _, stmt := range kase.Body {
+				res, err := ev.Eval(stmt, caseEnv)
+				if err != nil {
+					return NilValue{}, err
+				}
+				if ret, ok := res.(ReturnValue); ok {
+					return ret, nil
+				}
+			}
+			return NilValue{}, nil
+		}
+	}
+
+	if len(m.DefaultBlock) > 0 {
+		defEnv := NewEnvironment(env)
+		for _, stmt := range m.DefaultBlock {
+			res, err := ev.Eval(stmt, defEnv)
+			if err != nil {
+				return NilValue{}, err
+			}
+			if ret, ok := res.(ReturnValue); ok {
+				return ret, nil
+			}
+		}
 	}
 
 	return NilValue{}, nil

@@ -114,10 +114,10 @@ global func Helper(name: string) {
     return msg
 }
 
-dispatch_tree "./src", ".rules.xru" {
-    pass MODE = "minimal"
-    pass CDN = false
-}
+let MODE = "minimal"
+let CDN = false
+
+dispatch "./src", ".rules.xru"
 `
 	l := lexer.New("test_global.xru", code)
 	p := parser.New(l)
@@ -958,5 +958,400 @@ let guard2 = testGuard(false)
 		t.Errorf("Expected guard2 to be 'completed', got %v", guard2)
 	}
 }
+
+func TestDynamicStringInterpolation(t *testing.T) {
+	code := `
+use crypto as Crypto
+
+unit UserHelper {
+    declare prefix: string = "USR"
+    func tag(id: number) -> string {
+        return "{&prefix}_{id * 2}"
+    }
+}
+
+let h = @UserHelper()
+let res1 = "Result: {10 + 25}"
+let res2 = "ID: {h.tag(5)}"
+let res3 = "Hex: {Crypto.GetRandomBytes(4)}"
+`
+	l := lexer.New("interp_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	res1Val, _ := env.Get("res1")
+	if res1Val.String() != "Result: 35" {
+		t.Errorf("Expected 'Result: 35', got %v", res1Val)
+	}
+
+	res2Val, _ := env.Get("res2")
+	if res2Val.String() != "ID: USR_10" {
+		t.Errorf("Expected 'ID: USR_10', got %v", res2Val)
+	}
+
+	res3Val, _ := env.Get("res3")
+	if !strings.HasPrefix(res3Val.String(), "Hex: ") || len(res3Val.String()) != 13 {
+		t.Errorf("Expected 'Hex: <8 chars hex>', got %v", res3Val)
+	}
+}
+
+func TestUnitInstantiationRules(t *testing.T) {
+	// 1. Built-in module cannot be instantiated with @
+	code1 := `
+use crypto as Crypto
+let c = @Crypto()
+`
+	l1 := lexer.New("test_builtin_inst.xru", code1)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	ev1 := runtime.NewEvaluator()
+	env1 := runtime.NewEnvironment(nil)
+	if _, err := ev1.Eval(prog1, env1); err == nil {
+		t.Fatalf("Expected error when instantiating built-in Crypto with @, got nil")
+	} else if !strings.Contains(err.Error(), "ERR_CANNOT_INSTANTIATE_BUILTIN") && !strings.Contains(err.Error(), "cannot be instantiated") {
+		t.Fatalf("Expected ERR_CANNOT_INSTANTIATE_BUILTIN error message, got: %v", err)
+	}
+
+	// 2. User unit cannot call instance methods without @
+	code2 := `
+unit Service {
+    func action() -> string {
+        return "done"
+    }
+}
+let res = Service.action()
+`
+	l2 := lexer.New("test_static_call.xru", code2)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev2.Eval(prog2, env2); err == nil {
+		t.Fatalf("Expected error when calling method on uninstantiated unit, got nil")
+	} else if !strings.Contains(err.Error(), "cannot call method") {
+		t.Fatalf("Expected cannot call method error message, got: %v", err)
+	}
+}
+
+func TestMatchStatementEvaluation(t *testing.T) {
+	code := `
+let target = "beta"
+let res = "none"
+match target {
+    case "alpha" {
+        res =: "first"
+    }
+    case "beta" {
+        res =: "second"
+    }
+    default {
+        res =: "other"
+    }
+}
+
+let fallback = "default"
+match "unknown" {
+    case "alpha" {
+        fallback =: "a"
+    }
+    default {
+        fallback =: "def"
+    }
+}
+`
+	l := lexer.New("test_match.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	resVal, _ := env.Get("res")
+	if resVal.String() != "second" {
+		t.Errorf("Expected res == 'second', got %v", resVal)
+	}
+
+	fbVal, _ := env.Get("fallback")
+	if fbVal.String() != "def" {
+		t.Errorf("Expected fallback == 'def', got %v", fbVal)
+	}
+}
+
+func TestStringNativeMethods(t *testing.T) {
+	code := `
+let str = "  Hello World  "
+let trimmed = str.trim()
+let upper = trimmed.toUpper()
+let lower = trimmed.toLower()
+let l = str.len()
+let has = trimmed.contains("World")
+let starts = trimmed.startsWith("Hello")
+let ends = trimmed.endsWith("World")
+let replaced = trimmed.replace("World", "XRU")
+let sliced = trimmed.slice(0, 5)
+let parts = trimmed.split(" ")
+let countParts = parts.len()
+`
+	l := lexer.New("test_str_methods.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	trimmed, _ := env.Get("trimmed")
+	if trimmed.String() != "Hello World" {
+		t.Errorf("Expected trimmed to be 'Hello World', got %v", trimmed)
+	}
+	upper, _ := env.Get("upper")
+	if upper.String() != "HELLO WORLD" {
+		t.Errorf("Expected upper to be 'HELLO WORLD', got %v", upper)
+	}
+	lower, _ := env.Get("lower")
+	if lower.String() != "hello world" {
+		t.Errorf("Expected lower to be 'hello world', got %v", lower)
+	}
+	lVal, _ := env.Get("l")
+	if lVal.String() != "15" {
+		t.Errorf("Expected len == 15, got %v", lVal)
+	}
+	hasVal, _ := env.Get("has")
+	if hasVal.String() != "true" {
+		t.Errorf("Expected contains == true, got %v", hasVal)
+	}
+	startsVal, _ := env.Get("starts")
+	if startsVal.String() != "true" {
+		t.Errorf("Expected startsWith == true, got %v", startsVal)
+	}
+	endsVal, _ := env.Get("ends")
+	if endsVal.String() != "true" {
+		t.Errorf("Expected endsWith == true, got %v", endsVal)
+	}
+	repVal, _ := env.Get("replaced")
+	if repVal.String() != "Hello XRU" {
+		t.Errorf("Expected replaced == 'Hello XRU', got %v", repVal)
+	}
+	sliceVal, _ := env.Get("sliced")
+	if sliceVal.String() != "Hello" {
+		t.Errorf("Expected sliced == 'Hello', got %v", sliceVal)
+	}
+	countVal, _ := env.Get("countParts")
+	if countVal.String() != "2" {
+		t.Errorf("Expected countParts == 2, got %v", countVal)
+	}
+}
+
+func TestListNativeMethods(t *testing.T) {
+	code := `
+let items = ["alpha", "beta", "gamma"]
+let joined = items.join("-")
+let hasBeta = items.contains("beta")
+let count = items.len()
+items.push("delta")
+let countAfterPush = items.len()
+let popped = items.pop()
+let reversed = items.reverse()
+`
+	l := lexer.New("test_list_methods.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	joined, _ := env.Get("joined")
+	if joined.String() != "alpha-beta-gamma" {
+		t.Errorf("Expected joined == 'alpha-beta-gamma', got %v", joined)
+	}
+	hasBeta, _ := env.Get("hasBeta")
+	if hasBeta.String() != "true" {
+		t.Errorf("Expected hasBeta == true, got %v", hasBeta)
+	}
+	count, _ := env.Get("count")
+	if count.String() != "3" {
+		t.Errorf("Expected count == 3, got %v", count)
+	}
+	capVal, _ := env.Get("countAfterPush")
+	if capVal.String() != "4" {
+		t.Errorf("Expected countAfterPush == 4, got %v", capVal)
+	}
+	popVal, _ := env.Get("popped")
+	if popVal.String() != "delta" {
+		t.Errorf("Expected popped == 'delta', got %v", popVal)
+	}
+	revVal, _ := env.Get("reversed")
+	if revVal.String() != "[gamma, beta, alpha]" {
+		t.Errorf("Expected reversed == [gamma, beta, alpha], got %v", revVal)
+	}
+}
+
+func TestBuiltinSingletons(t *testing.T) {
+	code := `
+let p = Path.Join("src", "services", "auth.xru")
+let d = Path.Dir(p)
+let b = Path.Base(p)
+let e = Path.Ext(p)
+
+let r = Math.Round(3.7)
+let f = Math.Floor(3.7)
+let c = Math.Ceil(3.2)
+let a = Math.Abs(-42)
+let m = Math.Min(10, 5)
+
+let data = ["name" -> "xypriss", "version" -> 2]
+let stringified = Json.Stringify(data)
+let parsed = Json.Parse(stringified)
+let backToStr = Json.Stringify(parsed)
+`
+	l := lexer.New("test_singletons.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	dVal, _ := env.Get("d")
+	if dVal.String() != "src/services" {
+		t.Errorf("Expected dir == 'src/services', got %v", dVal)
+	}
+	bVal, _ := env.Get("b")
+	if bVal.String() != "auth.xru" {
+		t.Errorf("Expected base == 'auth.xru', got %v", bVal)
+	}
+	eVal, _ := env.Get("e")
+	if eVal.String() != ".xru" {
+		t.Errorf("Expected ext == '.xru', got %v", eVal)
+	}
+	rVal, _ := env.Get("r")
+	if rVal.String() != "4" {
+		t.Errorf("Expected round == 4, got %v", rVal)
+	}
+	fVal, _ := env.Get("f")
+	if fVal.String() != "3" {
+		t.Errorf("Expected floor == 3, got %v", fVal)
+	}
+	cVal, _ := env.Get("c")
+	if cVal.String() != "4" {
+		t.Errorf("Expected ceil == 4, got %v", cVal)
+	}
+	aVal, _ := env.Get("a")
+	if aVal.String() != "42" {
+		t.Errorf("Expected abs == 42, got %v", aVal)
+	}
+	mVal, _ := env.Get("m")
+	if mVal.String() != "5" {
+		t.Errorf("Expected min == 5, got %v", mVal)
+	}
+	strVal, _ := env.Get("stringified")
+	if !strings.Contains(strVal.String(), "xypriss") {
+		t.Errorf("Expected json stringified to contain 'xypriss', got %v", strVal)
+	}
+}
+
+func TestModernDispatchSyntax(t *testing.T) {
+	tempDir := t.TempDir()
+	subDir := filepath.Join(tempDir, "sub")
+	_ = os.MkdirAll(subDir, 0755)
+
+	ruleContent := `
+let executed = true
+`
+	_ = os.WriteFile(filepath.Join(subDir, ".rules.xru"), []byte(ruleContent), 0644)
+
+	code := fmt.Sprintf(`dispatch "%s"`, subDir)
+	l := lexer.New("test_dispatch.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Dispatch eval error: %v", err)
+	}
+}
+
+func TestDispatchDynamicPath(t *testing.T) {
+	tempDir := t.TempDir()
+	subDir := filepath.Join(tempDir, "sub")
+	_ = os.MkdirAll(subDir, 0755)
+
+	ruleContent := `let done = true`
+	_ = os.WriteFile(filepath.Join(subDir, "patch.xru"), []byte(ruleContent), 0644)
+
+	// 1. With variable: dispatch targetPath, "patch.xru"
+	code1 := fmt.Sprintf(`
+let targetPath = "%s"
+dispatch targetPath, "patch.xru"
+`, subDir)
+
+	l1 := lexer.New("test_disp_var.xru", code1)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	if len(p1.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p1.Errors())
+	}
+	ev1 := runtime.NewEvaluator()
+	env1 := runtime.NewEnvironment(nil)
+	if _, err := ev1.Eval(prog1, env1); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	// 2. With string interpolation: dispatch "{baseDir}/sub", "patch.xru"
+	code2 := fmt.Sprintf(`
+let baseDir = "%s"
+dispatch "{baseDir}/sub", "patch.xru"
+`, tempDir)
+
+	l2 := lexer.New("test_disp_interp.xru", code2)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	if len(p2.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p2.Errors())
+	}
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev2.Eval(prog2, env2); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+}
+
+
+
 
 

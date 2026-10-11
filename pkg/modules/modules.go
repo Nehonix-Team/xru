@@ -207,10 +207,14 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 				if s.IsConst {
 					kind = "const"
 				}
+				memberType := s.Type
+				if memberType == "" && s.Value != nil {
+					memberType = inferBasicType(s.Value)
+				}
 				exports[s.Name] = &ExportedMember{
 					Name:     s.Name,
 					Kind:     kind,
-					Type:     s.Type,
+					Type:     memberType,
 					Position: s.Pos(),
 				}
 			}
@@ -284,4 +288,35 @@ func (cfg *ModConfig) GetAllExportedCandidates() []AutoImportCandidate {
 	}
 
 	return candidates
+}
+
+func inferBasicType(expr ast.Expression) string {
+	if expr == nil {
+		return "any"
+	}
+	switch e := expr.(type) {
+	case *ast.StringLiteral:
+		return "string"
+	case *ast.NumberLiteral:
+		return "number"
+	case *ast.BoolLiteral:
+		return "bool"
+	case *ast.DurationLiteral:
+		return "duration"
+	case *ast.WithExpression:
+		return "task"
+	case *ast.InstantiationExpression:
+		return e.UnitName
+	case *ast.ListLiteral:
+		if len(e.Elements) > 0 {
+			return "list[" + inferBasicType(e.Elements[0]) + "]"
+		}
+		return "list"
+	case *ast.MapLiteral:
+		return "map"
+	case *ast.LambdaExpression:
+		return "function"
+	default:
+		return "any"
+	}
 }

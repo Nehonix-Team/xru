@@ -76,9 +76,11 @@ func (d *Dispatcher) executeDescriptor(dir string, descriptorPath string) error 
 	c.DefineUnit("Local")
 	if d.parentEnv != nil {
 		for varName := range d.parentEnv.All() {
-			c.DefineVar(varName)
-			c.DefineVar(strings.ToLower(varName))
-			c.DefineVar(strings.ToUpper(varName))
+			if !checker.IsBuiltinUnit(varName) {
+				c.DefineVar(varName)
+				c.DefineVar(strings.ToLower(varName))
+				c.DefineVar(strings.ToUpper(varName))
+			}
 		}
 	}
 	c.Check(prog)
@@ -91,25 +93,27 @@ func (d *Dispatcher) executeDescriptor(dir string, descriptorPath string) error 
 	localEnv.SetCurrentDir(dir)
 	if d.parentEnv != nil {
 		for k, v := range d.parentEnv.All() {
-			_ = localEnv.Set(strings.ToLower(k), v, false)
-			_ = localEnv.Set(strings.ToUpper(k), v, false)
+			if !checker.IsBuiltinUnit(k) {
+				_ = localEnv.Set(strings.ToLower(k), v, false)
+				_ = localEnv.Set(strings.ToUpper(k), v, false)
+			}
 		}
 	}
 
 	// Injection des primitives locales confinées : Keep, Drop, UseVariant
-	d.injectLocalPrimitives(dir, localEnv)
+	d.injectLocalPrimitives(dir, descriptorPath, localEnv)
 
 	// Évaluation
 	if _, err := d.evaluator.Eval(prog, localEnv); err != nil {
 		return fmt.Errorf("descriptor execution error in %s: %w", descriptorPath, err)
 	}
 
-	// Suppression du fichier descripteur lui-même après exécution pour laisser le projet propre
-	_ = os.Remove(descriptorPath)
 	return nil
 }
 
-func (d *Dispatcher) injectLocalPrimitives(dir string, env *runtime.Environment) {
+func (d *Dispatcher) injectLocalPrimitives(dir string, descriptorPath string, env *runtime.Environment) {
+	descriptorName := filepath.Base(descriptorPath)
+
 	// 1. Primitive Keep(list) : Ne garde que la liste de fichiers spécifiée
 	keepMethod := func(args []runtime.Value) (runtime.Value, error) {
 		if len(args) == 0 {
@@ -132,7 +136,7 @@ func (d *Dispatcher) injectLocalPrimitives(dir string, env *runtime.Environment)
 
 		for _, entry := range entries {
 			name := entry.Name()
-			if name == ".rules.xru" || name == "rules.xru" {
+			if name == descriptorName || strings.HasSuffix(name, ".xru") {
 				continue
 			}
 			if !keepMap[name] {
@@ -165,6 +169,9 @@ func (d *Dispatcher) injectLocalPrimitives(dir string, env *runtime.Environment)
 			pattern := item.String()
 			for _, entry := range entries {
 				name := entry.Name()
+				if name == descriptorName || strings.HasSuffix(name, ".xru") {
+					continue
+				}
 				matched, _ := filepath.Match(pattern, name)
 				if pattern == "*" || matched || pattern == name {
 					targetPath := filepath.Join(dir, name)

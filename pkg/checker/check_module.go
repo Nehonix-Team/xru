@@ -32,7 +32,7 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 		aliasSym := &Symbol{
 			Name:       alias,
 			Kind:       SymUnit,
-			Type:       sourceSym.Type,
+			Type:       sourceSym.Name,
 			Pos:        s.Pos(),
 			Directives: sourceSym.Directives,
 			Methods:    sourceSym.Methods,

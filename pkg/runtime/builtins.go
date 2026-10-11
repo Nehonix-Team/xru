@@ -7,9 +7,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
+	mathRand "math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -73,6 +75,8 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		UnitName:   "std",
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
+			"log":            printlnFn,
+			"Log":            printlnFn,
 			"println":        printlnFn,
 			"Println":        printlnFn,
 			"print":          printFn,
@@ -516,10 +520,21 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 				} else {
 					cmd = exec.Command("sh", "-c", commandLine)
 				}
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
+				var stdoutBuf, stderrBuf bytes.Buffer
+				cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
+				cmd.Stderr = &stderrBuf
 				err := cmd.Run()
-				return BoolValue{Val: err == nil}, err
+				if err != nil {
+					errMsg := strings.TrimSpace(stderrBuf.String())
+					if errMsg == "" {
+						errMsg = strings.TrimSpace(stdoutBuf.String())
+					}
+					if errMsg == "" {
+						errMsg = err.Error()
+					}
+					return StringValue{Val: stdoutBuf.String()}, fmt.Errorf("%s", errMsg)
+				}
+				return StringValue{Val: stdoutBuf.String()}, nil
 			},
 		},
 		Directives: make(map[string]NativeDirective),
@@ -608,6 +623,130 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		Directives: make(map[string]NativeDirective),
 	}
 	units["Crypto"] = cryptoUnit
+
+	// 7. #UNIT Json
+	jsonUnit := &UnitInstance{
+		UnitName:   "Json",
+		Properties: make(map[string]Value),
+		Methods: map[string]NativeMethod{
+			"Parse": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return NilValue{}, fmt.Errorf("Json.Parse requires raw string")
+				}
+				raw := args[0].String()
+				var parsed any
+				if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+					return NilValue{}, fmt.Errorf("Json.Parse failed: %w", err)
+				}
+				return goValueToXruValue(parsed), nil
+			},
+			"Stringify": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return StringValue{Val: "null"}, nil
+				}
+				goVal := xruValueToGoValue(args[0])
+				b, err := json.Marshal(goVal)
+				if err != nil {
+					return NilValue{}, fmt.Errorf("Json.Stringify failed: %w", err)
+				}
+				return StringValue{Val: string(b)}, nil
+			},
+		},
+		Directives: make(map[string]NativeDirective),
+	}
+	units["Json"] = jsonUnit
+
+	// 8. #UNIT Math
+	mathUnit := &UnitInstance{
+		UnitName:   "Math",
+		Properties: make(map[string]Value),
+		Methods: map[string]NativeMethod{
+			"Round": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return NumberValue{Val: 0}, nil
+				}
+				n, _ := args[0].(NumberValue)
+				return NumberValue{Val: math.Round(n.Val)}, nil
+			},
+			"Floor": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return NumberValue{Val: 0}, nil
+				}
+				n, _ := args[0].(NumberValue)
+				return NumberValue{Val: math.Floor(n.Val)}, nil
+			},
+			"Ceil": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return NumberValue{Val: 0}, nil
+				}
+				n, _ := args[0].(NumberValue)
+				return NumberValue{Val: math.Ceil(n.Val)}, nil
+			},
+			"Abs": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return NumberValue{Val: 0}, nil
+				}
+				n, _ := args[0].(NumberValue)
+				return NumberValue{Val: math.Abs(n.Val)}, nil
+			},
+			"Min": func(args []Value) (Value, error) {
+				if len(args) < 2 {
+					return NilValue{}, fmt.Errorf("Math.Min requires 2 numbers")
+				}
+				a, _ := args[0].(NumberValue)
+				b, _ := args[1].(NumberValue)
+				return NumberValue{Val: math.Min(a.Val, b.Val)}, nil
+			},
+			"Max": func(args []Value) (Value, error) {
+				if len(args) < 2 {
+					return NilValue{}, fmt.Errorf("Math.Max requires 2 numbers")
+				}
+				a, _ := args[0].(NumberValue)
+				b, _ := args[1].(NumberValue)
+				return NumberValue{Val: math.Max(a.Val, b.Val)}, nil
+			},
+			"Random": func(args []Value) (Value, error) {
+				return NumberValue{Val: mathRand.Float64()}, nil
+			},
+		},
+		Directives: make(map[string]NativeDirective),
+	}
+	units["Math"] = mathUnit
+
+	// 9. #UNIT Path
+	pathUnit := &UnitInstance{
+		UnitName:   "Path",
+		Properties: make(map[string]Value),
+		Methods: map[string]NativeMethod{
+			"Join": func(args []Value) (Value, error) {
+				var parts []string
+				for _, a := range args {
+					parts = append(parts, a.String())
+				}
+				return StringValue{Val: filepath.Join(parts...)}, nil
+			},
+			"Dir": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return StringValue{Val: "."}, nil
+				}
+				return StringValue{Val: filepath.Dir(args[0].String())}, nil
+			},
+			"Base": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return StringValue{Val: ""}, nil
+				}
+				return StringValue{Val: filepath.Base(args[0].String())}, nil
+			},
+			"Ext": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return StringValue{Val: ""}, nil
+				}
+				return StringValue{Val: filepath.Ext(args[0].String())}, nil
+			},
+		},
+		Directives: make(map[string]NativeDirective),
+	}
+	units["Path"] = pathUnit
 
 	return units
 }
@@ -738,3 +877,66 @@ func copyDir(src, dst string) error {
 	}
 	return nil
 }
+
+func goValueToXruValue(v any) Value {
+	if v == nil {
+		return NilValue{}
+	}
+	switch val := v.(type) {
+	case bool:
+		return BoolValue{Val: val}
+	case float64:
+		return NumberValue{Val: val}
+	case int:
+		return NumberValue{Val: float64(val)}
+	case string:
+		return StringValue{Val: val}
+	case []any:
+		var elems []Value
+		for _, item := range val {
+			elems = append(elems, goValueToXruValue(item))
+		}
+		return ListValue{Elements: elems}
+	case map[string]any:
+		pairs := make(map[string]Value)
+		for k, item := range val {
+			pairs[k] = goValueToXruValue(item)
+		}
+		return MapValue{Pairs: pairs}
+	default:
+		return StringValue{Val: fmt.Sprintf("%v", val)}
+	}
+}
+
+func xruValueToGoValue(v Value) any {
+	if v == nil {
+		return nil
+	}
+	switch val := v.(type) {
+	case NilValue:
+		return nil
+	case BoolValue:
+		return val.Val
+	case NumberValue:
+		return val.Val
+	case StringValue:
+		return val.Val
+	case DurationValue:
+		return val.Val.String()
+	case ListValue:
+		var list []any
+		for _, elem := range val.Elements {
+			list = append(list, xruValueToGoValue(elem))
+		}
+		return list
+	case MapValue:
+		m := make(map[string]any)
+		for k, elem := range val.Pairs {
+			m[k] = xruValueToGoValue(elem)
+		}
+		return m
+	default:
+		return val.String()
+	}
+}
+

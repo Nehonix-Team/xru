@@ -24,6 +24,35 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 		return nil
 	}
 
+	filename := uriToPath(uri)
+	l := lexer.New(filename, text)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	var c *checker.Checker
+	if prog != nil {
+		c = checker.New()
+		c.SetCurrentFile(filename)
+		c.Check(prog)
+	}
+
+	// 1. Si l'expression est qualifiée avec un point (ex: Crypto.GetRandomBytes)
+	if strings.Contains(fullExpr, ".") {
+		parts := strings.Split(fullExpr, ".")
+		objectName := parts[0]
+		if c != nil {
+			if _, inScope := c.GetScope().Resolve(objectName); !inScope {
+				// L'objet n'est pas dans le scope (ex: 'Crypto' non importé)
+				return nil
+			}
+		}
+	} else if checker.IsBuiltinUnit(word) {
+		if c != nil {
+			if _, inScope := c.GetScope().Resolve(word); !inScope {
+				return nil
+			}
+		}
+	}
+
 	if docItem := GetDocForWord(fullExpr, word); docItem != nil {
 		return &Hover{
 			Contents: MarkupContent{
@@ -34,13 +63,7 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 	}
 
 	// 2. Check user-defined symbols (variables, constants, arguments, functions, modules)
-	filename := uriToPath(uri)
-	l := lexer.New(filename, text)
-	p := parser.New(l)
-	prog := p.ParseProgram()
-	if prog != nil {
-		c := checker.New()
-		c.Check(prog)
+	if prog != nil && c != nil {
 
 		// 2.A: Si l'expression est sous la forme scope::member
 		if strings.Contains(fullExpr, "::") {

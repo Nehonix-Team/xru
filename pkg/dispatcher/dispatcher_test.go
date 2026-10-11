@@ -61,8 +61,8 @@ if plugin == "false" {
 		t.Errorf("Expected admin.ts to be dropped")
 	}
 
-	// Le descripteur local .rules.xru doit avoir été nettoyé
-	if _, err := os.Stat(rulesPath); !os.IsNotExist(err) {
-		t.Errorf("Expected .rules.xru to be cleaned up after execution")
+	// Le descripteur local ne doit PAS être supprimé
+	if _, err := os.Stat(rulesPath); os.IsNotExist(err) {
+		t.Errorf("Expected .rules.xru to be preserved after execution")
 	}
 }

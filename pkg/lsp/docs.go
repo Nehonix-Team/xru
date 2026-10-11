@@ -68,24 +68,24 @@ var BuiltinUnitsDocs = map[string]struct {
 		Detail: "unit Crypto",
 		Doc:    "Cryptographic primitives unit for hashing, UUID, and secure randomness.",
 		Methods: map[string]DocItem{
-			"getrandombytes": {
-				Detail: "Crypto.getRandomBytes(length: number = 32) -> string",
+			"GetRandomBytes": {
+				Detail: "Crypto.GetRandomBytes(length: number = 32) -> string",
 				Doc:    "Generates cryptographically secure random bytes formatted as hexadecimal.",
 			},
-			"randomhex": {
-				Detail: "Crypto.randomHex(length: number = 32) -> string",
+			"RandomHex": {
+				Detail: "Crypto.RandomHex(length: number = 32) -> string",
 				Doc:    "Generates a random hexadecimal string of the specified byte length.",
 			},
-			"randombase64": {
-				Detail: "Crypto.randomBase64(length: number = 32) -> string",
+			"RandomBase64": {
+				Detail: "Crypto.RandomBase64(length: number = 32) -> string",
 				Doc:    "Generates random bytes encoded in standard Base64.",
 			},
-			"sha256": {
-				Detail: "Crypto.sha256(data: string) -> string",
+			"Sha256": {
+				Detail: "Crypto.Sha256(data: string) -> string",
 				Doc:    "Computes the SHA-256 cryptographic hash of a given string.",
 			},
-			"uuid": {
-				Detail: "Crypto.uuid() -> string",
+			"Uuid": {
+				Detail: "Crypto.Uuid() -> string",
 				Doc:    "Generates a random UUID v4 identifier string.",
 			},
 		},
@@ -182,6 +182,76 @@ var BuiltinUnitsDocs = map[string]struct {
 			},
 		},
 	},
+	"path": {
+		Detail: "unit Path",
+		Doc:    "File path manipulation unit (joining, directory extraction, base names, and extensions).",
+		Methods: map[string]DocItem{
+			"join": {
+				Detail: "Path.join(...parts: string) -> string",
+				Doc:    "Joins file path elements into a single path, separating them with an OS specific Separator.",
+			},
+			"dir": {
+				Detail: "Path.dir(path: string) -> string",
+				Doc:    "Returns all but the last element of path, typically the path's directory.",
+			},
+			"base": {
+				Detail: "Path.base(path: string) -> string",
+				Doc:    "Returns the last element of path (trailing path separators are removed before extracting the last element).",
+			},
+			"ext": {
+				Detail: "Path.ext(path: string) -> string",
+				Doc:    "Returns the file name extension used by path (e.g. `.xru`, `.json`).",
+			},
+		},
+	},
+	"json": {
+		Detail: "unit Json",
+		Doc:    "JSON encoding and decoding unit.",
+		Methods: map[string]DocItem{
+			"parse": {
+				Detail: "Json.parse(text: string) -> any",
+				Doc:    "Parses a valid JSON string into native XRU maps, lists, or primitive values.",
+			},
+			"stringify": {
+				Detail: "Json.stringify(val: any, indent?: string) -> string",
+				Doc:    "Converts an XRU value (map, list, primitive) into a formatted JSON string.",
+			},
+		},
+	},
+	"math": {
+		Detail: "unit Math",
+		Doc:    "Mathematical functions and numerical calculation unit.",
+		Methods: map[string]DocItem{
+			"round": {
+				Detail: "Math.round(x: number) -> number",
+				Doc:    "Returns the nearest integer, rounding half away from zero.",
+			},
+			"floor": {
+				Detail: "Math.floor(x: number) -> number",
+				Doc:    "Returns the greatest integer value less than or equal to x.",
+			},
+			"ceil": {
+				Detail: "Math.ceil(x: number) -> number",
+				Doc:    "Returns the least integer value greater than or equal to x.",
+			},
+			"abs": {
+				Detail: "Math.abs(x: number) -> number",
+				Doc:    "Returns the absolute value of x.",
+			},
+			"min": {
+				Detail: "Math.min(a: number, b: number) -> number",
+				Doc:    "Returns the smaller of two numbers.",
+			},
+			"max": {
+				Detail: "Math.max(a: number, b: number) -> number",
+				Doc:    "Returns the larger of two numbers.",
+			},
+			"random": {
+				Detail: "Math.random() -> number",
+				Doc:    "Returns a pseudo-random floating number between 0.0 (inclusive) and 1.0 (exclusive).",
+			},
+		},
+	},
 }
 
 // SurgicalMethodsDocs contient la documentation des méthodes chirurgicales sur fichiers
@@ -237,6 +307,90 @@ var SurgicalMethodsDocs = map[string]DocItem{
 	"drop": {
 		Detail: "Drop(patterns: list[string]) -> void",
 		Doc:    "Drops files or directories matching the glob patterns.",
+	},
+}
+
+// StringMethodsDocs contient la documentation des méthodes natives sur les chaînes
+var StringMethodsDocs = map[string]DocItem{
+	"len": {
+		Detail: "(string).len() -> number",
+		Doc:    "Returns the length (number of characters) of the string.",
+	},
+	"trim": {
+		Detail: "(string).trim() -> string",
+		Doc:    "Returns the string with leading and trailing whitespace removed.",
+	},
+	"trimleft": {
+		Detail: "(string).trimLeft() -> string",
+		Doc:    "Returns the string with leading whitespace removed.",
+	},
+	"trimright": {
+		Detail: "(string).trimRight() -> string",
+		Doc:    "Returns the string with trailing whitespace removed.",
+	},
+	"toupper": {
+		Detail: "(string).toUpper() -> string",
+		Doc:    "Returns the string with all characters converted to uppercase.",
+	},
+	"tolower": {
+		Detail: "(string).toLower() -> string",
+		Doc:    "Returns the string with all characters converted to lowercase.",
+	},
+	"contains": {
+		Detail: "(string).contains(substr: string) -> bool",
+		Doc:    "Reports whether `substr` is within the string.",
+	},
+	"startswith": {
+		Detail: "(string).startsWith(prefix: string) -> bool",
+		Doc:    "Tests whether the string begins with `prefix`.",
+	},
+	"endswith": {
+		Detail: "(string).endsWith(suffix: string) -> bool",
+		Doc:    "Tests whether the string ends with `suffix`.",
+	},
+	"split": {
+		Detail: "(string).split(separator: string) -> list[string]",
+		Doc:    "Slices the string into all substrings separated by `separator` and returns a list of them.",
+	},
+	"replace": {
+		Detail: "(string).replace(old: string, new: string) -> string",
+		Doc:    "Returns a copy of the string with all occurrences of `old` replaced by `new`.",
+	},
+	"slice": {
+		Detail: "(string).slice(start: number, end?: number) -> string",
+		Doc:    "Returns a substring starting from index `start` up to optional index `end` (or the end of the string).",
+	},
+}
+
+// ListMethodsDocs contient la documentation des méthodes natives sur les listes
+var ListMethodsDocs = map[string]DocItem{
+	"len": {
+		Detail: "(list).len() -> number",
+		Doc:    "Returns the number of elements in the list.",
+	},
+	"join": {
+		Detail: "(list).join(separator: string) -> string",
+		Doc:    "Concatenates the elements of the list to create a single string, using `separator` between elements.",
+	},
+	"contains": {
+		Detail: "(list).contains(item: any) -> bool",
+		Doc:    "Reports whether `item` is present in the list.",
+	},
+	"push": {
+		Detail: "(list).push(item: any) -> void",
+		Doc:    "Appends a new element to the end of the list in place.",
+	},
+	"pop": {
+		Detail: "(list).pop() -> any",
+		Doc:    "Removes and returns the last element of the list.",
+	},
+	"reverse": {
+		Detail: "(list).reverse() -> list",
+		Doc:    "Returns a new list with elements in reverse order.",
+	},
+	"slice": {
+		Detail: "(list).slice(start: number, end?: number) -> list",
+		Doc:    "Returns a new list containing a portion of the list from index `start` up to optional index `end`.",
 	},
 }
 
@@ -298,6 +452,22 @@ var KeywordsDocs = map[string]DocItem{
 		Detail: "<expr> catch <err> [or <fallback>]",
 		Doc:    "Safely traps runtime errors from an expression or action into `<err>` with optional `or <fallback>` value or block.",
 	},
+	"dispatch": {
+		Detail: "dispatch \"<path>\" [, \"<pattern>\"]",
+		Doc:    "Recursively searches and executes subdescriptor rule scripts (defaults to `.rules.xru`) under the given path.",
+	},
+	"match": {
+		Detail: "match <expr> { case <pattern> { ... } default { ... } }",
+		Doc:    "Pattern-matching control flow structure evaluating cases against an expression.",
+	},
+	"case": {
+		Detail: "case <pattern> { ... }",
+		Doc:    "Branch of a `match` statement executed if the expression equals the pattern.",
+	},
+	"default": {
+		Detail: "default { ... }",
+		Doc:    "Fallback branch of a `match` statement executed if no previous `case` matched.",
+	},
 }
 
 // GetDocForWord recherche une documentation complète pour un mot ou une expression membre
@@ -316,6 +486,12 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 					return &methodDoc
 				}
 			}
+			if strDoc, ok := StringMethodsDocs[methodKey]; ok {
+				return &strDoc
+			}
+			if listDoc, ok := ListMethodsDocs[methodKey]; ok {
+				return &listDoc
+			}
 		}
 	}
 
@@ -327,16 +503,17 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 		}
 	}
 
-	// 3. Recherche par méthode d'une unité si mot correspond
-	for _, unitDoc := range BuiltinUnitsDocs {
-		if methodDoc, ok := unitDoc.Methods[targetWord]; ok {
-			return &methodDoc
-		}
-	}
-
-	// 4. Méthodes chirurgicales
+	// 3. Méthodes chirurgicales
 	if surgDoc, ok := SurgicalMethodsDocs[targetWord]; ok {
 		return &surgDoc
+	}
+
+	// 4. Méthodes natives String et List
+	if strDoc, ok := StringMethodsDocs[targetWord]; ok {
+		return &strDoc
+	}
+	if listDoc, ok := ListMethodsDocs[targetWord]; ok {
+		return &listDoc
 	}
 
 	// 5. Mots-clés
@@ -346,6 +523,7 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 
 	return nil
 }
+
 
 func FormatMarkdown(item *DocItem) string {
 	if item == nil {

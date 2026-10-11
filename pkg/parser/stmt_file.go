@@ -5,40 +5,26 @@ import (
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 )
 
-// dispatch_tree "./src", ".rules.xru" { pass mode = mode }
+// dispatch <pathExpr> [, <patternExpr>]
 func (p *Parser) parseDispatchTreeStatement() *ast.DispatchTreeStatement {
 	stmt := &ast.DispatchTreeStatement{
 		Position: p.curToken.Pos,
 		Pattern:  ".rules.xru",
 		PassArgs: make(map[string]ast.Expression),
 	}
-	if p.expectPeek(lexer.STRING) {
-		stmt.Path = p.curToken.Literal
+	p.nextToken() // avance sur le premier argument
+	stmt.PathExpr = p.parseExpression()
+	if strLit, ok := stmt.PathExpr.(*ast.StringLiteral); ok {
+		stmt.Path = strLit.Value
 	}
+
 	if p.peekTokenIs(lexer.COMMA) {
 		p.nextToken() // saute ','
-		if p.expectPeek(lexer.STRING) {
-			stmt.Pattern = p.curToken.Literal
+		p.nextToken() // avance sur l'argument pattern
+		stmt.PatternExpr = p.parseExpression()
+		if strLit, ok := stmt.PatternExpr.(*ast.StringLiteral); ok {
+			stmt.Pattern = strLit.Value
 		}
-	}
-
-	if !p.expectPeek(lexer.LBRACE) {
-		return nil
-	}
-
-	p.nextToken()
-	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
-		if p.curTokenIs(lexer.PASS) || p.curTokenIs(lexer.SET) {
-			if p.expectPeek(lexer.IDENT) {
-				key := p.curToken.Literal
-				if p.expectPeek(lexer.ASSIGN) {
-					p.nextToken() // saute '='
-					valExpr := p.parseExpression()
-					stmt.PassArgs[key] = valExpr
-				}
-			}
-		}
-		p.nextToken()
 	}
 
 	return stmt

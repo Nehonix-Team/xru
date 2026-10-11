@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/lexer"
+	"github.com/Nehonix-Team/xru/pkg/parser"
 )
 
 var (
-	durationRegex             = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(ms|s|m|h)$`)
-	reUnitPropInterpolation   = regexp.MustCompile(`\{&([a-zA-Z_][a-zA-Z0-9_]*)\}`)
-	reInterpolationIdentifier = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+	durationRegex = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(ms|s|m|h)$`)
 )
 
 func (c *Checker) checkExpression(expr ast.Expression) {
@@ -40,50 +40,48 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		}
 
 	case *ast.StringLiteral:
-		if !c.scope.InUnitScope() {
-			matches := reUnitPropInterpolation.FindAllStringSubmatch(e.Value, -1)
-			for _, m := range matches {
-				if len(m) > 1 {
-					varPos := e.Pos()
-					if idx := strings.Index(e.Value, "{&"+m[1]+"}"); idx >= 0 {
-						varPos.Column += 1 + idx + 1
-					}
-					c.addError(varPos, "ERR_INVALID_PROP_ACCESS",
-						fmt.Sprintf("Property access '&%s' is only allowed inside a #UNIT definition", m[1]))
-				}
+		spans := ast.ExtractInterpolations(e.Value)
+		for _, span := range spans {
+			if span.Expr == "" {
+				continue
 			}
-		} else {
-			matches := reUnitPropInterpolation.FindAllStringSubmatch(e.Value, -1)
-			for _, m := range matches {
-				if len(m) > 1 {
-					propName := m[1]
+			varPos := e.Pos()
+			varPos.Column += 1 + span.StartIdx + 1
+
+			if strings.HasPrefix(span.Expr, "&") {
+				propName := strings.TrimPrefix(span.Expr, "&")
+				if !c.scope.InUnitScope() {
+					c.addError(varPos, "ERR_INVALID_PROP_ACCESS",
+						fmt.Sprintf("Property access '&%s' is only allowed inside a #UNIT definition", propName))
+				} else {
 					if _, ok := c.scope.Resolve("&" + propName); !ok {
 						if _, ok2 := c.scope.Resolve(propName); !ok2 {
-							varPos := e.Pos()
-							if idx := strings.Index(e.Value, "{&"+propName+"}"); idx >= 0 {
-								varPos.Column += 1 + idx + 1
-							}
 							c.addError(varPos, "ERR_UNDEFINED_PROPERTY",
 								fmt.Sprintf("Property '&%s' is not defined in this unit", propName))
 						}
 					}
 				}
+				continue
 			}
-		}
-		masked := strings.ReplaceAll(e.Value, "{{", "\x00\x00")
-		masked = strings.ReplaceAll(masked, "}}", "\x01\x01")
-		for _, m := range reInterpolationIdentifier.FindAllStringSubmatch(masked, -1) {
-			if len(m) > 1 {
-				varName := m[1]
-				if sym, ok := c.scope.Resolve(varName); ok {
-					sym.Used = true
-				} else {
-					varPos := e.Pos()
-					if idx := strings.Index(e.Value, "{"+varName+"}"); idx >= 0 {
-						varPos.Column += 1 + idx + 1
-					}
-					c.addError(varPos, "ERR_UNDEFINED_VARIABLE",
-						fmt.Sprintf("Undefined variable '%s' in string interpolation", varName))
+
+			// Analyse et validation de l'expression d'interpolation
+			subLexer := lexer.New(e.Pos().Filename, span.Expr)
+			subParser := parser.New(subLexer)
+			parsedExpr := subParser.ParseExpression()
+			if len(subParser.Errors()) > 0 {
+				c.addError(varPos, "ERR_INVALID_INTERPOLATION",
+					fmt.Sprintf("Syntax error in string interpolation '{%s}': %s", span.Expr, subParser.Errors()[0]))
+				continue
+			}
+
+			errCountBefore := len(c.errors)
+			c.checkExpression(parsedExpr)
+			for i := errCountBefore; i < len(c.errors); i++ {
+				errStr := c.errors[i]
+				idx := strings.Index(errStr, ": [")
+				if idx != -1 {
+					codeAndMsg := errStr[idx+2:]
+					c.errors[i] = fmt.Sprintf("%s: %s", varPos, codeAndMsg)
 				}
 			}
 		}
@@ -97,9 +95,35 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	case *ast.CallExpression:
 		if member, ok := e.Caller.(*ast.MemberExpression); ok {
 			c.checkExpression(member.Object)
+			objType := c.inferType(member.Object)
+			if objType == "string" {
+				if !IsStringMethod(member.Property) {
+					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+						fmt.Sprintf("Method '%s' not found on string", member.Property))
+				}
+				for _, arg := range e.Arguments {
+					c.checkExpression(arg)
+				}
+				return
+			} else if strings.HasPrefix(objType, "list") {
+				if !IsListMethod(member.Property) {
+					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+						fmt.Sprintf("Method '%s' not found on list", member.Property))
+				}
+				for _, arg := range e.Arguments {
+					c.checkExpression(arg)
+				}
+				return
+			}
+
 			if ident, ok := member.Object.(*ast.Identifier); ok {
 				if sym, ok := c.scope.Resolve(ident.Value); ok {
 					sym.Used = true
+					if sym.Kind == SymUnit && !IsBuiltinUnit(sym.Name) && !IsBuiltinUnit(sym.Type) {
+						c.addError(e.Pos(), "ERR_CANNOT_CALL_STATIC",
+							fmt.Sprintf("Cannot call method '%s' directly on unit definition '%s'. You must first instantiate it: 'let instance = @%s()'.", member.Property, sym.Name, sym.Name))
+						return
+					}
 					if strings.HasPrefix(sym.Type, "task") {
 						propLower := strings.ToLower(member.Property)
 						if propLower != "wait" && propLower != "await" && propLower != "result" &&
@@ -117,7 +141,17 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 							}
 						}
 						if unitSym != nil && unitSym.Methods != nil {
-							if targetMethod, methodOk := unitSym.Methods[member.Property]; !methodOk {
+							targetMethod, methodOk := unitSym.Methods[member.Property]
+							if !methodOk {
+								for mName, mSym := range unitSym.Methods {
+									if strings.EqualFold(mName, member.Property) {
+										targetMethod = mSym
+										methodOk = true
+										break
+									}
+								}
+							}
+							if !methodOk {
 								c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
 									fmt.Sprintf("Method '%s' not found on unit '%s'", member.Property, unitSym.Name))
 							} else if targetMethod.Kind == SymFunc {
@@ -131,7 +165,17 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			if sym, ok := c.scope.Resolve(scopeAccess.Scope); ok {
 				sym.Used = true
 				if sym.Kind == SymUnit && len(sym.Methods) > 0 {
-					if targetMethod, methodOk := sym.Methods[scopeAccess.Member]; !methodOk {
+					targetMethod, methodOk := sym.Methods[scopeAccess.Member]
+					if !methodOk {
+						for mName, mSym := range sym.Methods {
+							if strings.EqualFold(mName, scopeAccess.Member) {
+								targetMethod = mSym
+								methodOk = true
+								break
+							}
+						}
+					}
+					if !methodOk {
 						c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
 							fmt.Sprintf("Method '%s' not found on module '%s'", scopeAccess.Member, sym.Name))
 					} else if targetMethod.Kind == SymFunc {
@@ -235,6 +279,23 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 				c.addError(e.Pos(), "ERR_INVALID_WITH_TARGET",
 					fmt.Sprintf("Cannot use module '%s' directly as with target: expected a method or function call (e.g. with %s.fetch(...))", sym.Name, sym.Name))
 			}
+		}
+
+	case *ast.InstantiationExpression:
+		if IsBuiltinUnit(e.UnitName) {
+			c.addError(e.Pos(), "ERR_CANNOT_INSTANTIATE_BUILTIN",
+				fmt.Sprintf("Built-in module '%s' cannot be instantiated with '@'. Use '%s.<method>()' directly.", e.UnitName, e.UnitName))
+			return
+		}
+		if sym, ok := c.scope.Resolve(e.UnitName); ok {
+			sym.Used = true
+			if sym.Kind != SymUnit {
+				c.addError(e.Pos(), "ERR_NOT_A_UNIT",
+					fmt.Sprintf("'%s' is not a unit and cannot be instantiated", e.UnitName))
+			}
+		} else {
+			c.addError(e.Pos(), "ERR_UNDEFINED_UNIT",
+				fmt.Sprintf("Unit '%s' is not defined", e.UnitName))
 		}
 
 	case *ast.RangeExpression:

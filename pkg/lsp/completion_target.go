@@ -10,6 +10,8 @@ type varTargetInfo struct {
 	isTask         bool
 	taskReturnType string
 	unitType       string
+	isString       bool
+	isList         bool
 }
 
 func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
@@ -60,8 +62,18 @@ func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
 				return &varTargetInfo{unitType: strings.TrimSpace(unitName)}
 			}
 
-			// 4. Custom unit type in annotation
-			if typeStr != "" && typeStr != "string" && typeStr != "number" && typeStr != "bool" && typeStr != "duration" && typeStr != "any" {
+			// 4. String type
+			if typeStr == "string" || strings.HasPrefix(valStr, "\"") || strings.HasPrefix(valStr, "'") {
+				return &varTargetInfo{isString: true}
+			}
+
+			// 5. List type
+			if strings.HasPrefix(typeStr, "list") || strings.HasPrefix(valStr, "[") {
+				return &varTargetInfo{isList: true}
+			}
+
+			// 6. Custom unit type in annotation
+			if typeStr != "" && typeStr != "number" && typeStr != "bool" && typeStr != "duration" && typeStr != "any" {
 				return &varTargetInfo{unitType: typeStr}
 			}
 		}

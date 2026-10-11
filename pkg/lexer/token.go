@@ -40,6 +40,7 @@ const (
 	MATCH         TokenType = "match"
 	CASE          TokenType = "case"
 	DEFAULT       TokenType = "default"
+	DISPATCH      TokenType = "dispatch"
 	DISPATCH_TREE TokenType = "dispatch_tree"
 	FILE          TokenType = "file"
 	GLOBAL        TokenType = "global"
@@ -135,6 +136,7 @@ var keywords = map[string]TokenType{
 	"match":         MATCH,
 	"case":          CASE,
 	"default":       DEFAULT,
+	"dispatch":      DISPATCH,
 	"dispatch_tree": DISPATCH_TREE,
 	"file":          FILE,
 	"global":        GLOBAL,

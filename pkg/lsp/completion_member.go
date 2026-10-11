@@ -25,6 +25,13 @@ func (s *Server) handleMemberCompletion(uri string, lines []string, prefixLine s
 	}
 
 	beforeDot := strings.TrimSpace(prefixLine[:dotIdx])
+	if strings.HasSuffix(beforeDot, "\"") || strings.HasSuffix(beforeDot, "'") {
+		return &CompletionList{IsIncomplete: false, Items: getStringCompletionItems()}, true
+	}
+	if strings.HasSuffix(beforeDot, "]") {
+		return &CompletionList{IsIncomplete: false, Items: getListCompletionItems()}, true
+	}
+
 	var unitName string
 	for i := len(beforeDot) - 1; i >= 0; i-- {
 		if !isWordChar(beforeDot[i]) {
@@ -141,6 +148,13 @@ func (s *Server) handleMemberCompletion(uri string, lines []string, prefixLine s
 			return &CompletionList{IsIncomplete: false, Items: items}, true
 		}
 
+		if varInfo.isString {
+			return &CompletionList{IsIncomplete: false, Items: getStringCompletionItems()}, true
+		}
+		if varInfo.isList {
+			return &CompletionList{IsIncomplete: false, Items: getListCompletionItems()}, true
+		}
+
 		if varInfo.unitType != "" {
 			unitMembers := collectUnitMembers(lines, varInfo.unitType)
 			if len(unitMembers) > 0 {
@@ -154,6 +168,7 @@ func (s *Server) handleMemberCompletion(uri string, lines []string, prefixLine s
 	if len(unitMembers) > 0 {
 		return &CompletionList{IsIncomplete: false, Items: unitMembers}, true
 	}
+
 
 	// 2.E Strictly return member items or empty list.
 	// Do NOT fall through to global snippets or keywords after dot!
@@ -242,3 +257,36 @@ func collectUnitMembers(lines []string, unitName string) []CompletionItem {
 
 	return items
 }
+
+func getStringCompletionItems() []CompletionItem {
+	var items []CompletionItem
+	for mName, mDoc := range StringMethodsDocs {
+		items = append(items, CompletionItem{
+			Label:            mName,
+			Kind:             CompletionItemKindMethod,
+			Detail:           mDoc.Detail,
+			Documentation:    MarkupContent{Kind: "markdown", Value: mDoc.Doc},
+			InsertText:       mName + "()",
+			InsertTextFormat: InsertTextFormatPlainText,
+			SortText:         fmt.Sprintf("00_%s", mName),
+		})
+	}
+	return items
+}
+
+func getListCompletionItems() []CompletionItem {
+	var items []CompletionItem
+	for mName, mDoc := range ListMethodsDocs {
+		items = append(items, CompletionItem{
+			Label:            mName,
+			Kind:             CompletionItemKindMethod,
+			Detail:           mDoc.Detail,
+			Documentation:    MarkupContent{Kind: "markdown", Value: mDoc.Doc},
+			InsertText:       mName + "()",
+			InsertTextFormat: InsertTextFormatPlainText,
+			SortText:         fmt.Sprintf("00_%s", mName),
+		})
+	}
+	return items
+}
+

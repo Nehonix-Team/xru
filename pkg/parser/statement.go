@@ -27,7 +27,7 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseIfStatement()
 	case lexer.MATCH:
 		return p.parseMatchStatement()
-	case lexer.DISPATCH_TREE:
+	case lexer.DISPATCH, lexer.DISPATCH_TREE:
 		return p.parseDispatchTreeStatement()
 	case lexer.FILE:
 		return p.parseFileStatement()

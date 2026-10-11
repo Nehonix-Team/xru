@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,14 @@ type Evaluator struct {
 	treeDispatcher TreeDispatcherFunc
 	loadedModules  map[string]*UnitInstance
 	loadingModules map[string]bool
+}
+
+func isBuiltinUnit(name string) bool {
+	switch strings.ToLower(name) {
+	case "std", "net", "fs", "crypto", "sys", "cmd", "path", "local", "json", "math":
+		return true
+	}
+	return false
 }
 
 func NewEvaluator() *Evaluator {
@@ -104,7 +113,11 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		found := false
 		for bName, bUnit := range ev.builtins {
 			if strings.EqualFold(bName, unitName) {
-				if _, exists := env.Get(alias); exists {
+				if existingVal, ok := env.store[alias]; ok {
+					if existingUnit, isUnit := existingVal.(*UnitInstance); isUnit && strings.EqualFold(existingUnit.UnitName, bUnit.UnitName) {
+						found = true
+						break
+					}
 					return nil, fmt.Errorf("module alias '%s' collides with an existing variable or import", alias)
 				}
 				if err := env.Set(alias, bUnit, true); err != nil {
@@ -121,11 +134,12 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 	case *ast.UnitStatement:
 		// Enregistre la définition de l'unité
 		unitInst := &UnitInstance{
-			UnitName:   n.Name,
-			Properties: make(map[string]Value),
-			Methods:    make(map[string]NativeMethod),
-			Directives: make(map[string]NativeDirective),
-			MethodDefs: n.Methods,
+			UnitName:    n.Name,
+			Properties:  make(map[string]Value),
+			Methods:     make(map[string]NativeMethod),
+			Directives:  make(map[string]NativeDirective),
+			MethodDefs:  n.Methods,
+			IsPrototype: true,
 		}
 		for _, prop := range n.Properties {
 			pVal, _ := ev.Eval(prop.Value, env)
@@ -143,6 +157,9 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return unitInst, nil
 	case *ast.InstantiationExpression:
 		// @UnitName()
+		if isBuiltinUnit(n.UnitName) {
+			return nil, fmt.Errorf("built-in module '%s' cannot be instantiated with '@'. Use '%s.<method>()' directly", n.UnitName, n.UnitName)
+		}
 		val, ok := env.Get(n.UnitName)
 		if !ok {
 			return nil, fmt.Errorf("undefined unit '%s'", n.UnitName)
@@ -153,11 +170,12 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		}
 		// Cloner l'instance
 		clone := &UnitInstance{
-			UnitName:   proto.UnitName,
-			Properties: make(map[string]Value),
-			Methods:    make(map[string]NativeMethod),
-			Directives: proto.Directives,
-			MethodDefs: proto.MethodDefs,
+			UnitName:    proto.UnitName,
+			Properties:  make(map[string]Value),
+			Methods:     make(map[string]NativeMethod),
+			Directives:  proto.Directives,
+			MethodDefs:  proto.MethodDefs,
+			IsPrototype: false,
 		}
 		for k, v := range proto.Properties {
 			clone.Properties[k] = v
@@ -187,6 +205,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return ReturnValue{Val: val}, nil
 	case *ast.DispatchTreeStatement:
 		return ev.evalDispatchTree(n, env)
+	case *ast.MatchStatement:
+		return ev.evalMatch(n, env)
 	case *ast.CallExpression:
 		return ev.evalCall(n, env)
 	case *ast.GlobalCallExpression:
@@ -207,7 +227,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		if err != nil {
 			return nil, err
 		}
-		if bVal, ok := condVal.(BoolValue); ok && bVal.Val {
+		if isTruthy(condVal) {
 			return ev.Eval(n.Consequence, env)
 		}
 		return ev.Eval(n.Alternative, env)
@@ -224,6 +244,11 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		if val, ok := env.Get(n.Value); ok {
 			return val, nil
 		}
+		for bName, bUnit := range ev.builtins {
+			if strings.EqualFold(bName, n.Value) {
+				return bUnit, nil
+			}
+		}
 		return nil, fmt.Errorf("undefined identifier '%s'", n.Value)
 	case *ast.PropAccess:
 		if env.unitRef != nil {
@@ -234,33 +259,42 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		}
 		return nil, fmt.Errorf("property '&%s' cannot be accessed outside a unit definition", n.Name)
 	case *ast.StringLiteral:
-		// Interpolation {var} ou {module::prop}
 		res := n.Value
-		for k, v := range env.All() {
-			placeholder := fmt.Sprintf("{%s}", k)
-			res = strings.ReplaceAll(res, placeholder, v.String())
-			if unit, ok := v.(*UnitInstance); ok {
-				for pName, pVal := range unit.Properties {
-					scopedPlaceholder := fmt.Sprintf("{%s::%s}", k, pName)
-					res = strings.ReplaceAll(res, scopedPlaceholder, pVal.String())
+		spans := ast.ExtractInterpolations(n.Value)
+		// Trier de droite à gauche pour que les décalages de sous-chaînes restent valides
+		sort.Slice(spans, func(i, j int) bool {
+			return spans[i].StartIdx > spans[j].StartIdx
+		})
+		for _, span := range spans {
+			if span.Expr == "" {
+				continue
+			}
+			if strings.HasPrefix(span.Expr, "&") {
+				propName := strings.TrimPrefix(span.Expr, "&")
+				if env.unitRef == nil {
+					return NilValue{}, fmt.Errorf("property '&%s' cannot be accessed outside a unit definition", propName)
 				}
+				val, ok := env.unitRef.Properties[propName]
+				if !ok {
+					return NilValue{}, fmt.Errorf("undefined property '&%s' on unit '%s'", propName, env.unitRef.UnitName)
+				}
+				res = res[:span.StartIdx] + val.String() + res[span.EndIdx+1:]
+				continue
 			}
-		}
-		if env.unitRef != nil {
-			for pName, pVal := range env.unitRef.Properties {
-				placeholder := fmt.Sprintf("{&%s}", pName)
-				res = strings.ReplaceAll(res, placeholder, pVal.String())
+
+			// Analyse et évaluation de l'expression d'interpolation
+			subLexer := lexer.New("<interpolation>", span.Expr)
+			subParser := parser.New(subLexer)
+			parsedExpr := subParser.ParseExpression()
+			if len(subParser.Errors()) > 0 {
+				return NilValue{}, fmt.Errorf("syntax error in string interpolation '{%s}': %s", span.Expr, subParser.Errors()[0])
 			}
-			if matches := reUnitPropInterpolation.FindAllStringSubmatch(res, -1); len(matches) > 0 {
-				return NilValue{}, fmt.Errorf("undefined property '&%s' on unit '%s'", matches[0][1], env.unitRef.UnitName)
+
+			val, err := ev.Eval(parsedExpr, env)
+			if err != nil {
+				return NilValue{}, fmt.Errorf("error in string interpolation '{%s}': %w", span.Expr, err)
 			}
-		} else {
-			if matches := reUnitPropInterpolation.FindAllStringSubmatch(res, -1); len(matches) > 0 {
-				return NilValue{}, fmt.Errorf("property '&%s' cannot be accessed outside a unit definition", matches[0][1])
-			}
-		}
-		if unk := findUndefinedInterpolations(res); len(unk) > 0 {
-			return NilValue{}, fmt.Errorf("undefined variable '{%s}' in string interpolation: \"%s\"", strings.Join(unk, ", {"), n.Value)
+			res = res[:span.StartIdx] + val.String() + res[span.EndIdx+1:]
 		}
 		return StringValue{Val: res}, nil
 	case *ast.NumberLiteral:
@@ -287,6 +321,20 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			elements = append(elements, val)
 		}
 		return ListValue{Elements: elements}, nil
+	case *ast.MapLiteral:
+		pairs := make(map[string]Value)
+		for _, p := range n.Pairs {
+			kVal, err := ev.Eval(p.Key, env)
+			if err != nil {
+				return nil, err
+			}
+			vVal, err := ev.Eval(p.Value, env)
+			if err != nil {
+				return nil, err
+			}
+			pairs[kVal.String()] = vVal
+		}
+		return MapValue{Pairs: pairs}, nil
 	case *ast.PrefixExpression:
 		return ev.evalPrefix(n, env)
 	case *ast.InfixExpression:
@@ -352,9 +400,23 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				return nil, fmt.Errorf("validation error in %s:\n  • %s", modDetails.FilePath, strings.Join(c.Errors(), "\n  • "))
 			}
 
-			_, err = ev.Eval(prog, modEnv)
-			if err != nil {
-				return nil, err
+			// Évaluation en mode module : seules les déclarations et variables de module sont évaluées.
+			// Les instructions de script autonomes (appels de fonctions racine, boucles, etc.) ne sont pas exécutées.
+			for _, stmt := range prog.Statements {
+				switch s := stmt.(type) {
+				case *ast.UseStatement, *ast.FromUseStatement, *ast.UnitStatement, *ast.FuncStatement:
+					if _, err := ev.Eval(s, modEnv); err != nil {
+						return nil, err
+					}
+				case *ast.VarStatement:
+					if s.IsGlobal || isDeclarativeExpr(s.Value) {
+						if _, err := ev.Eval(s, modEnv); err != nil {
+							return nil, err
+						}
+					}
+				default:
+					// Les instructions de script racine (ExpressionStatement, ForStatement, etc.) sont ignorées lors d'un import
+				}
 			}
 
 			unitInst := &UnitInstance{
@@ -522,4 +584,16 @@ func findUndefinedInterpolations(str string) []string {
 		}
 	}
 	return undefinedVars
+}
+
+func isDeclarativeExpr(expr ast.Expression) bool {
+	if expr == nil {
+		return true
+	}
+	switch expr.(type) {
+	case *ast.StringLiteral, *ast.NumberLiteral, *ast.BoolLiteral, *ast.DurationLiteral,
+		*ast.ListLiteral, *ast.MapLiteral, *ast.LambdaExpression:
+		return true
+	}
+	return false
 }

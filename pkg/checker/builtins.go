@@ -2,6 +2,14 @@ package checker
 
 import "strings"
 
+func IsBuiltinUnit(name string) bool {
+	switch strings.ToLower(name) {
+	case "std", "net", "fs", "crypto", "sys", "cmd", "path", "local", "json", "math":
+		return true
+	}
+	return false
+}
+
 func (c *Checker) initBuiltinUnits() {
 	netUnit := &Symbol{
 		Name:       "Net",
@@ -48,6 +56,8 @@ func (c *Checker) initBuiltinUnits() {
 		Name: "std",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
+			"log":            {Name: "log", Kind: SymFunc, Type: "void"},
+			"Log":            {Name: "Log", Kind: SymFunc, Type: "void"},
 			"println":        {Name: "println", Kind: SymFunc, Type: "void"},
 			"Println":        {Name: "Println", Kind: SymFunc, Type: "void"},
 			"print":          {Name: "print", Kind: SymFunc, Type: "void"},
@@ -111,6 +121,51 @@ func (c *Checker) initBuiltinUnits() {
 		},
 	}
 
+	pathUnit := &Symbol{
+		Name: "Path",
+		Kind: SymUnit,
+		Methods: map[string]*Symbol{
+			"Join": {Name: "Join", Kind: SymFunc, Type: "string"},
+			"join": {Name: "join", Kind: SymFunc, Type: "string"},
+			"Dir":  {Name: "Dir", Kind: SymFunc, Type: "string"},
+			"dir":  {Name: "dir", Kind: SymFunc, Type: "string"},
+			"Base": {Name: "Base", Kind: SymFunc, Type: "string"},
+			"base": {Name: "base", Kind: SymFunc, Type: "string"},
+			"Ext":  {Name: "Ext", Kind: SymFunc, Type: "string"},
+			"ext":  {Name: "ext", Kind: SymFunc, Type: "string"},
+		},
+	}
+	jsonUnit := &Symbol{
+		Name: "Json",
+		Kind: SymUnit,
+		Methods: map[string]*Symbol{
+			"Parse":     {Name: "Parse", Kind: SymFunc, Type: "any"},
+			"parse":     {Name: "parse", Kind: SymFunc, Type: "any"},
+			"Stringify": {Name: "Stringify", Kind: SymFunc, Type: "string"},
+			"stringify": {Name: "stringify", Kind: SymFunc, Type: "string"},
+		},
+	}
+	mathUnit := &Symbol{
+		Name: "Math",
+		Kind: SymUnit,
+		Methods: map[string]*Symbol{
+			"Round":  {Name: "Round", Kind: SymFunc, Type: "number"},
+			"round":  {Name: "round", Kind: SymFunc, Type: "number"},
+			"Floor":  {Name: "Floor", Kind: SymFunc, Type: "number"},
+			"floor":  {Name: "floor", Kind: SymFunc, Type: "number"},
+			"Ceil":   {Name: "Ceil", Kind: SymFunc, Type: "number"},
+			"ceil":   {Name: "ceil", Kind: SymFunc, Type: "number"},
+			"Abs":    {Name: "Abs", Kind: SymFunc, Type: "number"},
+			"abs":    {Name: "abs", Kind: SymFunc, Type: "number"},
+			"Min":    {Name: "Min", Kind: SymFunc, Type: "number"},
+			"min":    {Name: "min", Kind: SymFunc, Type: "number"},
+			"Max":    {Name: "Max", Kind: SymFunc, Type: "number"},
+			"max":    {Name: "max", Kind: SymFunc, Type: "number"},
+			"Random": {Name: "Random", Kind: SymFunc, Type: "number"},
+			"random": {Name: "random", Kind: SymFunc, Type: "number"},
+		},
+	}
+
 	c.availableModules["Net"] = netUnit
 	c.availableModules["Fs"] = fsUnit
 	c.availableModules["std"] = stdUnit
@@ -119,6 +174,12 @@ func (c *Checker) initBuiltinUnits() {
 	c.availableModules["Cmd"] = cmdUnit
 	c.availableModules["Crypto"] = cryptoUnit
 	c.availableModules["Local"] = localUnit
+	c.availableModules["Path"] = pathUnit
+	c.availableModules["path"] = pathUnit
+	c.availableModules["Json"] = jsonUnit
+	c.availableModules["json"] = jsonUnit
+	c.availableModules["Math"] = mathUnit
+	c.availableModules["math"] = mathUnit
 
 	topLevelFuncs := []string{
 		"Drop", "drop", "Keep", "keep",
@@ -138,3 +199,21 @@ func (c *Checker) DefineUnit(name string) {
 		}
 	}
 }
+
+func IsStringMethod(name string) bool {
+	switch strings.ToLower(name) {
+	case "len", "trim", "trimleft", "trimright", "toupper", "tolower",
+		"contains", "startswith", "endswith", "split", "replace", "slice":
+		return true
+	}
+	return false
+}
+
+func IsListMethod(name string) bool {
+	switch strings.ToLower(name) {
+	case "len", "join", "contains", "push", "pop", "reverse", "slice":
+		return true
+	}
+	return false
+}
+

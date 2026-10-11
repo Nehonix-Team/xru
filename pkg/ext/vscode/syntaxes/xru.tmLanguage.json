@@ -175,7 +175,7 @@
       "patterns": [
         {
           "name": "keyword.control.xru",
-          "match": "\\b(if|elif|else|match|case|default|for|in|return|with|catch|or|then|file|dispatch_tree|pass)\\b"
+          "match": "\\b(if|elif|else|match|case|default|for|in|return|with|catch|or|then|file|dispatch|dispatch_tree|pass)\\b"
         }
       ]
     },
@@ -191,7 +191,7 @@
       "patterns": [
         {
           "name": "support.class.builtin.xru",
-          "match": "\\b(std|Std|Fs|Net|Crypto|Local|Sys|Path)\\b"
+          "match": "\\b(std|Std|Fs|Net|Crypto|Local|Sys|Path|Json|Math)\\b"
         },
         {
           "name": "support.function.builtin.xru",

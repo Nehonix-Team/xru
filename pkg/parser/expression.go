@@ -59,6 +59,10 @@ func (p *Parser) curPrecedence() int {
 	return LOWEST
 }
 
+func (p *Parser) ParseExpression() ast.Expression {
+	return p.parseExpressionWithPrecedence(LOWEST)
+}
+
 func (p *Parser) parseExpression() ast.Expression {
 	return p.parseExpressionWithPrecedence(LOWEST)
 }

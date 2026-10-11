@@ -646,6 +646,96 @@ unit TemplateManager {
 	}
 }
 
+func TestMatchStatementChecker(t *testing.T) {
+	// Undefined variable in match target
+	code := `
+match undefinedVar {
+    case "test" {
+        let x = 1
+    }
+}
+`
+	l := lexer.New("test_match_chk.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+
+	foundUndefined := false
+	for _, e := range c.Errors() {
+		if strings.Contains(e, "ERR_UNDEFINED_VARIABLE") && strings.Contains(e, "undefinedVar") {
+			foundUndefined = true
+			break
+		}
+	}
+	if !foundUndefined {
+		t.Errorf("Expected ERR_UNDEFINED_VARIABLE for match undefinedVar, got: %v", c.Errors())
+	}
+}
+
+func TestStringAndListMethodChecker(t *testing.T) {
+	// Valid calls
+	goodCode := `
+let s = "hello"
+let trimmed = s.trim()
+let upper = s.toUpper()
+let has = s.contains("ll")
+
+let list = ["a", "b"]
+let l = list.len()
+let joined = list.join("-")
+`
+	l1 := lexer.New("good.xru", goodCode)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	c1 := checker.New()
+	c1.Check(prog1)
+	if len(c1.Errors()) > 0 {
+		t.Fatalf("Expected 0 checker errors for valid string/list methods, got: %v", c1.Errors())
+	}
+
+	// Invalid method on string
+	badCode := `
+let s = "hello"
+s.nonExistentMethod()
+`
+	l2 := lexer.New("bad_str_m.xru", badCode)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+
+	foundUnknown := false
+	for _, e := range c2.Errors() {
+		if strings.Contains(e, "ERR_UNKNOWN_METHOD") {
+			foundUnknown = true
+			break
+		}
+	}
+	if !foundUnknown {
+		t.Errorf("Expected ERR_UNKNOWN_METHOD for nonExistentMethod, got: %v", c2.Errors())
+	}
+}
+
+func TestModernDispatchChecker(t *testing.T) {
+	code := `
+dispatch "./src"
+dispatch "./src", ".rules.xru"
+`
+	l := lexer.New("dispatch.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Expected 0 checker errors for dispatch, got: %v", c.Errors())
+	}
+}
+
+
 
 
 

@@ -86,6 +86,38 @@ func (c *Checker) inferType(expr ast.Expression) string {
 		return "any"
 	case *ast.CallExpression:
 		if member, ok := e.Caller.(*ast.MemberExpression); ok {
+			objType := c.inferType(member.Object)
+			if objType == "string" {
+				switch strings.ToLower(member.Property) {
+				case "len":
+					return "number"
+				case "contains", "startswith", "endswith":
+					return "bool"
+				case "split":
+					return "list[string]"
+				case "trim", "trimleft", "trimright", "toupper", "tolower", "replace", "slice":
+					return "string"
+				}
+			} else if strings.HasPrefix(objType, "list") {
+				switch strings.ToLower(member.Property) {
+				case "len":
+					return "number"
+				case "join":
+					return "string"
+				case "contains":
+					return "bool"
+				case "push":
+					return "void"
+				case "pop":
+					if strings.HasPrefix(objType, "list[") && strings.HasSuffix(objType, "]") {
+						return strings.TrimSuffix(strings.TrimPrefix(objType, "list["), "]")
+					}
+					return "any"
+				case "reverse", "slice":
+					return objType
+				}
+			}
+
 			if ident, ok := member.Object.(*ast.Identifier); ok {
 				if sym, ok := c.scope.Resolve(ident.Value); ok {
 					if strings.HasPrefix(sym.Type, "task") {

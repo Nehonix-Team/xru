@@ -164,25 +164,6 @@ func (cfg *ModConfig) ResolveModule(namespace, modName string) (*ModuleDetails, 
 		return nil, err
 	}
 
-	if modName == "all" {
-		allExports := make(map[string]*ExportedMember)
-		var firstFilePath string
-		for _, m := range mods {
-			if firstFilePath == "" {
-				firstFilePath = m.FilePath
-			}
-			for k, v := range m.Exports {
-				allExports[k] = v
-			}
-		}
-		return &ModuleDetails{
-			Name:      "all",
-			Namespace: namespace,
-			FilePath:  firstFilePath,
-			Exports:   allExports,
-		}, nil
-	}
-
 	modDetails, ok := mods[modName]
 	if !ok {
 		return nil, fmt.Errorf("module '%s' not found in namespace '%s'", modName, namespace)

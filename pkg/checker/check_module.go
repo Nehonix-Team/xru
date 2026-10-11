@@ -114,6 +114,12 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 				Pos:     s.Pos(),
 				Methods: methods,
 			}
+			if existing, ok := c.scope.Resolve(modName); ok && existing.Pos.Line == 0 {
+				existing.Kind = SymUnit
+				existing.Methods = methods
+				existing.Pos = s.Pos()
+				continue
+			}
 			if err := c.scope.Define(modSym); err != nil {
 				c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 			}
@@ -149,6 +155,13 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 			Type:   exp.Type,
 			Params: exp.Params,
 			Pos:    s.Pos(),
+		}
+		if existing, ok := c.scope.Resolve(s.Member); ok && existing.Pos.Line == 0 {
+			existing.Kind = symKind
+			existing.Type = exp.Type
+			existing.Params = exp.Params
+			existing.Pos = s.Pos()
+			return
 		}
 		if err := c.scope.Define(memberSym); err != nil {
 			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())

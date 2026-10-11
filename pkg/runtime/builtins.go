@@ -642,7 +642,7 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			},
 			"Stringify": func(args []Value) (Value, error) {
 				if len(args) < 1 {
-					return StringValue{Val: "null"}, nil
+					return NilValue{}, fmt.Errorf("Json.Stringify requires 1 argument")
 				}
 				goVal := xruValueToGoValue(args[0])
 				b, err := json.Marshal(goVal)
@@ -663,46 +663,64 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		Methods: map[string]NativeMethod{
 			"Round": func(args []Value) (Value, error) {
 				if len(args) < 1 {
-					return NumberValue{Val: 0}, nil
+					return NilValue{}, fmt.Errorf("Math.Round requires 1 number argument, got 0")
 				}
-				n, _ := args[0].(NumberValue)
+				n, ok := args[0].(NumberValue)
+				if !ok {
+					return NilValue{}, fmt.Errorf("Math.Round expects number argument, got %s", args[0].Type())
+				}
 				return NumberValue{Val: math.Round(n.Val)}, nil
 			},
 			"Floor": func(args []Value) (Value, error) {
 				if len(args) < 1 {
-					return NumberValue{Val: 0}, nil
+					return NilValue{}, fmt.Errorf("Math.Floor requires 1 number argument, got 0")
 				}
-				n, _ := args[0].(NumberValue)
+				n, ok := args[0].(NumberValue)
+				if !ok {
+					return NilValue{}, fmt.Errorf("Math.Floor expects number argument, got %s", args[0].Type())
+				}
 				return NumberValue{Val: math.Floor(n.Val)}, nil
 			},
 			"Ceil": func(args []Value) (Value, error) {
 				if len(args) < 1 {
-					return NumberValue{Val: 0}, nil
+					return NilValue{}, fmt.Errorf("Math.Ceil requires 1 number argument, got 0")
 				}
-				n, _ := args[0].(NumberValue)
+				n, ok := args[0].(NumberValue)
+				if !ok {
+					return NilValue{}, fmt.Errorf("Math.Ceil expects number argument, got %s", args[0].Type())
+				}
 				return NumberValue{Val: math.Ceil(n.Val)}, nil
 			},
 			"Abs": func(args []Value) (Value, error) {
 				if len(args) < 1 {
-					return NumberValue{Val: 0}, nil
+					return NilValue{}, fmt.Errorf("Math.Abs requires 1 number argument, got 0")
 				}
-				n, _ := args[0].(NumberValue)
+				n, ok := args[0].(NumberValue)
+				if !ok {
+					return NilValue{}, fmt.Errorf("Math.Abs expects number argument, got %s", args[0].Type())
+				}
 				return NumberValue{Val: math.Abs(n.Val)}, nil
 			},
 			"Min": func(args []Value) (Value, error) {
 				if len(args) < 2 {
 					return NilValue{}, fmt.Errorf("Math.Min requires 2 numbers")
 				}
-				a, _ := args[0].(NumberValue)
-				b, _ := args[1].(NumberValue)
+				a, ok1 := args[0].(NumberValue)
+				b, ok2 := args[1].(NumberValue)
+				if !ok1 || !ok2 {
+					return NilValue{}, fmt.Errorf("Math.Min expects number arguments")
+				}
 				return NumberValue{Val: math.Min(a.Val, b.Val)}, nil
 			},
 			"Max": func(args []Value) (Value, error) {
 				if len(args) < 2 {
 					return NilValue{}, fmt.Errorf("Math.Max requires 2 numbers")
 				}
-				a, _ := args[0].(NumberValue)
-				b, _ := args[1].(NumberValue)
+				a, ok1 := args[0].(NumberValue)
+				b, ok2 := args[1].(NumberValue)
+				if !ok1 || !ok2 {
+					return NilValue{}, fmt.Errorf("Math.Max expects number arguments")
+				}
 				return NumberValue{Val: math.Max(a.Val, b.Val)}, nil
 			},
 			"Random": func(args []Value) (Value, error) {
@@ -719,6 +737,9 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
 			"Join": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return NilValue{}, fmt.Errorf("Path.Join requires at least 1 path argument, got 0")
+				}
 				var parts []string
 				for _, a := range args {
 					parts = append(parts, a.String())
@@ -727,19 +748,19 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			},
 			"Dir": func(args []Value) (Value, error) {
 				if len(args) < 1 {
-					return StringValue{Val: "."}, nil
+					return NilValue{}, fmt.Errorf("Path.Dir requires 1 string argument, got 0")
 				}
 				return StringValue{Val: filepath.Dir(args[0].String())}, nil
 			},
 			"Base": func(args []Value) (Value, error) {
 				if len(args) < 1 {
-					return StringValue{Val: ""}, nil
+					return NilValue{}, fmt.Errorf("Path.Base requires 1 string argument, got 0")
 				}
 				return StringValue{Val: filepath.Base(args[0].String())}, nil
 			},
 			"Ext": func(args []Value) (Value, error) {
 				if len(args) < 1 {
-					return StringValue{Val: ""}, nil
+					return NilValue{}, fmt.Errorf("Path.Ext requires 1 string argument, got 0")
 				}
 				return StringValue{Val: filepath.Ext(args[0].String())}, nil
 			},

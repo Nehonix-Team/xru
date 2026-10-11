@@ -28,6 +28,8 @@ type Symbol struct {
 	Params     []*ast.Parameter   // Pour les fonctions : paramètres
 	Methods    map[string]*Symbol // Pour les #UNIT : méthodes exposées
 	Used       bool               // Indique si le symbole a été utilisé
+	MinArgs    int                // Nombre minimum d'arguments obligatoires
+	IsVariadic bool               // Vrai si accepte des arguments supplémentaires
 }
 
 type Scope struct {

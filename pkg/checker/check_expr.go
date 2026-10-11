@@ -159,7 +159,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 								c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
 									fmt.Sprintf("Method '%s' not found on unit '%s'", member.Property, unitSym.Name))
 							} else if targetMethod.Kind == SymFunc {
-								c.validateCallArgs(e, member.Property, targetMethod.Params)
+								c.validateCallArgs(e, member.Property, targetMethod)
 							}
 						}
 					}
@@ -183,7 +183,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 						c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
 							fmt.Sprintf("Method '%s' not found on module '%s'", scopeAccess.Member, sym.Name))
 					} else if targetMethod.Kind == SymFunc {
-						c.validateCallArgs(e, scopeAccess.Member, targetMethod.Params)
+						c.validateCallArgs(e, scopeAccess.Member, targetMethod)
 					}
 				}
 			} else {
@@ -194,7 +194,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			if sym, ok := c.scope.Resolve(ident.Value); ok {
 				sym.Used = true
 				if sym.Kind == SymFunc {
-					c.validateCallArgs(e, ident.Value, sym.Params)
+					c.validateCallArgs(e, ident.Value, sym)
 				}
 			} else {
 				c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
@@ -329,21 +329,35 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	}
 }
 
-func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, params []*ast.Parameter) {
-	if params == nil {
+func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, sym *Symbol) {
+	if sym == nil || (sym.Params == nil && sym.MinArgs == 0 && !sym.IsVariadic) {
 		return
 	}
-	expectedCount := len(params)
 	actualCount := len(call.Arguments)
-	if actualCount != expectedCount {
-		c.addError(call.Pos(), "ERR_ARG_COUNT",
-			fmt.Sprintf("Function '%s' expects %d arguments, but got %d", name, expectedCount, actualCount))
-		return
+	expectedCount := len(sym.Params)
+	minArgs := expectedCount
+	if sym.MinArgs > 0 || (sym.MinArgs == 0 && sym.IsVariadic) {
+		minArgs = sym.MinArgs
 	}
-	for i, param := range params {
-		if param.Type != "" && param.Type != "any" {
+
+	if sym.IsVariadic {
+		if actualCount < minArgs {
+			c.addError(call.Pos(), "ERR_ARG_COUNT",
+				fmt.Sprintf("Function '%s' expects at least %d argument(s), but got %d", name, minArgs, actualCount))
+			return
+		}
+	} else {
+		if actualCount != expectedCount {
+			c.addError(call.Pos(), "ERR_ARG_COUNT",
+				fmt.Sprintf("Function '%s' expects %d argument(s), but got %d", name, expectedCount, actualCount))
+			return
+		}
+	}
+
+	for i, param := range sym.Params {
+		if i < actualCount && param.Type != "" && param.Type != "any" {
 			argType := c.inferType(call.Arguments[i])
-			if !isTypeCompatible(param.Type, argType) {
+			if argType != "any" && !isTypeCompatible(param.Type, argType) {
 				c.addError(call.Arguments[i].Pos(), "ERR_TYPE_MISMATCH",
 					fmt.Sprintf("Argument %d ('%s') of function '%s' expects type '%s', got '%s'", i+1, param.Name, name, param.Type, argType))
 			}

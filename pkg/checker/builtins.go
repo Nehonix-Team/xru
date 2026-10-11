@@ -1,6 +1,10 @@
 package checker
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Nehonix-Team/xru/pkg/ast"
+)
 
 func IsBuiltinUnit(name string) bool {
 	switch strings.ToLower(name) {
@@ -29,85 +33,85 @@ func (c *Checker) initBuiltinUnits() {
 		Kind:       SymUnit,
 		Directives: map[string]bool{"set": true},
 		Methods: map[string]*Symbol{
-			"Exists":    {Name: "Exists", Kind: SymFunc, Type: "bool"},
-			"exists":    {Name: "exists", Kind: SymFunc, Type: "bool"},
-			"IsDir":     {Name: "IsDir", Kind: SymFunc, Type: "bool"},
-			"isDir":     {Name: "isDir", Kind: SymFunc, Type: "bool"},
-			"IsFile":    {Name: "IsFile", Kind: SymFunc, Type: "bool"},
-			"isFile":    {Name: "isFile", Kind: SymFunc, Type: "bool"},
-			"Read":      {Name: "Read", Kind: SymFunc, Type: "string"},
-			"read":      {Name: "read", Kind: SymFunc, Type: "string"},
-			"Size":      {Name: "Size", Kind: SymFunc, Type: "number"},
-			"size":      {Name: "size", Kind: SymFunc, Type: "number"},
-			"Remove":    {Name: "Remove", Kind: SymFunc, Type: "void"},
-			"remove":    {Name: "remove", Kind: SymFunc, Type: "void"},
-			"Move":      {Name: "Move", Kind: SymFunc, Type: "void"},
-			"move":      {Name: "move", Kind: SymFunc, Type: "void"},
-			"Copy":      {Name: "Copy", Kind: SymFunc, Type: "void"},
-			"copy":      {Name: "copy", Kind: SymFunc, Type: "void"},
-			"Write":     {Name: "Write", Kind: SymFunc, Type: "bool"},
-			"write":     {Name: "write", Kind: SymFunc, Type: "bool"},
-			"EnsureDir": {Name: "EnsureDir", Kind: SymFunc, Type: "void"},
-			"ensureDir": {Name: "ensureDir", Kind: SymFunc, Type: "void"},
-			"ensuredir": {Name: "ensuredir", Kind: SymFunc, Type: "void"},
+			"Exists":    {Name: "Exists", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"exists":    {Name: "exists", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"IsDir":     {Name: "IsDir", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"isDir":     {Name: "isDir", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"IsFile":    {Name: "IsFile", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"isFile":    {Name: "isFile", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"Read":      {Name: "Read", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"read":      {Name: "read", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"Size":      {Name: "Size", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"size":      {Name: "size", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"Remove":    {Name: "Remove", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"remove":    {Name: "remove", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"Move":      {Name: "Move", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "src", Type: "string"}, {Name: "dst", Type: "string"}}},
+			"move":      {Name: "move", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "src", Type: "string"}, {Name: "dst", Type: "string"}}},
+			"Copy":      {Name: "Copy", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "src", Type: "string"}, {Name: "dst", Type: "string"}}},
+			"copy":      {Name: "copy", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "src", Type: "string"}, {Name: "dst", Type: "string"}}},
+			"Write":     {Name: "Write", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}, {Name: "content", Type: "string"}}},
+			"write":     {Name: "write", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}, {Name: "content", Type: "string"}}},
+			"EnsureDir": {Name: "EnsureDir", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"ensureDir": {Name: "ensureDir", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"ensuredir": {Name: "ensuredir", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
 		},
 	}
 	stdUnit := &Symbol{
 		Name: "std",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"log":            {Name: "log", Kind: SymFunc, Type: "void"},
-			"Log":            {Name: "Log", Kind: SymFunc, Type: "void"},
-			"println":        {Name: "println", Kind: SymFunc, Type: "void"},
-			"Println":        {Name: "Println", Kind: SymFunc, Type: "void"},
-			"print":          {Name: "print", Kind: SymFunc, Type: "void"},
-			"Print":          {Name: "Print", Kind: SymFunc, Type: "void"},
-			"info":           {Name: "info", Kind: SymFunc, Type: "void"},
-			"Info":           {Name: "Info", Kind: SymFunc, Type: "void"},
-			"success":        {Name: "success", Kind: SymFunc, Type: "void"},
-			"Success":        {Name: "Success", Kind: SymFunc, Type: "void"},
-			"warn":           {Name: "warn", Kind: SymFunc, Type: "void"},
-			"Warn":           {Name: "Warn", Kind: SymFunc, Type: "void"},
-			"error":          {Name: "error", Kind: SymFunc, Type: "void"},
-			"Error":          {Name: "Error", Kind: SymFunc, Type: "void"},
+			"log":     {Name: "log", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "any"}}, IsVariadic: true, MinArgs: 1},
+			"Log":     {Name: "Log", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "any"}}, IsVariadic: true, MinArgs: 1},
+			"println": {Name: "println", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "any"}}, IsVariadic: true, MinArgs: 1},
+			"Println": {Name: "Println", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "any"}}, IsVariadic: true, MinArgs: 1},
+			"print":   {Name: "print", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "any"}}, IsVariadic: true, MinArgs: 1},
+			"Print":   {Name: "Print", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "any"}}, IsVariadic: true, MinArgs: 1},
+			"info":    {Name: "info", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
+			"Info":    {Name: "Info", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
+			"success": {Name: "success", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
+			"Success": {Name: "Success", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
+			"warn":    {Name: "warn", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
+			"Warn":    {Name: "Warn", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
+			"error":   {Name: "error", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
+			"Error":   {Name: "Error", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
 		},
 	}
 	sysUnit := &Symbol{
 		Name: "Sys",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"GetEnv": {Name: "GetEnv", Kind: SymFunc, Type: "string"},
-			"getEnv": {Name: "getEnv", Kind: SymFunc, Type: "string"},
-			"Os":     {Name: "Os", Kind: SymFunc, Type: "string"},
-			"os":     {Name: "os", Kind: SymFunc, Type: "string"},
-			"Arch":   {Name: "Arch", Kind: SymFunc, Type: "string"},
-			"arch":   {Name: "arch", Kind: SymFunc, Type: "string"},
+			"GetEnv": {Name: "GetEnv", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "key", Type: "string"}}},
+			"getEnv": {Name: "getEnv", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "key", Type: "string"}}},
+			"Os":     {Name: "Os", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"os":     {Name: "os", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"Arch":   {Name: "Arch", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"arch":   {Name: "arch", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 		},
 	}
 	cmdUnit := &Symbol{
 		Name: "Cmd",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"Exec": {Name: "Exec", Kind: SymFunc, Type: "string"},
-			"exec": {Name: "exec", Kind: SymFunc, Type: "string"},
+			"Exec": {Name: "Exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}}},
+			"exec": {Name: "exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}}},
 		},
 	}
 	cryptoUnit := &Symbol{
 		Name: "Crypto",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"GetRandomBytes": {Name: "GetRandomBytes", Kind: SymFunc, Type: "string"},
-			"getRandomBytes": {Name: "getRandomBytes", Kind: SymFunc, Type: "string"},
-			"RandomBytes":    {Name: "RandomBytes", Kind: SymFunc, Type: "string"},
-			"randomBytes":    {Name: "randomBytes", Kind: SymFunc, Type: "string"},
-			"RandomHex":      {Name: "RandomHex", Kind: SymFunc, Type: "string"},
-			"randomHex":      {Name: "randomHex", Kind: SymFunc, Type: "string"},
-			"RandomBase64":   {Name: "RandomBase64", Kind: SymFunc, Type: "string"},
-			"randomBase64":   {Name: "randomBase64", Kind: SymFunc, Type: "string"},
-			"Sha256":         {Name: "Sha256", Kind: SymFunc, Type: "string"},
-			"sha256":         {Name: "sha256", Kind: SymFunc, Type: "string"},
-			"Uuid":           {Name: "Uuid", Kind: SymFunc, Type: "string"},
-			"uuid":           {Name: "uuid", Kind: SymFunc, Type: "string"},
+			"GetRandomBytes": {Name: "GetRandomBytes", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "length", Type: "number"}}},
+			"getRandomBytes": {Name: "getRandomBytes", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "length", Type: "number"}}},
+			"RandomBytes":    {Name: "RandomBytes", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "length", Type: "number"}}},
+			"randomBytes":    {Name: "randomBytes", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "length", Type: "number"}}},
+			"RandomHex":      {Name: "RandomHex", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "length", Type: "number"}}},
+			"randomHex":      {Name: "randomHex", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "length", Type: "number"}}},
+			"RandomBase64":   {Name: "RandomBase64", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "length", Type: "number"}}},
+			"randomBase64":   {Name: "randomBase64", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "length", Type: "number"}}},
+			"Sha256":         {Name: "Sha256", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "data", Type: "string"}}},
+			"sha256":         {Name: "sha256", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "data", Type: "string"}}},
+			"Uuid":           {Name: "Uuid", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"uuid":           {Name: "uuid", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 		},
 	}
 
@@ -115,9 +119,9 @@ func (c *Checker) initBuiltinUnits() {
 		Name: "Local",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"Keep":       {Name: "Keep", Kind: SymFunc, Type: "void"},
-			"Drop":       {Name: "Drop", Kind: SymFunc, Type: "void"},
-			"UseVariant": {Name: "UseVariant", Kind: SymFunc, Type: "void"},
+			"Keep":       {Name: "Keep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "files", Type: "list"}}},
+			"Drop":       {Name: "Drop", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "patterns", Type: "list"}}},
+			"UseVariant": {Name: "UseVariant", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "variant", Type: "string"}}},
 		},
 	}
 
@@ -125,44 +129,44 @@ func (c *Checker) initBuiltinUnits() {
 		Name: "Path",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"Join": {Name: "Join", Kind: SymFunc, Type: "string"},
-			"join": {Name: "join", Kind: SymFunc, Type: "string"},
-			"Dir":  {Name: "Dir", Kind: SymFunc, Type: "string"},
-			"dir":  {Name: "dir", Kind: SymFunc, Type: "string"},
-			"Base": {Name: "Base", Kind: SymFunc, Type: "string"},
-			"base": {Name: "base", Kind: SymFunc, Type: "string"},
-			"Ext":  {Name: "Ext", Kind: SymFunc, Type: "string"},
-			"ext":  {Name: "ext", Kind: SymFunc, Type: "string"},
+			"Join": {Name: "Join", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}, IsVariadic: true, MinArgs: 1},
+			"join": {Name: "join", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}, IsVariadic: true, MinArgs: 1},
+			"Dir":  {Name: "Dir", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"dir":  {Name: "dir", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"Base": {Name: "Base", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"base": {Name: "base", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"Ext":  {Name: "Ext", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"ext":  {Name: "ext", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
 		},
 	}
 	jsonUnit := &Symbol{
 		Name: "Json",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"Parse":     {Name: "Parse", Kind: SymFunc, Type: "any"},
-			"parse":     {Name: "parse", Kind: SymFunc, Type: "any"},
-			"Stringify": {Name: "Stringify", Kind: SymFunc, Type: "string"},
-			"stringify": {Name: "stringify", Kind: SymFunc, Type: "string"},
+			"Parse":     {Name: "Parse", Kind: SymFunc, Type: "any", Params: []*ast.Parameter{{Name: "jsonStr", Type: "string"}}},
+			"parse":     {Name: "parse", Kind: SymFunc, Type: "any", Params: []*ast.Parameter{{Name: "jsonStr", Type: "string"}}},
+			"Stringify": {Name: "Stringify", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "val", Type: "any"}}},
+			"stringify": {Name: "stringify", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "val", Type: "any"}}},
 		},
 	}
 	mathUnit := &Symbol{
 		Name: "Math",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"Round":  {Name: "Round", Kind: SymFunc, Type: "number"},
-			"round":  {Name: "round", Kind: SymFunc, Type: "number"},
-			"Floor":  {Name: "Floor", Kind: SymFunc, Type: "number"},
-			"floor":  {Name: "floor", Kind: SymFunc, Type: "number"},
-			"Ceil":   {Name: "Ceil", Kind: SymFunc, Type: "number"},
-			"ceil":   {Name: "ceil", Kind: SymFunc, Type: "number"},
-			"Abs":    {Name: "Abs", Kind: SymFunc, Type: "number"},
-			"abs":    {Name: "abs", Kind: SymFunc, Type: "number"},
-			"Min":    {Name: "Min", Kind: SymFunc, Type: "number"},
-			"min":    {Name: "min", Kind: SymFunc, Type: "number"},
-			"Max":    {Name: "Max", Kind: SymFunc, Type: "number"},
-			"max":    {Name: "max", Kind: SymFunc, Type: "number"},
-			"Random": {Name: "Random", Kind: SymFunc, Type: "number"},
-			"random": {Name: "random", Kind: SymFunc, Type: "number"},
+			"Round":  {Name: "Round", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "n", Type: "number"}}},
+			"round":  {Name: "round", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "n", Type: "number"}}},
+			"Floor":  {Name: "Floor", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "n", Type: "number"}}},
+			"floor":  {Name: "floor", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "n", Type: "number"}}},
+			"Ceil":   {Name: "Ceil", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "n", Type: "number"}}},
+			"ceil":   {Name: "ceil", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "n", Type: "number"}}},
+			"Abs":    {Name: "Abs", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "n", Type: "number"}}},
+			"abs":    {Name: "abs", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "n", Type: "number"}}},
+			"Min":    {Name: "Min", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "a", Type: "number"}, {Name: "b", Type: "number"}}},
+			"min":    {Name: "min", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "a", Type: "number"}, {Name: "b", Type: "number"}}},
+			"Max":    {Name: "Max", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "a", Type: "number"}, {Name: "b", Type: "number"}}},
+			"max":    {Name: "max", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "a", Type: "number"}, {Name: "b", Type: "number"}}},
+			"Random": {Name: "Random", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{}},
+			"random": {Name: "random", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{}},
 		},
 	}
 
@@ -181,13 +185,25 @@ func (c *Checker) initBuiltinUnits() {
 	c.availableModules["Math"] = mathUnit
 	c.availableModules["math"] = mathUnit
 
-	topLevelFuncs := []string{
-		"Drop", "drop", "Keep", "keep",
-		"replace", "replaceLine", "remove", "removeLines", "removeBlock",
-		"removeUntil", "commentOut", "append", "prepend", "jsonSet", "jsonRemove",
+	topLevelFuncs := map[string]*Symbol{
+		"Drop":        {Name: "Drop", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "patterns", Type: "list"}}},
+		"drop":        {Name: "drop", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "patterns", Type: "list"}}},
+		"Keep":        {Name: "Keep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "files", Type: "list"}}},
+		"keep":        {Name: "keep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "files", Type: "list"}}},
+		"replace":     {Name: "replace", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "target", Type: "string"}, {Name: "replacement", Type: "string"}}},
+		"replaceLine": {Name: "replaceLine", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "pattern", Type: "string"}, {Name: "replacement", Type: "string"}}},
+		"remove":      {Name: "remove", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "target", Type: "string"}}},
+		"removeLines": {Name: "removeLines", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "pattern", Type: "string"}}},
+		"removeBlock": {Name: "removeBlock", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "start", Type: "string"}, {Name: "end", Type: "string"}}},
+		"removeUntil": {Name: "removeUntil", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "start", Type: "string"}, {Name: "until", Type: "string"}}},
+		"commentOut":  {Name: "commentOut", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "pattern", Type: "string"}}},
+		"append":      {Name: "append", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "content", Type: "string"}}},
+		"prepend":     {Name: "prepend", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "content", Type: "string"}}},
+		"jsonSet":     {Name: "jsonSet", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "keyPath", Type: "string"}, {Name: "value", Type: "any"}}},
+		"jsonRemove":  {Name: "jsonRemove", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "keyPath", Type: "string"}}},
 	}
-	for _, fn := range topLevelFuncs {
-		c.scope.Define(&Symbol{Name: fn, Kind: SymFunc, Type: "any"})
+	for _, sym := range topLevelFuncs {
+		c.scope.Define(sym)
 	}
 }
 

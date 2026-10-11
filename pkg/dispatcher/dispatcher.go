@@ -232,8 +232,11 @@ func (d *Dispatcher) injectLocalPrimitives(dir string, descriptorPath string, en
 	env.Set("Local", scopeUnit, true)
 	// Raccourcis directs
 	env.Set("Keep", runtime.FunctionValue{Name: "Keep", Fn: keepMethod}, true)
+	env.Set("keep", runtime.FunctionValue{Name: "keep", Fn: keepMethod}, true)
 	env.Set("Drop", runtime.FunctionValue{Name: "Drop", Fn: dropMethod}, true)
+	env.Set("drop", runtime.FunctionValue{Name: "drop", Fn: dropMethod}, true)
 	env.Set("UseVariant", runtime.FunctionValue{Name: "UseVariant", Fn: useVariantMethod}, true)
+	env.Set("useVariant", runtime.FunctionValue{Name: "useVariant", Fn: useVariantMethod}, true)
 }
 
 // validateSandbox garantit qu'aucune opération ne remonte au-delà du dossier local

@@ -435,11 +435,16 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		}
 
 		startIndex := loc[0]
-		openIndex := strings.Index(content[loc[1]:], openChar)
-		if openIndex == -1 {
-			return BoolValue{Val: false}, nil
+		var curr int
+		if idx := strings.Index(content[loc[0]:loc[1]], openChar); idx != -1 {
+			curr = loc[0] + idx
+		} else {
+			openIndex := strings.Index(content[loc[1]:], openChar)
+			if openIndex == -1 {
+				return BoolValue{Val: false}, nil
+			}
+			curr = loc[1] + openIndex
 		}
-		curr := loc[1] + openIndex
 
 		// Algorithme d'appariement équilibré ignorant les guillemets
 		depth := 1
@@ -485,13 +490,26 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		}
 
 		if endIndex != -1 {
-			// Englober le point-virgule ou retour à la ligne éventuel qui suit
-			for endIndex < len(content) && (content[endIndex] == ';' || content[endIndex] == ' ' || content[endIndex] == '\t') {
+			// Englober le point-virgule, virgule ou espaces qui suivent
+			for endIndex < len(content) && (content[endIndex] == ';' || content[endIndex] == ',' || content[endIndex] == ' ' || content[endIndex] == '\t') {
+				endIndex++
+			}
+			if endIndex < len(content) && content[endIndex] == '\r' {
 				endIndex++
 			}
 			if endIndex < len(content) && content[endIndex] == '\n' {
 				endIndex++
 			}
+
+			// Si la ligne avant startIndex ne contient que des espaces d'indentation, reculer
+			lineStart := startIndex
+			for lineStart > 0 && (content[lineStart-1] == ' ' || content[lineStart-1] == '\t') {
+				lineStart--
+			}
+			if lineStart == 0 || content[lineStart-1] == '\n' {
+				startIndex = lineStart
+			}
+
 			updateContent(content[:startIndex] + content[endIndex:])
 			return BoolValue{Val: true}, nil
 		}

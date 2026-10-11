@@ -212,6 +212,11 @@ func (l *Lexer) NextToken() Token {
 		l.readChar()
 		return Token{Type: COLON, Literal: ":", Pos: startPos}
 	case '.':
+		if l.peekChar() == '.' {
+			l.readChar()
+			l.readChar()
+			return Token{Type: RANGE, Literal: "..", Pos: startPos}
+		}
 		l.readChar()
 		return Token{Type: DOT, Literal: ".", Pos: startPos}
 	}
@@ -406,16 +411,34 @@ func (l *Lexer) readChevronHeredoc() string {
 
 func (l *Lexer) readNumberOrDuration() string {
 	start := l.position
-	for unicode.IsDigit(l.ch) || l.ch == '.' {
-		l.readChar()
+	for {
+		if unicode.IsDigit(l.ch) {
+			l.readChar()
+		} else if l.ch == '.' {
+			if l.peekChar() == '.' || !unicode.IsDigit(l.peekChar()) {
+				break
+			}
+			l.readChar()
+		} else {
+			break
+		}
 	}
 	return l.input[start:l.position]
 }
 
 func (l *Lexer) readNumberAndSuffix() (TokenType, string) {
 	start := l.position
-	for unicode.IsDigit(l.ch) || l.ch == '.' {
-		l.readChar()
+	for {
+		if unicode.IsDigit(l.ch) {
+			l.readChar()
+		} else if l.ch == '.' {
+			if l.peekChar() == '.' || !unicode.IsDigit(l.peekChar()) {
+				break
+			}
+			l.readChar()
+		} else {
+			break
+		}
 	}
 	// Vérifier si suivi d'un suffixe d'unité (s, ms, m, h)
 	if isLetter(l.ch) {

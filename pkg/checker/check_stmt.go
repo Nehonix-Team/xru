@@ -29,6 +29,8 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		c.checkMod(s)
 	case *ast.FromUseStatement:
 		c.checkFromUse(s)
+	case *ast.ForStatement:
+		c.checkFor(s)
 	case *ast.BlockStatement:
 		for _, bodyStmt := range s.Statements {
 			c.checkStatement(bodyStmt)
@@ -342,6 +344,44 @@ func (c *Checker) checkIf(s *ast.IfStatement) {
 		}
 	}
 	for _, stmt := range s.Alternative {
+		c.checkStatement(stmt)
+	}
+}
+
+func (c *Checker) checkFor(s *ast.ForStatement) {
+	c.checkExpression(s.Iterable)
+
+	loopScope := NewScope(c.scope, false)
+	c.scope = loopScope
+	defer func() { c.scope = c.scope.parent }()
+
+	itemType := "any"
+	iterType := c.inferType(s.Iterable)
+	if strings.HasPrefix(iterType, "list[") && strings.HasSuffix(iterType, "]") {
+		itemType = strings.TrimSuffix(strings.TrimPrefix(iterType, "list["), "]")
+	} else if iterType == "range" {
+		itemType = "number"
+	}
+
+	itemSym := &Symbol{
+		Name: s.Item,
+		Kind: SymVar,
+		Type: itemType,
+		Pos:  s.Pos(),
+	}
+	_ = c.scope.Define(itemSym)
+
+	if s.Index != "" {
+		idxSym := &Symbol{
+			Name: s.Index,
+			Kind: SymVar,
+			Type: "number",
+			Pos:  s.Pos(),
+		}
+		_ = c.scope.Define(idxSym)
+	}
+
+	for _, stmt := range s.Body {
 		c.checkStatement(stmt)
 	}
 }

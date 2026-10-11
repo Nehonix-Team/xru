@@ -284,6 +284,37 @@ func (e *WithExpression) String() string {
 	return "with"
 }
 
+// ForStatement : for item [, index] in iterable { ... }
+type ForStatement struct {
+	Position lexer.Position
+	Item     string
+	Index    string // optionnel
+	Iterable Expression
+	Body     []Statement
+}
+
+func (s *ForStatement) statementNode()      {}
+func (s *ForStatement) Pos() lexer.Position { return s.Position }
+func (s *ForStatement) String() string {
+	if s.Index != "" {
+		return fmt.Sprintf("for %s, %s in %s (%d stmts)", s.Item, s.Index, s.Iterable.String(), len(s.Body))
+	}
+	return fmt.Sprintf("for %s in %s (%d stmts)", s.Item, s.Iterable.String(), len(s.Body))
+}
+
+// RangeExpression : start..end
+type RangeExpression struct {
+	Position lexer.Position
+	Start    Expression
+	End      Expression
+}
+
+func (e *RangeExpression) expressionNode()      {}
+func (e *RangeExpression) Pos() lexer.Position { return e.Position }
+func (e *RangeExpression) String() string {
+	return fmt.Sprintf("%s..%s", e.Start.String(), e.End.String())
+}
+
 // CustomDirectiveInvocation : #DIR_NAME args... (ou #DIR_NAME key -> val)
 type CustomDirectiveInvocation struct {
 	Position  lexer.Position

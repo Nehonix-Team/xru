@@ -211,6 +211,10 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			return ev.Eval(n.Consequence, env)
 		}
 		return ev.Eval(n.Alternative, env)
+	case *ast.ForStatement:
+		return ev.evalFor(n, env)
+	case *ast.RangeExpression:
+		return ev.evalRange(n, env)
 	case *ast.Identifier:
 		if strings.EqualFold(n.Value, "nil") || strings.EqualFold(n.Value, "null") {
 			return NilValue{}, nil
@@ -481,6 +485,9 @@ func valMatchesType(val Value, expected string) bool {
 		return val.Type() == "function"
 	default:
 		if strings.HasPrefix(expected, "list") && val.Type() == ValList {
+			return true
+		}
+		if strings.HasPrefix(expected, "task") && val.Type() == ValTask {
 			return true
 		}
 		if strings.HasPrefix(expected, "map") && val.Type() == ValMap {

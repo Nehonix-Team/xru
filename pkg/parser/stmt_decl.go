@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"fmt"
+
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 )
@@ -91,6 +93,9 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 
 	p.nextToken() // début de la valeur
 	stmt.Value = p.parseExpression()
+	if p.peekToken.Pos.Line == p.curToken.Pos.Line && !p.peekTokenIs(lexer.EOF) && !p.peekTokenIs(lexer.RBRACE) && !p.peekTokenIs(lexer.COMMENT) {
+		p.addError(p.peekToken.Pos, fmt.Sprintf("unexpected token '%s' on same line after variable declaration", p.peekToken.Literal))
+	}
 	return stmt
 }
 

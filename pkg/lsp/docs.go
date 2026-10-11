@@ -471,6 +471,18 @@ var SyntaxSnippets = []DirectiveDoc{
 		Doc:     "Iterates over a list collection.",
 	},
 	{
+		Name:    "for range",
+		Snippet: "for ${1:i} in ${2:1}..${3:10} {\n\t$0\n}",
+		Detail:  "for <i> in <start>..<end> { ... }",
+		Doc:     "Iterates over an integer numeric range.",
+	},
+	{
+		Name:    "with task",
+		Snippet: "let ${1:task} = with ${2:targetOperation()}\nlet ${3:result} = ${1:task}.wait()",
+		Detail:  "let <task> = with <expr>",
+		Doc:     "Launches an asynchronous background task.",
+	},
+	{
 		Name:    "replace",
 		Snippet: "replace(\"${1:target}\", \"${2:replacement}\")",
 		Detail:  "replace(target, replacement)",

@@ -239,7 +239,67 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 				}
 			}
 
-			// 2.C Strictly return member items or empty list.
+			// 2.C Local variable check (Task or Unit Instance)
+			if varInfo := findVariableTargetInfo(lines, unitName); varInfo != nil {
+				if varInfo.isTask {
+					retT := varInfo.taskReturnType
+					if retT == "" {
+						retT = "any"
+					}
+					items = append(items, CompletionItem{
+						Label:            "wait",
+						Kind:             CompletionItemKindMethod,
+						Detail:           fmt.Sprintf("wait() -> %s", retT),
+						Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Waits synchronously for the background task to complete and returns `%s`.", retT)},
+						InsertText:       "wait()",
+						InsertTextFormat: InsertTextFormatPlainText,
+						SortText:         "00_wait",
+					})
+					items = append(items, CompletionItem{
+						Label:            "isDone",
+						Kind:             CompletionItemKindMethod,
+						Detail:           "isDone() -> bool",
+						Documentation:    MarkupContent{Kind: "markdown", Value: "Checks whether the background task has completed (non-blocking)."},
+						InsertText:       "isDone()",
+						InsertTextFormat: InsertTextFormatPlainText,
+						SortText:         "01_isDone",
+					})
+					items = append(items, CompletionItem{
+						Label:            "cancel",
+						Kind:             CompletionItemKindMethod,
+						Detail:           "cancel() -> void",
+						Documentation:    MarkupContent{Kind: "markdown", Value: "Cancels the background task execution."},
+						InsertText:       "cancel()",
+						InsertTextFormat: InsertTextFormatPlainText,
+						SortText:         "02_cancel",
+					})
+					items = append(items, CompletionItem{
+						Label:            "result",
+						Kind:             CompletionItemKindMethod,
+						Detail:           fmt.Sprintf("result() -> %s", retT),
+						Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Alias for `wait()`. Returns `%s`.", retT)},
+						InsertText:       "result()",
+						InsertTextFormat: InsertTextFormatPlainText,
+						SortText:         "03_result",
+					})
+					return &CompletionList{IsIncomplete: false, Items: items}
+				}
+
+				if varInfo.unitType != "" {
+					unitMembers := collectUnitMembers(lines, varInfo.unitType)
+					if len(unitMembers) > 0 {
+						return &CompletionList{IsIncomplete: false, Items: unitMembers}
+					}
+				}
+			}
+
+			// 2.D Local unit definition direct access (e.g. TemplateManager.)
+			unitMembers := collectUnitMembers(lines, unitName)
+			if len(unitMembers) > 0 {
+				return &CompletionList{IsIncomplete: false, Items: unitMembers}
+			}
+
+			// 2.E Strictly return member items or empty list.
 			// Do NOT fall through to global snippets or keywords after dot!
 			return &CompletionList{IsIncomplete: false, Items: items}
 		}
@@ -849,6 +909,202 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 					}
 				}
 			}
+		}
+	}
+
+	return items
+}
+
+type varTargetInfo struct {
+	isTask         bool
+	taskReturnType string
+	unitType       string
+}
+
+func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
+	reVar := regexp.MustCompile(fmt.Sprintf(`^\s*(?:global\s+)?(?:let|const)\s+%s(?:\s*:\s*([^=]+?))?(?:\s*=\s*(.+))?$`, regexp.QuoteMeta(varName)))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") {
+			continue
+		}
+		if m := reVar.FindStringSubmatch(line); len(m) > 1 {
+			typeStr := strings.TrimSpace(m[1])
+			valStr := strings.TrimSpace(m[2])
+
+			// 1. Explicit task type
+			if strings.HasPrefix(typeStr, "task[") && strings.HasSuffix(typeStr, "]") {
+				inner := strings.TrimSuffix(strings.TrimPrefix(typeStr, "task["), "]")
+				return &varTargetInfo{isTask: true, taskReturnType: inner}
+			} else if typeStr == "task" {
+				return &varTargetInfo{isTask: true, taskReturnType: "any"}
+			}
+
+			// 2. Assigned with `with <expr>`
+			if strings.HasPrefix(valStr, "with ") {
+				withTarget := strings.TrimSpace(strings.TrimPrefix(valStr, "with "))
+				retType := "any"
+				if strings.Contains(strings.ToLower(withTarget), "net.fetch") {
+					retType = "string"
+				} else if parenIdx := strings.Index(withTarget, "("); parenIdx != -1 {
+					memberPart := withTarget[:parenIdx]
+					if dot := strings.LastIndex(memberPart, "."); dot != -1 {
+						callObj := strings.TrimSpace(memberPart[:dot])
+						callMethod := strings.TrimSpace(memberPart[dot+1:])
+						retType = inferUnitMethodReturnType(lines, callObj, callMethod)
+					}
+				}
+				if typeStr != "" && typeStr != "any" {
+					retType = typeStr
+				}
+				return &varTargetInfo{isTask: true, taskReturnType: retType}
+			}
+
+			// 3. Instantiated via @UnitName()
+			if strings.HasPrefix(valStr, "@") {
+				unitName := strings.TrimPrefix(valStr, "@")
+				if parenIdx := strings.Index(unitName, "("); parenIdx != -1 {
+					unitName = unitName[:parenIdx]
+				}
+				return &varTargetInfo{unitType: strings.TrimSpace(unitName)}
+			}
+
+			// 4. Custom unit type in annotation
+			if typeStr != "" && typeStr != "string" && typeStr != "number" && typeStr != "bool" && typeStr != "duration" && typeStr != "any" {
+				return &varTargetInfo{unitType: typeStr}
+			}
+		}
+	}
+	return nil
+}
+
+func inferUnitMethodReturnType(lines []string, objName, methodName string) string {
+	unitName := objName
+	if varInfo := findVariableTargetInfo(lines, objName); varInfo != nil && varInfo.unitType != "" {
+		unitName = varInfo.unitType
+	}
+
+	// 1. Built-in units
+	if unitDoc, ok := BuiltinUnitsDocs[strings.ToLower(unitName)]; ok {
+		if mDoc, ok := unitDoc.Methods[strings.ToLower(methodName)]; ok {
+			if arrowIdx := strings.Index(mDoc.Detail, "->"); arrowIdx != -1 {
+				return strings.TrimSpace(mDoc.Detail[arrowIdx+2:])
+			}
+		}
+	}
+
+	// 2. Local unit declaration in document
+	reUnitStart := regexp.MustCompile(fmt.Sprintf(`^\s*unit\s+%s\b`, regexp.QuoteMeta(unitName)))
+	reFunc := regexp.MustCompile(fmt.Sprintf(`^\s*(?:global\s+)?func\s+%s\s*\(.*?\)(?:\s*->\s*([a-zA-Z0-9_\[\]]+))?`, regexp.QuoteMeta(methodName)))
+
+	inUnit := false
+	depth := 0
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if !inUnit {
+			if reUnitStart.MatchString(l) {
+				inUnit = true
+				depth += strings.Count(l, "{") - strings.Count(l, "}")
+			}
+			continue
+		}
+
+		depth += strings.Count(l, "{") - strings.Count(l, "}")
+		if depth <= 0 {
+			break
+		}
+
+		if m := reFunc.FindStringSubmatch(l); len(m) > 0 {
+			if len(m) > 1 && m[1] != "" {
+				return strings.TrimSpace(m[1])
+			}
+			return "void"
+		}
+	}
+
+	return "any"
+}
+
+func collectUnitMembers(lines []string, unitName string) []CompletionItem {
+	var items []CompletionItem
+
+	// 1. Built-in unit
+	if unitDoc, ok := BuiltinUnitsDocs[strings.ToLower(unitName)]; ok {
+		for mName, mDoc := range unitDoc.Methods {
+			items = append(items, CompletionItem{
+				Label:            mName,
+				Kind:             CompletionItemKindMethod,
+				Detail:           mDoc.Detail,
+				Documentation:    MarkupContent{Kind: "markdown", Value: mDoc.Doc},
+				InsertText:       mName + "()",
+				InsertTextFormat: InsertTextFormatPlainText,
+				SortText:         fmt.Sprintf("00_%s", mName),
+			})
+		}
+		return items
+	}
+
+	// 2. Document unit definition
+	reUnitStart := regexp.MustCompile(fmt.Sprintf(`^\s*unit\s+%s\b`, regexp.QuoteMeta(unitName)))
+	reFunc := regexp.MustCompile(`^\s*(?:global\s+)?func\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*?)\)(?:\s*->\s*([a-zA-Z0-9_\[\]]+))?`)
+	reProp := regexp.MustCompile(`^\s*(?:prop|declare|let)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*:\s*([^=]+?))?(?:\s*=|$)`)
+
+	inUnit := false
+	depth := 0
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if !inUnit {
+			if reUnitStart.MatchString(l) {
+				inUnit = true
+				depth += strings.Count(l, "{") - strings.Count(l, "}")
+			}
+			continue
+		}
+
+		depth += strings.Count(l, "{") - strings.Count(l, "}")
+		if depth <= 0 {
+			break
+		}
+
+		if m := reFunc.FindStringSubmatch(l); len(m) > 1 {
+			fName := m[1]
+			params := strings.TrimSpace(m[2])
+			ret := strings.TrimSpace(m[3])
+			if ret == "" {
+				ret = "void"
+			}
+			items = append(items, CompletionItem{
+				Label:            fName,
+				Kind:             CompletionItemKindMethod,
+				Detail:           fmt.Sprintf("func %s(%s) -> %s", fName, params, ret),
+				Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Method of unit `%s`", unitName)},
+				InsertText:       fName + "()",
+				InsertTextFormat: InsertTextFormatPlainText,
+				SortText:         fmt.Sprintf("00_%s", fName),
+			})
+		}
+
+		if m := reProp.FindStringSubmatch(l); len(m) > 1 {
+			pName := m[1]
+			pType := strings.TrimSpace(m[2])
+			if pType == "" {
+				pType = "any"
+			}
+			items = append(items, CompletionItem{
+				Label:            pName,
+				Kind:             CompletionItemKindProperty,
+				Detail:           fmt.Sprintf("prop %s: %s", pName, pType),
+				Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Property of unit `%s`", unitName)},
+				InsertText:       pName,
+				InsertTextFormat: InsertTextFormatPlainText,
+				SortText:         fmt.Sprintf("01_%s", pName),
+			})
 		}
 	}
 

@@ -43,6 +43,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseModStatement()
 	case lexer.FROM:
 		return p.parseFromUseStatement()
+	case lexer.FOR:
+		return p.parseForStatement()
 	case lexer.ILLEGAL:
 		p.addError(p.curToken.Pos, fmt.Sprintf("illegal character '%s'", p.curToken.Literal))
 		return nil
@@ -121,5 +123,60 @@ func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 		Position:   p.curToken.Pos,
 		Expression: p.parseExpression(),
 	}
+	return stmt
+}
+
+// for item [, index] in iterable { ... }
+func (p *Parser) parseForStatement() *ast.ForStatement {
+	pos := p.curToken.Pos
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	item := p.curToken.Literal
+
+	index := ""
+	if p.peekTokenIs(lexer.COMMA) {
+		p.nextToken() // saute ','
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		index = p.curToken.Literal
+	}
+
+	if !p.expectPeek(lexer.IN) {
+		p.addError(p.curToken.Pos, "expected 'in' after variable in for loop")
+		return nil
+	}
+
+	p.nextToken() // saute 'in'
+	iterable := p.parseExpression()
+	if iterable == nil {
+		return nil
+	}
+
+	if !p.expectPeek(lexer.LBRACE) {
+		return nil
+	}
+
+	stmt := &ast.ForStatement{
+		Position: pos,
+		Item:     item,
+		Index:    index,
+		Iterable: iterable,
+	}
+
+	p.nextToken() // saute '{'
+	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		bodyStmt := p.parseStatement()
+		if bodyStmt != nil {
+			stmt.Body = append(stmt.Body, bodyStmt)
+		}
+		p.nextToken()
+	}
+
+	if p.curTokenIs(lexer.EOF) {
+		p.addError(pos, "unclosed for loop block (missing '}')")
+	}
+
 	return stmt
 }

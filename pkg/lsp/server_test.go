@@ -555,8 +555,55 @@ func clean(target: string) -> bool {
 	}
 }
 
+func TestLSPTaskAndUnitMemberCompletion(t *testing.T) {
+	uri := "file:///test_task_comp.xru"
+	testCode := `unit TemplateManager {
+    prop baseDir: string = "./"
+    func clean(target: string) -> bool {
+        return true
+    }
+}
 
+let mgr = @TemplateManager()
+let downloadTask = with Net.fetch("https://example.com")
+mgr.
+downloadTask.
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       testCode,
+		},
+	})
 
+	// 1. Completion on mgr. (line 9, col 4)
+	compMgrReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 9, "character": 4},
+	})
 
+	// 2. Completion on downloadTask. (line 10, col 13)
+	compTaskReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 10, "character": 13},
+	})
 
+	testInput := bytes.NewBufferString(didOpenReq + compMgrReq + compTaskReq)
+	testOutput := &bytes.Buffer{}
 
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	if !strings.Contains(outStr, `"label":"clean"`) {
+		t.Errorf("Expected 'clean' method on mgr completion, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"wait"`) {
+		t.Errorf("Expected 'wait' method on downloadTask completion, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"isDone"`) {
+		t.Errorf("Expected 'isDone' method on downloadTask completion, got: %s", outStr)
+	}
+}

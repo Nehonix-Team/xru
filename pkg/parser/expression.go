@@ -19,6 +19,7 @@ const (
 	LOGICAL_AND // &&
 	EQUALS      // == !=
 	LESSGREATER // > < >= <=
+	RANGE_PREC  // ..
 	SUM         // + -
 	PRODUCT     // * / %
 	PREFIX      // !X, -X
@@ -34,6 +35,7 @@ var precedences = map[lexer.TokenType]int{
 	lexer.LTE:        LESSGREATER,
 	lexer.GT:         LESSGREATER,
 	lexer.GTE:        LESSGREATER,
+	lexer.RANGE:      RANGE_PREC,
 	lexer.PLUS:       SUM,
 	lexer.MINUS:      SUM,
 	lexer.SLASH:      PRODUCT,
@@ -99,6 +101,14 @@ func (p *Parser) parseExpressionWithPrecedence(precedence int) ast.Expression {
 		right := p.parseExpressionWithPrecedence(opPrec)
 		if right == nil {
 			return expr
+		}
+		if op == ".." {
+			expr = &ast.RangeExpression{
+				Position: expr.Pos(),
+				Start:    expr,
+				End:      right,
+			}
+			continue
 		}
 		expr = &ast.InfixExpression{
 			Position: expr.Pos(),

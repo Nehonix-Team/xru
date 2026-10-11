@@ -33,7 +33,13 @@ func (c *Checker) inferType(expr ast.Expression) string {
 	case *ast.InstantiationExpression:
 		return e.UnitName
 	case *ast.WithExpression:
+		targetType := c.inferType(e.Target)
+		if targetType != "" && targetType != "any" {
+			return "task[" + targetType + "]"
+		}
 		return "task"
+	case *ast.RangeExpression:
+		return "range"
 	case *ast.Identifier:
 		if strings.EqualFold(e.Value, "nil") || strings.EqualFold(e.Value, "null") {
 			return "any"
@@ -82,13 +88,19 @@ func (c *Checker) inferType(expr ast.Expression) string {
 		if member, ok := e.Caller.(*ast.MemberExpression); ok {
 			if ident, ok := member.Object.(*ast.Identifier); ok {
 				if sym, ok := c.scope.Resolve(ident.Value); ok {
-					if sym.Type == "task" {
+					if strings.HasPrefix(sym.Type, "task") {
 						propLower := strings.ToLower(member.Property)
 						if propLower == "isdone" || propLower == "done" {
 							return "bool"
 						}
 						if propLower == "cancel" {
 							return "void"
+						}
+						if propLower == "wait" || propLower == "await" || propLower == "result" {
+							if strings.HasPrefix(sym.Type, "task[") && strings.HasSuffix(sym.Type, "]") {
+								return strings.TrimSuffix(strings.TrimPrefix(sym.Type, "task["), "]")
+							}
+							return "any"
 						}
 						return "any"
 					}
@@ -176,6 +188,14 @@ func isTypeCompatible(expected, actual string) bool {
 	}
 	if strings.HasPrefix(expected, "map") && strings.HasPrefix(actual, "map") {
 		return true
+	}
+	if strings.HasPrefix(expected, "task") && strings.HasPrefix(actual, "task") {
+		if expected == "task" || actual == "task" {
+			return true
+		}
+		tExpected := strings.TrimSuffix(strings.TrimPrefix(expected, "task["), "]")
+		tActual := strings.TrimSuffix(strings.TrimPrefix(actual, "task["), "]")
+		return isTypeCompatible(tExpected, tActual)
 	}
 	return false
 }

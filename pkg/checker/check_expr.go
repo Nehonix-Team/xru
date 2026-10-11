@@ -71,7 +71,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			if ident, ok := member.Object.(*ast.Identifier); ok {
 				if sym, ok := c.scope.Resolve(ident.Value); ok {
 					sym.Used = true
-					if sym.Type == "task" {
+					if strings.HasPrefix(sym.Type, "task") {
 						propLower := strings.ToLower(member.Property)
 						if propLower != "wait" && propLower != "await" && propLower != "result" &&
 							propLower != "isdone" && propLower != "done" && propLower != "cancel" {
@@ -200,6 +200,17 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 
 	case *ast.WithExpression:
 		c.checkExpression(e.Target)
+		switch t := e.Target.(type) {
+		case *ast.Identifier:
+			if sym, ok := c.scope.Resolve(t.Value); ok && sym.Kind == SymUnit {
+				c.addError(e.Pos(), "ERR_INVALID_WITH_TARGET",
+					fmt.Sprintf("Cannot use module '%s' directly as with target: expected a method or function call (e.g. with %s.fetch(...))", sym.Name, sym.Name))
+			}
+		}
+
+	case *ast.RangeExpression:
+		c.checkExpression(e.Start)
+		c.checkExpression(e.End)
 	}
 }
 

@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -86,6 +87,13 @@ func (ev *Evaluator) evalWithExpression(w *ast.WithExpression, env *Environment)
 	go func() {
 		defer close(task.done)
 		res, err := ev.Eval(w.Target, asyncEnv)
+		if err == nil && res != nil {
+			if unitInst, ok := res.(*UnitInstance); ok && unitInst.Methods != nil {
+				if completeFn, ok := unitInst.Methods["__complete"]; ok {
+					res, err = completeFn(nil)
+				}
+			}
+		}
 		task.mu.Lock()
 		defer task.mu.Unlock()
 		task.result = res
@@ -207,3 +215,80 @@ func (ev *Evaluator) evalDispatchTree(dt *ast.DispatchTreeStatement, env *Enviro
 	}
 	return BoolValue{Val: true}, nil
 }
+
+func (ev *Evaluator) evalRange(r *ast.RangeExpression, env *Environment) (Value, error) {
+	startVal, err := ev.Eval(r.Start, env)
+	if err != nil {
+		return nil, err
+	}
+	endVal, err := ev.Eval(r.End, env)
+	if err != nil {
+		return nil, err
+	}
+	startNum, ok1 := startVal.(NumberValue)
+	endNum, ok2 := endVal.(NumberValue)
+	if !ok1 || !ok2 {
+		return nil, fmt.Errorf("range operator '..' requires numbers, got '%s' and '%s'", startVal.Type(), endVal.Type())
+	}
+	return RangeValue{Start: int64(startNum.Val), End: int64(endNum.Val)}, nil
+}
+
+func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, error) {
+	iterVal, err := ev.Eval(f.Iterable, env)
+	if err != nil {
+		return nil, err
+	}
+
+	loopEnv := NewEnvironment(env)
+
+	switch it := iterVal.(type) {
+	case RangeValue:
+		start := it.Start
+		end := it.End
+		step := int64(1)
+		if start > end {
+			step = int64(-1)
+		}
+		idx := 0
+		for current := start; ; current += step {
+			_ = loopEnv.Set(f.Item, NumberValue{Val: float64(current)}, false)
+			if f.Index != "" {
+				_ = loopEnv.Set(f.Index, NumberValue{Val: float64(idx)}, false)
+			}
+			for _, stmt := range f.Body {
+				res, err := ev.Eval(stmt, loopEnv)
+				if err != nil {
+					return nil, err
+				}
+				if ret, ok := res.(ReturnValue); ok {
+					return ret, nil
+				}
+			}
+			if current == end {
+				break
+			}
+			idx++
+		}
+	case ListValue:
+		for idx, item := range it.Elements {
+			_ = loopEnv.Set(f.Item, item, false)
+			if f.Index != "" {
+				_ = loopEnv.Set(f.Index, NumberValue{Val: float64(idx)}, false)
+			}
+			for _, stmt := range f.Body {
+				res, err := ev.Eval(stmt, loopEnv)
+				if err != nil {
+					return nil, err
+				}
+				if ret, ok := res.(ReturnValue); ok {
+					return ret, nil
+				}
+			}
+		}
+	default:
+		return nil, fmt.Errorf("cannot iterate over '%s', expected list or range", iterVal.Type())
+	}
+
+	return NilValue{}, nil
+}
+

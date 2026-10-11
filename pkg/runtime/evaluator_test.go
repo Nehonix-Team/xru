@@ -804,6 +804,82 @@ b.broken()
 	}
 }
 
+func TestForLoopAndRange(t *testing.T) {
+	code := `
+let sum = 0
+for i in 1..5 {
+    sum =: sum + i
+}
 
+let items = ["a", "b", "c"]
+let collected = ""
+for item, idx in items {
+    collected =: collected + item + idx
+}
+`
+	l := lexer.New("for_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
 
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	sumVal, _ := env.Get("sum")
+	if sumVal.String() != "15" {
+		t.Errorf("Expected sum to be 15, got %v", sumVal)
+	}
+
+	collVal, _ := env.Get("collected")
+	if collVal.String() != "a0b1c2" {
+		t.Errorf("Expected collected to be 'a0b1c2', got %v", collVal)
+	}
+}
+
+func TestWithExpressionAndTask(t *testing.T) {
+	code := `
+unit Worker {
+    func compute() -> number {
+        let sum = 0
+        for i in 1..10 {
+            sum =: sum + i
+        }
+        return sum
+    }
+}
+
+let w = @Worker()
+let task = with w.compute()
+let doneBefore = task.isDone()
+let res = task.wait()
+let doneAfter = task.isDone()
+`
+	l := lexer.New("with_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	doneAfterVal, _ := env.Get("doneAfter")
+	if doneAfterVal.String() != "true" {
+		t.Errorf("Expected doneAfter to be 'true', got %v", doneAfterVal)
+	}
+
+	resVal, _ := env.Get("res")
+	if resVal.String() != "55" {
+		t.Errorf("Expected res to be '55', got %v", resVal)
+	}
+}
 

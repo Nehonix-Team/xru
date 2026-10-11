@@ -49,6 +49,8 @@ const (
 	MAP           TokenType = "map"
 	FROM          TokenType = "from"
 	MOD           TokenType = "mod"
+	FOR           TokenType = "for"
+	IN            TokenType = "in"
 
 	// Operators & Symbols
 	ASSIGN     TokenType = "="
@@ -62,6 +64,7 @@ const (
 	ASTERISK  TokenType = "*"
 	SLASH     TokenType = "/"
 	PERCENT   TokenType = "%"
+	RANGE     TokenType = ".."
 
 	// Comparaisons
 	EQ         TokenType = "=="
@@ -138,6 +141,8 @@ var keywords = map[string]TokenType{
 	"map":           MAP,
 	"from":          FROM,
 	"mod":           MOD,
+	"for":           FOR,
+	"in":            IN,
 }
 
 func LookupIdent(ident string) TokenType {

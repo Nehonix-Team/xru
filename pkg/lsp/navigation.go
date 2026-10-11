@@ -65,7 +65,7 @@ func getFullExpressionAt(text string, line, char int) (string, string) {
 			prefix := l[prefixStart:prefixEnd]
 			return prefix + "::" + targetWord, targetWord
 		}
-	} else if wordStart > 1 && l[wordStart-1] == '.' {
+	} else if wordStart > 0 && l[wordStart-1] == '.' {
 		prefixEnd := wordStart - 1
 		prefixStart := prefixEnd
 		for prefixStart > 0 && isWordChar(l[prefixStart-1]) {
@@ -74,7 +74,12 @@ func getFullExpressionAt(text string, line, char int) (string, string) {
 		if prefixEnd > prefixStart {
 			prefix := l[prefixStart:prefixEnd]
 			return prefix + "." + targetWord, targetWord
+		} else if prefixEnd > 0 && (l[prefixEnd-1] == '"' || l[prefixEnd-1] == '\'') {
+			return "string." + targetWord, targetWord
+		} else if prefixEnd > 0 && l[prefixEnd-1] == ']' {
+			return "list." + targetWord, targetWord
 		}
+		return "." + targetWord, targetWord
 	}
 
 	// Look forwards from word end to see if there is `.suffix` or `::suffix`

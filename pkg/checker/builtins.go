@@ -200,20 +200,155 @@ func (c *Checker) DefineUnit(name string) {
 	}
 }
 
+type NativeParam struct {
+	Name     string
+	Type     string
+	Optional bool
+}
+
+type NativeMethodSpec struct {
+	Params     []NativeParam
+	ReturnType string
+}
+
+var StringMethodSpecs = map[string]NativeMethodSpec{
+	"len": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"length": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"trim": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"trimleft": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"trimright": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"toupper": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"uppercase": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"tolower": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"lowercase": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"contains": {
+		Params: []NativeParam{
+			{Name: "sub", Type: "string"},
+		},
+		ReturnType: "bool",
+	},
+	"startswith": {
+		Params: []NativeParam{
+			{Name: "pfx", Type: "string"},
+		},
+		ReturnType: "bool",
+	},
+	"endswith": {
+		Params: []NativeParam{
+			{Name: "sfx", Type: "string"},
+		},
+		ReturnType: "bool",
+	},
+	"split": {
+		Params: []NativeParam{
+			{Name: "sep", Type: "string"},
+		},
+		ReturnType: "list[string]",
+	},
+	"replace": {
+		Params: []NativeParam{
+			{Name: "old", Type: "string"},
+			{Name: "new", Type: "string"},
+		},
+		ReturnType: "string",
+	},
+	"slice": {
+		Params: []NativeParam{
+			{Name: "start", Type: "number"},
+			{Name: "end", Type: "number", Optional: true},
+		},
+		ReturnType: "string",
+	},
+}
+
+var ListMethodSpecs = map[string]NativeMethodSpec{
+	"len": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"length": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"join": {
+		Params: []NativeParam{
+			{Name: "sep", Type: "string", Optional: true},
+		},
+		ReturnType: "string",
+	},
+	"contains": {
+		Params: []NativeParam{
+			{Name: "item", Type: "any"},
+		},
+		ReturnType: "bool",
+	},
+	"push": {
+		Params: []NativeParam{
+			{Name: "item", Type: "any"},
+		},
+		ReturnType: "void",
+	},
+	"pop": {
+		Params:     []NativeParam{},
+		ReturnType: "any",
+	},
+	"reverse": {
+		Params:     []NativeParam{},
+		ReturnType: "list",
+	},
+	"slice": {
+		Params: []NativeParam{
+			{Name: "start", Type: "number"},
+			{Name: "end", Type: "number", Optional: true},
+		},
+		ReturnType: "list",
+	},
+}
+
 func IsStringMethod(name string) bool {
-	switch strings.ToLower(name) {
-	case "len", "trim", "trimleft", "trimright", "toupper", "tolower",
-		"contains", "startswith", "endswith", "split", "replace", "slice":
-		return true
-	}
-	return false
+	_, ok := StringMethodSpecs[strings.ToLower(name)]
+	return ok
 }
 
 func IsListMethod(name string) bool {
-	switch strings.ToLower(name) {
-	case "len", "join", "contains", "push", "pop", "reverse", "slice":
-		return true
-	}
-	return false
+	_, ok := ListMethodSpecs[strings.ToLower(name)]
+	return ok
+}
+
+func GetStringMethodSpec(name string) (NativeMethodSpec, bool) {
+	spec, ok := StringMethodSpecs[strings.ToLower(name)]
+	return spec, ok
+}
+
+func GetListMethodSpec(name string) (NativeMethodSpec, bool) {
+	spec, ok := ListMethodSpecs[strings.ToLower(name)]
+	return spec, ok
 }
 

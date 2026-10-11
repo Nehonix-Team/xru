@@ -735,6 +735,57 @@ dispatch "./src", ".rules.xru"
 	}
 }
 
+func TestNativeMethodSignatures(t *testing.T) {
+	// 1. String replace with missing args -> ERR_ARG_COUNT
+	code1 := `let res = "hello".replace()`
+	l1 := lexer.New("sig1.xru", code1)
+	p1 := parser.New(l1)
+	c1 := checker.New()
+	c1.Check(p1.ParseProgram())
+	foundArgErr := false
+	for _, e := range c1.Errors() {
+		if strings.Contains(e, "ERR_ARG_COUNT") {
+			foundArgErr = true
+			break
+		}
+	}
+	if !foundArgErr {
+		t.Errorf("Expected ERR_ARG_COUNT for .replace(), got: %v", c1.Errors())
+	}
+
+	// 2. String replace with invalid argument type -> ERR_TYPE_MISMATCH
+	code2 := `let res = "hello".replace(123, "world")`
+	l2 := lexer.New("sig2.xru", code2)
+	p2 := parser.New(l2)
+	c2 := checker.New()
+	c2.Check(p2.ParseProgram())
+	foundTypeErr := false
+	for _, e := range c2.Errors() {
+		if strings.Contains(e, "ERR_TYPE_MISMATCH") {
+			foundTypeErr = true
+			break
+		}
+	}
+	if !foundTypeErr {
+		t.Errorf("Expected ERR_TYPE_MISMATCH for .replace(123, ...), got: %v", c2.Errors())
+	}
+
+	// 3. Valid native methods call -> 0 errors
+	code3 := `
+let res = "hello".replace("l", "p")
+let upper = "hello".toUpper()
+let sub = "hello".contains("ell")
+let part = "hello".slice(1, 3)
+`
+	l3 := lexer.New("sig3.xru", code3)
+	p3 := parser.New(l3)
+	c3 := checker.New()
+	c3.Check(p3.ParseProgram())
+	if len(c3.Errors()) > 0 {
+		t.Errorf("Expected 0 errors for valid native calls, got: %v", c3.Errors())
+	}
+}
+
 
 
 

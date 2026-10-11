@@ -503,17 +503,17 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 		}
 	}
 
-	// 3. Méthodes chirurgicales
-	if surgDoc, ok := SurgicalMethodsDocs[targetWord]; ok {
-		return &surgDoc
-	}
-
-	// 4. Méthodes natives String et List
+	// 3. Méthodes natives String et List (prioritaires sur les méthodes chirurgicales de fichier)
 	if strDoc, ok := StringMethodsDocs[targetWord]; ok {
 		return &strDoc
 	}
 	if listDoc, ok := ListMethodsDocs[targetWord]; ok {
 		return &listDoc
+	}
+
+	// 4. Méthodes chirurgicales
+	if surgDoc, ok := SurgicalMethodsDocs[targetWord]; ok {
+		return &surgDoc
 	}
 
 	// 5. Mots-clés

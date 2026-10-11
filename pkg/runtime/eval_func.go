@@ -266,40 +266,55 @@ func (ev *Evaluator) evalStringMethod(c *ast.MemberExpression, strVal StringValu
 	s := strVal.Val
 	switch strings.ToLower(c.Property) {
 	case "len", "length":
+		if len(args) != 0 {
+			return nil, fmt.Errorf("method '%s' expects 0 arguments, but got %d", c.Property, len(args))
+		}
 		return NumberValue{Val: float64(len(s))}, nil
 	case "trim":
+		if len(args) != 0 {
+			return nil, fmt.Errorf("method 'trim' expects 0 arguments, but got %d", len(args))
+		}
 		return StringValue{Val: strings.TrimSpace(s)}, nil
 	case "trimleft":
+		if len(args) != 0 {
+			return nil, fmt.Errorf("method 'trimLeft' expects 0 arguments, but got %d", len(args))
+		}
 		return StringValue{Val: strings.TrimLeft(s, " \t\r\n")}, nil
 	case "trimright":
+		if len(args) != 0 {
+			return nil, fmt.Errorf("method 'trimRight' expects 0 arguments, but got %d", len(args))
+		}
 		return StringValue{Val: strings.TrimRight(s, " \t\r\n")}, nil
 	case "toupper", "uppercase":
+		if len(args) != 0 {
+			return nil, fmt.Errorf("method 'toUpper' expects 0 arguments, but got %d", len(args))
+		}
 		return StringValue{Val: strings.ToUpper(s)}, nil
 	case "tolower", "lowercase":
+		if len(args) != 0 {
+			return nil, fmt.Errorf("method 'toLower' expects 0 arguments, but got %d", len(args))
+		}
 		return StringValue{Val: strings.ToLower(s)}, nil
 	case "contains":
-		sub := ""
-		if len(args) > 0 {
-			sub = args[0].String()
+		if len(args) != 1 {
+			return nil, fmt.Errorf("method 'contains' requires 1 argument (sub: string), but got %d", len(args))
 		}
-		return BoolValue{Val: strings.Contains(s, sub)}, nil
+		return BoolValue{Val: strings.Contains(s, args[0].String())}, nil
 	case "startswith":
-		pfx := ""
-		if len(args) > 0 {
-			pfx = args[0].String()
+		if len(args) != 1 {
+			return nil, fmt.Errorf("method 'startsWith' requires 1 argument (prefix: string), but got %d", len(args))
 		}
-		return BoolValue{Val: strings.HasPrefix(s, pfx)}, nil
+		return BoolValue{Val: strings.HasPrefix(s, args[0].String())}, nil
 	case "endswith":
-		sfx := ""
-		if len(args) > 0 {
-			sfx = args[0].String()
+		if len(args) != 1 {
+			return nil, fmt.Errorf("method 'endsWith' requires 1 argument (suffix: string), but got %d", len(args))
 		}
-		return BoolValue{Val: strings.HasSuffix(s, sfx)}, nil
+		return BoolValue{Val: strings.HasSuffix(s, args[0].String())}, nil
 	case "split":
-		sep := ""
-		if len(args) > 0 {
-			sep = args[0].String()
+		if len(args) != 1 {
+			return nil, fmt.Errorf("method 'split' requires 1 argument (separator: string), but got %d", len(args))
 		}
+		sep := args[0].String()
 		var parts []string
 		if sep == "" {
 			parts = strings.Split(s, "")
@@ -312,27 +327,28 @@ func (ev *Evaluator) evalStringMethod(c *ast.MemberExpression, strVal StringValu
 		}
 		return ListValue{Elements: elems}, nil
 	case "replace":
-		oldStr := ""
-		newStr := ""
-		if len(args) > 0 {
-			oldStr = args[0].String()
+		if len(args) != 2 {
+			return nil, fmt.Errorf("method 'replace' requires 2 arguments (old: string, new: string), but got %d", len(args))
 		}
-		if len(args) > 1 {
-			newStr = args[1].String()
-		}
+		oldStr := args[0].String()
+		newStr := args[1].String()
 		return StringValue{Val: strings.ReplaceAll(s, oldStr, newStr)}, nil
 	case "slice":
-		start := 0
-		end := len(s)
-		if len(args) > 0 {
-			if n, ok := args[0].(NumberValue); ok {
-				start = int(n.Val)
-			}
+		if len(args) < 1 || len(args) > 2 {
+			return nil, fmt.Errorf("method 'slice' requires 1 to 2 arguments (start: number, end?: number), but got %d", len(args))
 		}
-		if len(args) > 1 {
-			if n, ok := args[1].(NumberValue); ok {
-				end = int(n.Val)
+		n1, ok := args[0].(NumberValue)
+		if !ok {
+			return nil, fmt.Errorf("method 'slice' expects number for start index, got %s", args[0].Type())
+		}
+		start := int(n1.Val)
+		end := len(s)
+		if len(args) == 2 {
+			n2, ok := args[1].(NumberValue)
+			if !ok {
+				return nil, fmt.Errorf("method 'slice' expects number for end index, got %s", args[1].Type())
 			}
+			end = int(n2.Val)
 		}
 		if start < 0 {
 			start = 0
@@ -361,10 +377,16 @@ func (ev *Evaluator) evalListMethod(c *ast.MemberExpression, listVal ListValue, 
 	elems := listVal.Elements
 	switch strings.ToLower(c.Property) {
 	case "len", "length":
+		if len(args) != 0 {
+			return nil, fmt.Errorf("method '%s' expects 0 arguments, but got %d", c.Property, len(args))
+		}
 		return NumberValue{Val: float64(len(elems))}, nil
 	case "join":
+		if len(args) > 1 {
+			return nil, fmt.Errorf("method 'join' expects at most 1 argument (separator?: string), but got %d", len(args))
+		}
 		sep := ""
-		if len(args) > 0 {
+		if len(args) == 1 {
 			sep = args[0].String()
 		}
 		var parts []string
@@ -373,8 +395,8 @@ func (ev *Evaluator) evalListMethod(c *ast.MemberExpression, listVal ListValue, 
 		}
 		return StringValue{Val: strings.Join(parts, sep)}, nil
 	case "contains":
-		if len(args) == 0 {
-			return BoolValue{Val: false}, nil
+		if len(args) != 1 {
+			return nil, fmt.Errorf("method 'contains' requires 1 argument (item: any), but got %d", len(args))
 		}
 		targetStr := args[0].String()
 		found := false
@@ -386,15 +408,18 @@ func (ev *Evaluator) evalListMethod(c *ast.MemberExpression, listVal ListValue, 
 		}
 		return BoolValue{Val: found}, nil
 	case "push":
-		if len(args) > 0 {
-			newList := ListValue{Elements: append(elems, args[0])}
-			if ident, ok := c.Object.(*ast.Identifier); ok {
-				_ = env.Set(ident.Value, newList, false)
-			}
-			return newList, nil
+		if len(args) != 1 {
+			return nil, fmt.Errorf("method 'push' requires 1 argument (item: any), but got %d", len(args))
 		}
-		return listVal, nil
+		newList := ListValue{Elements: append(elems, args[0])}
+		if ident, ok := c.Object.(*ast.Identifier); ok {
+			_ = env.Set(ident.Value, newList, false)
+		}
+		return newList, nil
 	case "pop":
+		if len(args) != 0 {
+			return nil, fmt.Errorf("method 'pop' expects 0 arguments, but got %d", len(args))
+		}
 		if len(elems) == 0 {
 			return NilValue{}, nil
 		}
@@ -405,23 +430,30 @@ func (ev *Evaluator) evalListMethod(c *ast.MemberExpression, listVal ListValue, 
 		}
 		return last, nil
 	case "reverse":
+		if len(args) != 0 {
+			return nil, fmt.Errorf("method 'reverse' expects 0 arguments, but got %d", len(args))
+		}
 		var rev []Value
 		for i := len(elems) - 1; i >= 0; i-- {
 			rev = append(rev, elems[i])
 		}
 		return ListValue{Elements: rev}, nil
 	case "slice":
-		start := 0
-		end := len(elems)
-		if len(args) > 0 {
-			if n, ok := args[0].(NumberValue); ok {
-				start = int(n.Val)
-			}
+		if len(args) < 1 || len(args) > 2 {
+			return nil, fmt.Errorf("method 'slice' requires 1 to 2 arguments (start: number, end?: number), but got %d", len(args))
 		}
-		if len(args) > 1 {
-			if n, ok := args[1].(NumberValue); ok {
-				end = int(n.Val)
+		n1, ok := args[0].(NumberValue)
+		if !ok {
+			return nil, fmt.Errorf("method 'slice' expects number for start index, got %s", args[0].Type())
+		}
+		start := int(n1.Val)
+		end := len(elems)
+		if len(args) == 2 {
+			n2, ok := args[1].(NumberValue)
+			if !ok {
+				return nil, fmt.Errorf("method 'slice' expects number for end index, got %s", args[1].Type())
 			}
+			end = int(n2.Val)
 		}
 		if start < 0 {
 			start = 0

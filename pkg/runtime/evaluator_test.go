@@ -1351,6 +1351,27 @@ dispatch "{baseDir}/sub", "patch.xru"
 	}
 }
 
+func TestNativeMethodRuntimeValidation(t *testing.T) {
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+
+	// String.replace without 2 args should error at runtime
+	code1 := `let res = "hello".replace()`
+	l1 := lexer.New("rt1.xru", code1)
+	p1 := parser.New(l1)
+	if _, err := ev.Eval(p1.ParseProgram(), env); err == nil {
+		t.Errorf("Expected runtime error for .replace() without arguments")
+	}
+
+	// String.slice with non-number should error at runtime
+	code2 := `let res = "hello".slice("invalid")`
+	l2 := lexer.New("rt2.xru", code2)
+	p2 := parser.New(l2)
+	if _, err := ev.Eval(p2.ParseProgram(), env); err == nil {
+		t.Errorf("Expected runtime error for .slice() with non-number")
+	}
+}
+
 
 
 

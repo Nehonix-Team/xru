@@ -97,21 +97,25 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			c.checkExpression(member.Object)
 			objType := c.inferType(member.Object)
 			if objType == "string" {
-				if !IsStringMethod(member.Property) {
+				if spec, ok := GetStringMethodSpec(member.Property); ok {
+					c.validateNativeMethodCall(e, "string", member.Property, spec)
+				} else {
 					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
 						fmt.Sprintf("Method '%s' not found on string", member.Property))
-				}
-				for _, arg := range e.Arguments {
-					c.checkExpression(arg)
+					for _, arg := range e.Arguments {
+						c.checkExpression(arg)
+					}
 				}
 				return
 			} else if strings.HasPrefix(objType, "list") {
-				if !IsListMethod(member.Property) {
+				if spec, ok := GetListMethodSpec(member.Property); ok {
+					c.validateNativeMethodCall(e, "list", member.Property, spec)
+				} else {
 					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
 						fmt.Sprintf("Method '%s' not found on list", member.Property))
-				}
-				for _, arg := range e.Arguments {
-					c.checkExpression(arg)
+					for _, arg := range e.Arguments {
+						c.checkExpression(arg)
+					}
 				}
 				return
 			}
@@ -342,6 +346,43 @@ func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, params
 			if !isTypeCompatible(param.Type, argType) {
 				c.addError(call.Arguments[i].Pos(), "ERR_TYPE_MISMATCH",
 					fmt.Sprintf("Argument %d ('%s') of function '%s' expects type '%s', got '%s'", i+1, param.Name, name, param.Type, argType))
+			}
+		}
+	}
+}
+
+func (c *Checker) validateNativeMethodCall(call *ast.CallExpression, receiverType string, methodName string, spec NativeMethodSpec) {
+	for _, arg := range call.Arguments {
+		c.checkExpression(arg)
+	}
+
+	minArgs := 0
+	maxArgs := len(spec.Params)
+	for _, p := range spec.Params {
+		if !p.Optional {
+			minArgs++
+		}
+	}
+
+	actualCount := len(call.Arguments)
+	if actualCount < minArgs || actualCount > maxArgs {
+		if minArgs == maxArgs {
+			c.addError(call.Pos(), "ERR_ARG_COUNT",
+				fmt.Sprintf("Method '%s' on %s expects %d argument(s), but got %d", methodName, receiverType, minArgs, actualCount))
+		} else {
+			c.addError(call.Pos(), "ERR_ARG_COUNT",
+				fmt.Sprintf("Method '%s' on %s expects %d to %d argument(s), but got %d", methodName, receiverType, minArgs, maxArgs, actualCount))
+		}
+		return
+	}
+
+	for i, arg := range call.Arguments {
+		param := spec.Params[i]
+		if param.Type != "" && param.Type != "any" {
+			argType := c.inferType(arg)
+			if argType != "any" && !isTypeCompatible(param.Type, argType) {
+				c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+					fmt.Sprintf("Argument %d ('%s') of method '%s' expects type '%s', got '%s'", i+1, param.Name, methodName, param.Type, argType))
 			}
 		}
 	}

@@ -39,10 +39,12 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 	if strings.Contains(fullExpr, ".") {
 		parts := strings.Split(fullExpr, ".")
 		objectName := parts[0]
-		if c != nil {
-			if _, inScope := c.GetScope().Resolve(objectName); !inScope {
-				// L'objet n'est pas dans le scope (ex: 'Crypto' non importé)
-				return nil
+		if objectName != "" && objectName != "string" && objectName != "list" && !strings.HasPrefix(objectName, "\"") && !strings.HasPrefix(objectName, "'") {
+			if c != nil {
+				if _, inScope := c.GetScope().Resolve(objectName); !inScope {
+					// L'objet n'est pas dans le scope (ex: 'Crypto' non importé)
+					return nil
+				}
 			}
 		}
 	} else if checker.IsBuiltinUnit(word) {

@@ -297,12 +297,12 @@ var BuiltinUnitsDocs = map[string]struct {
 				Doc:    "Updates the content of the line at 1-based index `lineNum`.",
 			},
 			"removeLine": {
-				Detail: "doc.removeLine(lineNum: number) -> bool",
-				Doc:    "Deletes the line at 1-based index `lineNum`.",
+				Detail: "doc.removeLine(lineNumOrPattern: number | string) -> bool",
+				Doc:    "Deletes the line at 1-based index `lineNum`, or deletes the first line containing the given pattern.",
 			},
 			"removeLines": {
-				Detail: "doc.removeLines(startLine: number, endLine: number) -> bool",
-				Doc:    "Deletes lines in the 1-based range [`startLine`, `endLine`].",
+				Detail: "doc.removeLines(pattern: string | startLine, endLine: number) -> bool",
+				Doc:    "Deletes all lines containing `pattern`, or deletes lines in the 1-based range [`startLine`, `endLine`].",
 			},
 			"getJson": {
 				Detail: "doc.getJson(keyPath: string) -> any",

@@ -164,28 +164,48 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 	}
 	docUnit.Methods["removeLine"] = func(args []Value) (Value, error) {
 		if len(args) < 1 {
-			return NilValue{}, fmt.Errorf("removeLine requires line number (1-indexed)")
+			return NilValue{}, fmt.Errorf("removeLine requires line number (1-indexed) or pattern string")
 		}
-		n, ok := args[0].(NumberValue)
-		if !ok {
-			return NilValue{}, fmt.Errorf("removeLine expects number argument")
+		if n, ok := args[0].(NumberValue); ok {
+			lines := strings.Split(content, "\n")
+			idx := int(n.Val) - 1
+			if idx >= 0 && idx < len(lines) {
+				lines = append(lines[:idx], lines[idx+1:]...)
+				updateContent(strings.Join(lines, "\n"))
+			}
+			return BoolValue{Val: true}, nil
 		}
+		pattern := args[0].String()
 		lines := strings.Split(content, "\n")
-		idx := int(n.Val) - 1
-		if idx >= 0 && idx < len(lines) {
-			lines = append(lines[:idx], lines[idx+1:]...)
-			updateContent(strings.Join(lines, "\n"))
+		for idx, l := range lines {
+			if strings.Contains(l, pattern) {
+				lines = append(lines[:idx], lines[idx+1:]...)
+				updateContent(strings.Join(lines, "\n"))
+				break
+			}
 		}
 		return BoolValue{Val: true}, nil
 	}
 	docUnit.Methods["removeLines"] = func(args []Value) (Value, error) {
-		if len(args) < 2 {
-			return NilValue{}, fmt.Errorf("removeLines requires startLine and endLine (1-indexed)")
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("removeLines requires pattern string or startLine/endLine (1-indexed)")
+		}
+		if len(args) == 1 {
+			pattern := args[0].String()
+			lines := strings.Split(content, "\n")
+			var newLines []string
+			for _, l := range lines {
+				if !strings.Contains(l, pattern) {
+					newLines = append(newLines, l)
+				}
+			}
+			updateContent(strings.Join(newLines, "\n"))
+			return BoolValue{Val: true}, nil
 		}
 		startN, ok1 := args[0].(NumberValue)
 		endN, ok2 := args[1].(NumberValue)
 		if !ok1 || !ok2 {
-			return NilValue{}, fmt.Errorf("removeLines expects number arguments")
+			return NilValue{}, fmt.Errorf("removeLines expects number arguments for line range")
 		}
 		lines := strings.Split(content, "\n")
 		startIdx := int(startN.Val) - 1

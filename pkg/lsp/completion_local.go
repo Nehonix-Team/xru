@@ -81,7 +81,8 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 	reDeclare := regexp.MustCompile(`^\s*(?:declare|prop)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*:\s*([^=]+?))?(?:\s*=|$)`)
 	reUse := regexp.MustCompile(`^\s*use\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?`)
 	reFromUse := regexp.MustCompile(`^\s*from\s+"[^"]+"\s+use\s+(.+)$`)
-	reForLoop := regexp.MustCompile(`^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\b`)
+	reForLoop := regexp.MustCompile(`^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*,\s*([a-zA-Z_][a-zA-Z0-9_]*))?\s+in\b`)
+	reCatchErr := regexp.MustCompile(`\bcatch\s+([a-zA-Z_][a-zA-Z0-9_]*)`)
 
 	for idx, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -117,20 +118,52 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 			}
 		}
 
-		// 3. for <item> in ...
-		if m := reForLoop.FindStringSubmatch(line); len(m) > 1 {
-			name := m[1]
-			if !seen[name] {
-				seen[name] = true
+		// 2.5 catch <errVar>
+		if m := reCatchErr.FindStringSubmatch(line); len(m) > 1 {
+			errName := m[1]
+			if errName != "or" && errName != "" && !seen[errName] {
+				seen[errName] = true
 				items = append(items, CompletionItem{
-					Label:            name,
+					Label:            errName,
 					Kind:             CompletionItemKindVariable,
-					Detail:           fmt.Sprintf("(loop variable) %s", name),
-					Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("For loop iteration variable at line %d", idx+1)},
-					InsertText:       name,
+					Detail:           fmt.Sprintf("(error) %s: string", errName),
+					Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Error variable captured by `catch` at line %d", idx+1)},
+					InsertText:       errName,
 					InsertTextFormat: InsertTextFormatPlainText,
-					SortText:         fmt.Sprintf("01_%s", name),
+					SortText:         fmt.Sprintf("01_%s", errName),
 				})
+			}
+		}
+
+		// 3. for <item> [, <idx>] in ...
+		if m := reForLoop.FindStringSubmatch(line); len(m) > 1 {
+			itemName := m[1]
+			if !seen[itemName] {
+				seen[itemName] = true
+				items = append(items, CompletionItem{
+					Label:            itemName,
+					Kind:             CompletionItemKindVariable,
+					Detail:           fmt.Sprintf("(loop variable) %s", itemName),
+					Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("For loop iteration variable at line %d", idx+1)},
+					InsertText:       itemName,
+					InsertTextFormat: InsertTextFormatPlainText,
+					SortText:         fmt.Sprintf("01_%s", itemName),
+				})
+			}
+			if len(m) > 2 && m[2] != "" {
+				idxName := m[2]
+				if !seen[idxName] {
+					seen[idxName] = true
+					items = append(items, CompletionItem{
+						Label:            idxName,
+						Kind:             CompletionItemKindVariable,
+						Detail:           fmt.Sprintf("(loop index) %s: number", idxName),
+						Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("For loop index variable at line %d", idx+1)},
+						InsertText:       idxName,
+						InsertTextFormat: InsertTextFormatPlainText,
+						SortText:         fmt.Sprintf("01_%s", idxName),
+					})
+				}
 			}
 		}
 

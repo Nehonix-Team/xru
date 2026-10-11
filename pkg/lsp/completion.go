@@ -47,6 +47,27 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 		return &CompletionList{Items: withItems}
 	}
 
+	// 1.5 Context Check: Inside a string literal
+	quoteCount := 0
+	for i := 0; i < len(prefixLine); i++ {
+		if prefixLine[i] == '"' && (i == 0 || prefixLine[i-1] != '\\') {
+			quoteCount++
+		}
+	}
+	if quoteCount%2 != 0 {
+		// Dans une chaîne de caractères ouverte
+		lastOpenBrace := strings.LastIndex(prefixLine, "{")
+		lastCloseBrace := strings.LastIndex(prefixLine, "}")
+		if lastOpenBrace > lastCloseBrace {
+			// Le curseur est à l'intérieur d'un bloc d'interpolation `{...}` (ex: `"{re|"`)
+			// Proposer tous les symboles locaux pertinents (variables, arguments, paramètres, &prop)
+			localItems := collectLocalSymbols(lines, pos.Line)
+			return &CompletionList{IsIncomplete: false, Items: localItems}
+		}
+		// Texte normal dans une chaîne (pas d'autocomplétion intempestive de snippets ou mots-clés)
+		return &CompletionList{IsIncomplete: false, Items: []CompletionItem{}}
+	}
+
 	// 2. Member completion: e.g. "Utils." or "Net." or "Crypto." or "Fs." or "cdn."
 	if memberList, handled := s.handleMemberCompletion(uri, lines, prefixLine); handled {
 		return memberList

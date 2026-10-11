@@ -607,3 +607,56 @@ downloadTask.
 		t.Errorf("Expected 'isDone' method on downloadTask completion, got: %s", outStr)
 	}
 }
+
+func TestInterpolationAndCallCompletion(t *testing.T) {
+	uri := "file:///test_interp.xru"
+	testCode := `use std
+let result = "ok"
+let downloadTask = with Net.fetch("https://example.com") catch err or "fallback"
+for item, idx in 1..5 {
+    std.println("Test: {")
+}
+std.println("Result: {re
+std.println(re
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       testCode,
+		},
+	})
+
+	// 1. Completion inside interpolation "{re" on line 6, col 25
+	compInterpReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 6, "character": 25},
+	})
+
+	// 2. Completion inside call argument "std.println(re" on line 7, col 14
+	compArgReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 7, "character": 14},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + compInterpReq + compArgReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Both completions should suggest 'result' and 'err' and 'item'
+	if !strings.Contains(outStr, `"label":"result"`) {
+		t.Errorf("Expected 'result' in completions, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"err"`) {
+		t.Errorf("Expected 'err' in completions, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"idx"`) {
+		t.Errorf("Expected 'idx' in completions, got: %s", outStr)
+	}
+}
+

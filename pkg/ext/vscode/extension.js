@@ -383,6 +383,8 @@ function activate(context) {
     "@",
     ":",
     "\"",
+    "{",
+    "&",
   );
   context.subscriptions.push(completionProvider);
 

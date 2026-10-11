@@ -15,6 +15,15 @@ func (s *Server) handleMemberCompletion(uri string, lines []string, prefixLine s
 		return nil, false
 	}
 
+	// S'assurer que le point correspond bien à un accès membre en cours de saisie,
+	// c'est-à-dire que le texte après le point ne contient que des caractères d'identifiant (sans (, ", {, etc.)
+	afterDot := prefixLine[dotIdx+1:]
+	for i := 0; i < len(afterDot); i++ {
+		if !isWordChar(afterDot[i]) {
+			return nil, false
+		}
+	}
+
 	beforeDot := strings.TrimSpace(prefixLine[:dotIdx])
 	var unitName string
 	for i := len(beforeDot) - 1; i >= 0; i-- {

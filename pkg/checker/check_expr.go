@@ -44,8 +44,29 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			matches := reUnitPropInterpolation.FindAllStringSubmatch(e.Value, -1)
 			for _, m := range matches {
 				if len(m) > 1 {
-					c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
+					varPos := e.Pos()
+					if idx := strings.Index(e.Value, "{&"+m[1]+"}"); idx >= 0 {
+						varPos.Column += 1 + idx + 1
+					}
+					c.addError(varPos, "ERR_INVALID_PROP_ACCESS",
 						fmt.Sprintf("Property access '&%s' is only allowed inside a #UNIT definition", m[1]))
+				}
+			}
+		} else {
+			matches := reUnitPropInterpolation.FindAllStringSubmatch(e.Value, -1)
+			for _, m := range matches {
+				if len(m) > 1 {
+					propName := m[1]
+					if _, ok := c.scope.Resolve("&" + propName); !ok {
+						if _, ok2 := c.scope.Resolve(propName); !ok2 {
+							varPos := e.Pos()
+							if idx := strings.Index(e.Value, "{&"+propName+"}"); idx >= 0 {
+								varPos.Column += 1 + idx + 1
+							}
+							c.addError(varPos, "ERR_UNDEFINED_PROPERTY",
+								fmt.Sprintf("Property '&%s' is not defined in this unit", propName))
+						}
+					}
 				}
 			}
 		}
@@ -53,8 +74,16 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		masked = strings.ReplaceAll(masked, "}}", "\x01\x01")
 		for _, m := range reInterpolationIdentifier.FindAllStringSubmatch(masked, -1) {
 			if len(m) > 1 {
-				if sym, ok := c.scope.Resolve(m[1]); ok {
+				varName := m[1]
+				if sym, ok := c.scope.Resolve(varName); ok {
 					sym.Used = true
+				} else {
+					varPos := e.Pos()
+					if idx := strings.Index(e.Value, "{"+varName+"}"); idx >= 0 {
+						varPos.Column += 1 + idx + 1
+					}
+					c.addError(varPos, "ERR_UNDEFINED_VARIABLE",
+						fmt.Sprintf("Undefined variable '%s' in string interpolation", varName))
 				}
 			}
 		}

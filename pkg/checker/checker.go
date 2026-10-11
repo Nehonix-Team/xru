@@ -45,6 +45,10 @@ func (c *Checker) GetScope() *Scope {
 	return c.scope
 }
 
+func (c *Checker) AllDeclaredVars() []*Symbol {
+	return c.declaredVars
+}
+
 func (c *Checker) UnusedSymbols() []*Symbol {
 	var unused []*Symbol
 	for _, sym := range c.declaredVars {

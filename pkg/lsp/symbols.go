@@ -35,14 +35,30 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 		c.Check(prog)
 	}
 
-	// 1. Si l'expression est qualifiée avec un point (ex: Crypto.GetRandomBytes)
+	// 1. Si l'expression est qualifiée avec un point (ex: Crypto.GetRandomBytes ou content.getJson)
 	if strings.Contains(fullExpr, ".") {
 		parts := strings.Split(fullExpr, ".")
 		objectName := parts[0]
 		if objectName != "" && objectName != "string" && objectName != "list" && !strings.HasPrefix(objectName, "\"") && !strings.HasPrefix(objectName, "'") {
 			if c != nil {
-				if _, inScope := c.GetScope().Resolve(objectName); !inScope {
-					// L'objet n'est pas dans le scope (ex: 'Crypto' non importé)
+				inScope := false
+				if _, ok := c.GetScope().Resolve(objectName); ok {
+					inScope = true
+				} else {
+					for _, d := range c.AllDeclaredVars() {
+						if d.Name == objectName {
+							inScope = true
+							break
+						}
+					}
+				}
+				if !inScope {
+					lines := strings.Split(text, "\n")
+					if vInfo := findVariableTargetInfo(lines, objectName); vInfo != nil {
+						inScope = true
+					}
+				}
+				if !inScope {
 					return nil
 				}
 			}
@@ -55,7 +71,25 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 		}
 	}
 
-	if docItem := GetDocForWord(fullExpr, word); docItem != nil {
+	lookupExpr := fullExpr
+	if strings.Contains(fullExpr, ".") {
+		parts := strings.Split(fullExpr, ".")
+		objectName := parts[0]
+		methodName := parts[1]
+		lines := strings.Split(text, "\n")
+		if vInfo := findVariableTargetInfo(lines, objectName); vInfo != nil && vInfo.unitType != "" {
+			lookupExpr = vInfo.unitType + "." + methodName
+		} else if c != nil {
+			for _, d := range c.AllDeclaredVars() {
+				if d.Name == objectName && d.Type != "" {
+					lookupExpr = d.Type + "." + methodName
+					break
+				}
+			}
+		}
+	}
+
+	if docItem := GetDocForWord(lookupExpr, word); docItem != nil {
 		return &Hover{
 			Contents: MarkupContent{
 				Kind:  "markdown",
@@ -100,7 +134,18 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 			}
 		}
 
-		if sym, ok := c.GetScope().Resolve(word); ok {
+		var sym *checker.Symbol
+		if s, ok := c.GetScope().Resolve(word); ok {
+			sym = s
+		} else {
+			for _, s := range c.AllDeclaredVars() {
+				if s.Name == word {
+					sym = s
+					break
+				}
+			}
+		}
+		if sym != nil {
 			var md strings.Builder
 			switch sym.Kind {
 			case checker.SymVar:

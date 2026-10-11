@@ -57,6 +57,7 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 					docSym := CreateDocumentSymbol(lambda.Parameters[0].Name)
 					docSym.Pos = lambda.Pos()
 					_ = c.scope.Define(docSym)
+					c.declaredVars = append(c.declaredVars, docSym)
 				}
 				if len(lambda.Parameters) > 1 {
 					errSym := &Symbol{
@@ -66,6 +67,7 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 						Pos:  lambda.Pos(),
 					}
 					_ = c.scope.Define(errSym)
+					c.declaredVars = append(c.declaredVars, errSym)
 				}
 
 				if lambda.Body != nil {

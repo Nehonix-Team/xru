@@ -78,6 +78,46 @@ func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
 			}
 		}
 	}
+
+	// 7. Check file statement parameters (doc: Document, err: string)
+	reFileStmt := regexp.MustCompile(`^\s*file\s+.*?(?:,\s*)?\((.*?)\)\s*(?:->|=>)`)
+	for _, line := range lines {
+		if m := reFileStmt.FindStringSubmatch(line); len(m) > 1 {
+			params := strings.Split(m[1], ",")
+			if len(params) > 0 && strings.TrimSpace(params[0]) == varName {
+				return &varTargetInfo{unitType: "Document"}
+			}
+			if len(params) > 1 && strings.TrimSpace(params[1]) == varName {
+				return &varTargetInfo{isString: true}
+			}
+		}
+	}
+
+	// 8. Check func parameters
+	reFunc := regexp.MustCompile(`^\s*(?:global\s+)?func\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\((.*?)\)`)
+	for _, line := range lines {
+		if m := reFunc.FindStringSubmatch(line); len(m) > 1 {
+			for _, p := range strings.Split(m[1], ",") {
+				parts := strings.Split(p, ":")
+				if len(parts) > 0 && strings.TrimSpace(parts[0]) == varName {
+					pType := "any"
+					if len(parts) > 1 {
+						pType = strings.TrimSpace(parts[1])
+					}
+					if pType == "string" {
+						return &varTargetInfo{isString: true}
+					}
+					if strings.HasPrefix(pType, "list") {
+						return &varTargetInfo{isList: true}
+					}
+					if pType != "" && pType != "any" && pType != "number" && pType != "bool" && pType != "void" {
+						return &varTargetInfo{unitType: pType}
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }
 

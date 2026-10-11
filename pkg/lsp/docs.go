@@ -252,6 +252,92 @@ var BuiltinUnitsDocs = map[string]struct {
 			},
 		},
 	},
+	"document": {
+		Detail: "unit Document",
+		Doc:    "Multi-view surgical file manipulation unit providing raw, linewise, JSON, and fuzzy editing capabilities.",
+		Methods: map[string]DocItem{
+			"getContent": {
+				Detail: "doc.getContent() -> string",
+				Doc:    "Returns the entire raw content of the document as a string.",
+			},
+			"setContent": {
+				Detail: "doc.setContent(newContent: string) -> bool",
+				Doc:    "Replaces the entire content of the document with the provided string.",
+			},
+			"append": {
+				Detail: "doc.append(content: string) -> bool",
+				Doc:    "Appends the specified text to the end of the document.",
+			},
+			"prepend": {
+				Detail: "doc.prepend(content: string) -> bool",
+				Doc:    "Prepends the specified text to the beginning of the document.",
+			},
+			"contains": {
+				Detail: "doc.contains(pattern: string) -> bool",
+				Doc:    "Checks whether the document contains the specified substring.",
+			},
+			"size": {
+				Detail: "doc.size() -> number",
+				Doc:    "Returns the total number of lines in the document.",
+			},
+			"getLines": {
+				Detail: "doc.getLines() -> list[string]",
+				Doc:    "Returns all lines of the document as a list of strings.",
+			},
+			"setLines": {
+				Detail: "doc.setLines(lines: list[string]) -> bool",
+				Doc:    "Replaces all lines of the document with the provided list of strings.",
+			},
+			"getLine": {
+				Detail: "doc.getLine(lineNum: number) -> string",
+				Doc:    "Returns the content of the line at 1-based index `lineNum`.",
+			},
+			"setLine": {
+				Detail: "doc.setLine(lineNum: number, text: string) -> bool",
+				Doc:    "Updates the content of the line at 1-based index `lineNum`.",
+			},
+			"removeLine": {
+				Detail: "doc.removeLine(lineNum: number) -> bool",
+				Doc:    "Deletes the line at 1-based index `lineNum`.",
+			},
+			"removeLines": {
+				Detail: "doc.removeLines(startLine: number, endLine: number) -> bool",
+				Doc:    "Deletes lines in the 1-based range [`startLine`, `endLine`].",
+			},
+			"getJson": {
+				Detail: "doc.getJson(keyPath: string) -> any",
+				Doc:    "Parses the document as JSON and retrieves the value at dot-separated `keyPath` (e.g. `'scripts.build'`).",
+			},
+			"setJson": {
+				Detail: "doc.setJson(keyPath: string, value: any) -> bool",
+				Doc:    "Sets or updates a field at dot-separated `keyPath` with formatted JSON indentation.",
+			},
+			"removeJson": {
+				Detail: "doc.removeJson(keyPath: string) -> bool",
+				Doc:    "Removes a field at dot-separated `keyPath` from the JSON structure.",
+			},
+			"replaceFuzzy": {
+				Detail: "doc.replaceFuzzy(target: string, replacement: string) -> bool",
+				Doc:    "Replaces target with whitespace-insensitive fuzzy token matching.",
+			},
+			"removeFuzzy": {
+				Detail: "doc.removeFuzzy(target: string) -> bool",
+				Doc:    "Deletes target using whitespace-insensitive fuzzy token matching.",
+			},
+			"removeBetween": {
+				Detail: "doc.removeBetween(start: string, end: string, includeBounds?: bool) -> bool",
+				Doc:    "Removes content between `start` and `end` delimiters.",
+			},
+			"removeBalanced": {
+				Detail: "doc.removeBalanced(anchor: string, openChar?: string, closeChar?: string) -> bool",
+				Doc:    "Surgically removes a block starting at `anchor` by counting matched bracket depth, safely ignoring strings and comments.",
+			},
+			"save": {
+				Detail: "doc.save() -> bool",
+				Doc:    "Manually flushes document modifications to disk immediately.",
+			},
+		},
+	},
 }
 
 // SurgicalMethodsDocs contient la documentation des méthodes chirurgicales sur fichiers
@@ -485,6 +571,11 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 				if methodDoc, ok := unitDoc.Methods[methodKey]; ok {
 					return &methodDoc
 				}
+				for mK, mV := range unitDoc.Methods {
+					if strings.EqualFold(mK, methodKey) {
+						return &mV
+					}
+				}
 			}
 			if strDoc, ok := StringMethodsDocs[methodKey]; ok {
 				return &strDoc
@@ -503,7 +594,16 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 		}
 	}
 
-	// 3. Méthodes natives String et List (prioritaires sur les méthodes chirurgicales de fichier)
+	// 3. Méthodes document
+	if docUnit, ok := BuiltinUnitsDocs["document"]; ok {
+		for mK, mV := range docUnit.Methods {
+			if strings.EqualFold(mK, targetWord) {
+				return &mV
+			}
+		}
+	}
+
+	// 4. Méthodes natives String et List
 	if strDoc, ok := StringMethodsDocs[targetWord]; ok {
 		return &strDoc
 	}
@@ -511,7 +611,7 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 		return &listDoc
 	}
 
-	// 4. Méthodes chirurgicales
+	// 5. Méthodes chirurgicales legacy
 	if surgDoc, ok := SurgicalMethodsDocs[targetWord]; ok {
 		return &surgDoc
 	}

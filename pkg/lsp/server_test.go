@@ -660,3 +660,65 @@ std.println(re
 	}
 }
 
+func TestFileStatementLSPCompletionAndHover(t *testing.T) {
+	uri := "file:///test_file_lsp.xru"
+	code := `use std
+
+file "package.json", (content, error) -> {
+    const a = 87
+    content.
+    error.
+}
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
+
+	// 1. Completion on line 4 (inside file block): should suggest 'content', 'error', 'a'
+	compLocalReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 4, "character": 4},
+	})
+
+	// 2. Member completion on "content." on line 4, col 12
+	compContentReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 4, "character": 12},
+	})
+
+	// 3. Hover on "content" on line 2, col 24
+	hoverContentReq := formatLSPMessage("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 2, "character": 24},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + compLocalReq + compContentReq + hoverContentReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	if !strings.Contains(outStr, `"label":"content"`) {
+		t.Errorf("Expected 'content' in local completions, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"error"`) {
+		t.Errorf("Expected 'error' in local completions, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"getJson"`) {
+		t.Errorf("Expected 'getJson' in content. completions, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"replaceFuzzy"`) {
+		t.Errorf("Expected 'replaceFuzzy' in content. completions, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, "Document") {
+		t.Errorf("Expected 'Document' in hover, got: %s", outStr)
+	}
+}
+

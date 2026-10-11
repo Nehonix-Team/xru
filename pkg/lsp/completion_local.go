@@ -14,6 +14,8 @@ type paramInfo struct {
 func findCurrentFunctionParams(lines []string, currentLine int) []paramInfo {
 	var params []paramInfo
 	reFunc := regexp.MustCompile(`^\s*(?:global\s+)?func\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\((.*?)\)`)
+	reFileStmt := regexp.MustCompile(`^\s*file\s+.*?(?:,\s*)?\((.*?)\)\s*(?:->|=>)`)
+	reLambda := regexp.MustCompile(`\((.*?)\)\s*(?:->|=>)\s*\{?$`)
 	braceDepth := 0
 
 	for i := currentLine; i >= 0; i-- {
@@ -25,7 +27,46 @@ func findCurrentFunctionParams(lines []string, currentLine int) []paramInfo {
 				if braceDepth > 0 {
 					braceDepth--
 				} else {
+					// 1. Check file statement
+					if m := reFileStmt.FindStringSubmatch(lines[i]); len(m) > 1 {
+						pList := strings.Split(m[1], ",")
+						if len(pList) > 0 {
+							docParam := strings.TrimSpace(pList[0])
+							if docParam != "" {
+								params = append(params, paramInfo{name: docParam, paramType: "Document"})
+							}
+						}
+						if len(pList) > 1 {
+							errParam := strings.TrimSpace(pList[1])
+							if errParam != "" {
+								params = append(params, paramInfo{name: errParam, paramType: "string"})
+							}
+						}
+						return params
+					}
+
+					// 2. Check func statement
 					if m := reFunc.FindStringSubmatch(lines[i]); len(m) > 1 {
+						paramStr := strings.TrimSpace(m[1])
+						if paramStr != "" {
+							for _, p := range strings.Split(paramStr, ",") {
+								p = strings.TrimSpace(p)
+								parts := strings.Split(p, ":")
+								pName := strings.TrimSpace(parts[0])
+								pType := "any"
+								if len(parts) > 1 {
+									pType = strings.TrimSpace(parts[1])
+								}
+								if pName != "" {
+									params = append(params, paramInfo{name: pName, paramType: pType})
+								}
+							}
+						}
+						return params
+					}
+
+					// 3. Generic lambda (x, y) -> {
+					if m := reLambda.FindStringSubmatch(lines[i]); len(m) > 1 {
 						paramStr := strings.TrimSpace(m[1])
 						if paramStr != "" {
 							for _, p := range strings.Split(paramStr, ",") {
@@ -54,7 +95,7 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 	var items []CompletionItem
 	seen := make(map[string]bool)
 
-	// 1. Paramètres de la fonction englobante courante
+	// 1. Paramètres de la fonction ou du bloc englobant courant
 	currentFuncParams := findCurrentFunctionParams(lines, currentLine)
 	for _, p := range currentFuncParams {
 		if !seen[p.name] {
@@ -67,7 +108,7 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 				Label:            p.name,
 				Kind:             CompletionItemKindVariable,
 				Detail:           fmt.Sprintf("(parameter) %s: %s", p.name, pType),
-				Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Parameter `%s` of current function", p.name)},
+				Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Parameter `%s` of type `%s` in current block", p.name, pType)},
 				InsertText:       p.name,
 				InsertTextFormat: InsertTextFormatPlainText,
 				SortText:         fmt.Sprintf("00_%s", p.name),
@@ -96,7 +137,28 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 			name := m[2]
 			typeStr := strings.TrimSpace(m[3])
 			if typeStr == "" {
-				typeStr = "any"
+				if eqIdx := strings.Index(line, "="); eqIdx != -1 {
+					valPart := strings.TrimSpace(line[eqIdx+1:])
+					if strings.HasPrefix(valPart, "\"") || strings.HasPrefix(valPart, "'") {
+						typeStr = "string"
+					} else if valPart == "true" || valPart == "false" {
+						typeStr = "bool"
+					} else if strings.HasPrefix(valPart, "[") {
+						typeStr = "list"
+					} else if strings.HasPrefix(valPart, "@") {
+						uName := strings.TrimPrefix(valPart, "@")
+						if pIdx := strings.Index(uName, "("); pIdx != -1 {
+							uName = uName[:pIdx]
+						}
+						typeStr = strings.TrimSpace(uName)
+					} else if len(valPart) > 0 && (valPart[0] >= '0' && valPart[0] <= '9' || valPart[0] == '-') {
+						typeStr = "number"
+					} else {
+						typeStr = "any"
+					}
+				} else {
+					typeStr = "any"
+				}
 			}
 			if !seen[name] {
 				seen[name] = true

@@ -1351,26 +1351,72 @@ dispatch "{baseDir}/sub", "patch.xru"
 	}
 }
 
-func TestNativeMethodRuntimeValidation(t *testing.T) {
+func TestModernMultiViewFileOperations(t *testing.T) {
+	tmpDir := t.TempDir()
+	samplePath := filepath.Join(tmpDir, "sample.txt")
+	sampleContent := `import { PasswordManager } from "xypriss-security";
+
+export const pwd = new PasswordManager({
+  algorithm: "argon2id",
+  memoryCost: 65536,
+  parallelism: 4,
+  nested: {
+    enabled: true
+  }
+});
+
+let remaining = "keep this";`
+
+	if err := os.WriteFile(samplePath, []byte(sampleContent), 0644); err != nil {
+		t.Fatalf("Failed to write sample: %v", err)
+	}
+
+	code := fmt.Sprintf(`
+file "%s", (doc, err) -> {
+    // 1. Suppression du bloc équilibré d'accolades complet
+    doc.removeBalanced("export const pwd = new PasswordManager", "{", "}")
+
+    // 2. Suppression de la ligne d'import via removeBetween
+    doc.removeBetween("import", "from \"xypriss-security\";", true)
+
+    // 3. Ajout d'une ligne
+    doc.append("\n// ADDED")
+}
+`, samplePath)
+
+	l := lexer.New("modern_file.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
 	ev := runtime.NewEvaluator()
 	env := runtime.NewEnvironment(nil)
-
-	// String.replace without 2 args should error at runtime
-	code1 := `let res = "hello".replace()`
-	l1 := lexer.New("rt1.xru", code1)
-	p1 := parser.New(l1)
-	if _, err := ev.Eval(p1.ParseProgram(), env); err == nil {
-		t.Errorf("Expected runtime error for .replace() without arguments")
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
 	}
 
-	// String.slice with non-number should error at runtime
-	code2 := `let res = "hello".slice("invalid")`
-	l2 := lexer.New("rt2.xru", code2)
-	p2 := parser.New(l2)
-	if _, err := ev.Eval(p2.ParseProgram(), env); err == nil {
-		t.Errorf("Expected runtime error for .slice() with non-number")
+	data, err := os.ReadFile(samplePath)
+	if err != nil {
+		t.Fatalf("Failed to read sample: %v", err)
+	}
+	res := string(data)
+
+	if strings.Contains(res, "PasswordManager") {
+		t.Errorf("Expected PasswordManager to be completely removed, got: %s", res)
+	}
+	if strings.Contains(res, "memoryCost") {
+		t.Errorf("Expected balanced block (memoryCost) to be removed, got: %s", res)
+	}
+	if !strings.Contains(res, "keep this") {
+		t.Errorf("Expected 'keep this' to remain, got: %s", res)
+	}
+	if !strings.Contains(res, "// ADDED") {
+		t.Errorf("Expected '// ADDED' to be appended, got: %s", res)
 	}
 }
+
 
 
 

@@ -216,6 +216,40 @@ func (c *Checker) DefineUnit(name string) {
 	}
 }
 
+func CreateDocumentSymbol(name string) *Symbol {
+	return &Symbol{
+		Name: name,
+		Kind: SymUnit,
+		Type: "Document",
+		Methods: map[string]*Symbol{
+			"getContent":     {Name: "getContent", Kind: SymFunc, Type: "string"},
+			"setContent":     {Name: "setContent", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "newContent", Type: "string"}}},
+			"append":         {Name: "append", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "content", Type: "string"}}},
+			"prepend":        {Name: "prepend", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "content", Type: "string"}}},
+			"contains":       {Name: "contains", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "pattern", Type: "string"}}},
+			"size":           {Name: "size", Kind: SymFunc, Type: "number"},
+			"getLines":       {Name: "getLines", Kind: SymFunc, Type: "list[string]"},
+			"setLines":       {Name: "setLines", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "lines", Type: "list"}}},
+			"getLine":        {Name: "getLine", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "lineNum", Type: "number"}}},
+			"setLine":        {Name: "setLine", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "lineNum", Type: "number"}, {Name: "text", Type: "string"}}},
+			"removeLine":     {Name: "removeLine", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "lineNum", Type: "number"}}},
+			"removeLines":    {Name: "removeLines", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "startLine", Type: "number"}, {Name: "endLine", Type: "number"}}},
+			"getJson":        {Name: "getJson", Kind: SymFunc, Type: "any", Params: []*ast.Parameter{{Name: "keyPath", Type: "string"}}},
+			"setJson":        {Name: "setJson", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "keyPath", Type: "string"}, {Name: "value", Type: "any"}}},
+			"removeJson":     {Name: "removeJson", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "keyPath", Type: "string"}}},
+			"replace":        {Name: "replace", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "target", Type: "string"}, {Name: "replacement", Type: "string"}}},
+			"replaceFuzzy":   {Name: "replaceFuzzy", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "target", Type: "string"}, {Name: "replacement", Type: "string"}}},
+			"remove":         {Name: "remove", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "target", Type: "string"}}},
+			"removeFuzzy":    {Name: "removeFuzzy", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "target", Type: "string"}}},
+			"insertAfter":    {Name: "insertAfter", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "anchor", Type: "string"}, {Name: "content", Type: "string"}}},
+			"insertBefore":   {Name: "insertBefore", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "anchor", Type: "string"}, {Name: "content", Type: "string"}}},
+			"removeBetween":  {Name: "removeBetween", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "startPattern", Type: "string"}, {Name: "endPattern", Type: "string"}}, MinArgs: 2, IsVariadic: true},
+			"removeBalanced": {Name: "removeBalanced", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "startAnchor", Type: "string"}}, MinArgs: 1, IsVariadic: true},
+			"save":           {Name: "save", Kind: SymFunc, Type: "bool"},
+		},
+	}
+}
+
 type NativeParam struct {
 	Name     string
 	Type     string

@@ -5,16 +5,25 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 )
 
 func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Value, error) {
-	// 1. Interpolation des variables dans le chemin du fichier
+	// 1. Résolution dynamique du chemin cible
 	rawPath := fileStmt.Path
-	for k, v := range env.All() {
-		rawPath = strings.ReplaceAll(rawPath, fmt.Sprintf("{%s}", k), v.String())
+	if fileStmt.PathExpr != nil {
+		pathVal, err := ev.Eval(fileStmt.PathExpr, env)
+		if err != nil {
+			return nil, err
+		}
+		rawPath = pathVal.String()
+	} else {
+		for k, v := range env.All() {
+			rawPath = strings.ReplaceAll(rawPath, fmt.Sprintf("{%s}", k), v.String())
+		}
 	}
 
 	targetPath := rawPath
@@ -22,302 +31,625 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		targetPath = filepath.Join(env.CurrentDir(), targetPath)
 	}
 
+	// 2. Lecture du fichier
+	var readErr error
+	var content string
 	contentBytes, err := os.ReadFile(targetPath)
 	if err != nil {
-		return NilValue{}, fmt.Errorf("failed to open file '%s': %w", targetPath, err)
+		readErr = err
+	} else {
+		content = string(contentBytes)
 	}
-	content := string(contentBytes)
+
 	modified := false
 
-	// 2. Création de l'environnement confiné au fichier avec les opérations chirurgicales
-	fileEnv := NewEnvironment(env)
-	fileEnv.SetCurrentDir(filepath.Dir(targetPath))
+	// Fonctions utilitaires internes pour la synchronisation
+	syncLines := func() ListValue {
+		rawLines := strings.Split(content, "\n")
+		var elems []Value
+		for _, l := range rawLines {
+			elems = append(elems, StringValue{Val: l})
+		}
+		return ListValue{Elements: elems}
+	}
 
-	// Replace(target, replacement)
-	fileEnv.Set("Replace", FunctionValue{
-		Name: "Replace",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 2 {
-				return NilValue{}, fmt.Errorf("Replace requires target string and replacement")
-			}
-			target := args[0].String()
-			repl := args[1].String()
-			if strings.Contains(content, target) {
-				content = strings.ReplaceAll(content, target, repl)
-				modified = true
-			}
-			return BoolValue{Val: true}, nil
+	// Création de l'instance Multi-Vues Document
+	docUnit := &UnitInstance{
+		UnitName: "Document",
+		Properties: map[string]Value{
+			"path":       StringValue{Val: targetPath},
+			"content":    StringValue{Val: content},
+			"lines":      syncLines(),
+			"length":     NumberValue{Val: float64(len(content))},
+			"isModified": BoolValue{Val: false},
 		},
-	}, false)
+		Methods:    make(map[string]NativeMethod),
+		Directives: make(map[string]NativeDirective),
+	}
 
-	// Remove(target)
-	fileEnv.Set("Remove", FunctionValue{
-		Name: "Remove",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 1 {
-				return NilValue{}, fmt.Errorf("Remove requires target string")
-			}
-			target := args[0].String()
-			if strings.Contains(content, target) {
-				content = strings.ReplaceAll(content, target, "")
-				modified = true
-			}
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
+	updateContent := func(newContent string) {
+		content = newContent
+		modified = true
+		docUnit.Properties["content"] = StringValue{Val: content}
+		docUnit.Properties["lines"] = syncLines()
+		docUnit.Properties["length"] = NumberValue{Val: float64(len(content))}
+		docUnit.Properties["isModified"] = BoolValue{Val: true}
+	}
 
-	// RemoveBlock(startPattern, endPattern)
-	fileEnv.Set("RemoveBlock", FunctionValue{
-		Name: "RemoveBlock",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 2 {
-				return NilValue{}, fmt.Errorf("RemoveBlock requires start and end patterns")
-			}
-			startPat := args[0].String()
-			endPat := args[1].String()
+	// === VUE 1 : CONTENU BRUT ===
+	docUnit.Methods["getContent"] = func(args []Value) (Value, error) {
+		return StringValue{Val: content}, nil
+	}
+	docUnit.Methods["setContent"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("setContent requires 1 string argument")
+		}
+		updateContent(args[0].String())
+		return BoolValue{Val: true}, nil
+	}
+	docUnit.Methods["append"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("append requires 1 string argument")
+		}
+		updateContent(content + args[0].String())
+		return BoolValue{Val: true}, nil
+	}
+	docUnit.Methods["prepend"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("prepend requires 1 string argument")
+		}
+		updateContent(args[0].String() + content)
+		return BoolValue{Val: true}, nil
+	}
+	docUnit.Methods["contains"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("contains requires 1 string argument")
+		}
+		return BoolValue{Val: strings.Contains(content, args[0].String())}, nil
+	}
+	docUnit.Methods["size"] = func(args []Value) (Value, error) {
+		return NumberValue{Val: float64(len(content))}, nil
+	}
 
-			sIdx := strings.Index(content, startPat)
-			if sIdx != -1 {
-				lineStart := strings.LastIndex(content[:sIdx], "\n")
-				if lineStart == -1 {
-					lineStart = 0
-				} else {
-					lineStart += 1
-				}
+	// === VUE 2 : LIGNES (LINEWISE) ===
+	docUnit.Methods["getLines"] = func(args []Value) (Value, error) {
+		return syncLines(), nil
+	}
+	docUnit.Methods["setLines"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("setLines requires 1 list argument")
+		}
+		listVal, ok := args[0].(ListValue)
+		if !ok {
+			return NilValue{}, fmt.Errorf("setLines expects list argument")
+		}
+		var newLines []string
+		for _, el := range listVal.Elements {
+			newLines = append(newLines, el.String())
+		}
+		updateContent(strings.Join(newLines, "\n"))
+		return BoolValue{Val: true}, nil
+	}
+	docUnit.Methods["getLine"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("getLine requires line number (1-indexed)")
+		}
+		n, ok := args[0].(NumberValue)
+		if !ok {
+			return NilValue{}, fmt.Errorf("getLine expects number argument")
+		}
+		lines := strings.Split(content, "\n")
+		idx := int(n.Val) - 1
+		if idx < 0 || idx >= len(lines) {
+			return StringValue{Val: ""}, nil
+		}
+		return StringValue{Val: lines[idx]}, nil
+	}
+	docUnit.Methods["setLine"] = func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("setLine requires line number (1-indexed) and replacement text")
+		}
+		n, ok := args[0].(NumberValue)
+		if !ok {
+			return NilValue{}, fmt.Errorf("setLine expects number for line number")
+		}
+		lines := strings.Split(content, "\n")
+		idx := int(n.Val) - 1
+		if idx < 0 || idx >= len(lines) {
+			return NilValue{}, fmt.Errorf("line index %d out of bounds (1..%d)", int(n.Val), len(lines))
+		}
+		lines[idx] = args[1].String()
+		updateContent(strings.Join(lines, "\n"))
+		return BoolValue{Val: true}, nil
+	}
+	docUnit.Methods["removeLine"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("removeLine requires line number (1-indexed)")
+		}
+		n, ok := args[0].(NumberValue)
+		if !ok {
+			return NilValue{}, fmt.Errorf("removeLine expects number argument")
+		}
+		lines := strings.Split(content, "\n")
+		idx := int(n.Val) - 1
+		if idx >= 0 && idx < len(lines) {
+			lines = append(lines[:idx], lines[idx+1:]...)
+			updateContent(strings.Join(lines, "\n"))
+		}
+		return BoolValue{Val: true}, nil
+	}
+	docUnit.Methods["removeLines"] = func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("removeLines requires startLine and endLine (1-indexed)")
+		}
+		startN, ok1 := args[0].(NumberValue)
+		endN, ok2 := args[1].(NumberValue)
+		if !ok1 || !ok2 {
+			return NilValue{}, fmt.Errorf("removeLines expects number arguments")
+		}
+		lines := strings.Split(content, "\n")
+		startIdx := int(startN.Val) - 1
+		endIdx := int(endN.Val) - 1
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		if endIdx >= len(lines) {
+			endIdx = len(lines) - 1
+		}
+		if startIdx <= endIdx && startIdx < len(lines) {
+			lines = append(lines[:startIdx], lines[endIdx+1:]...)
+			updateContent(strings.Join(lines, "\n"))
+		}
+		return BoolValue{Val: true}, nil
+	}
 
-				eRel := strings.Index(content[sIdx:], endPat)
-				if eRel != -1 {
-					eIdx := sIdx + eRel + len(endPat)
-					lineEnd := strings.Index(content[eIdx:], "\n")
-					if lineEnd == -1 {
-						eIdx = len(content)
-					} else {
-						eIdx = eIdx + lineEnd + 1
-					}
-					content = content[:lineStart] + content[eIdx:]
-					modified = true
-				}
+	// === VUE 3 : JSON STRUCTURÉ ===
+	docUnit.Methods["getJson"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("getJson requires keyPath argument")
+		}
+		keyPath := args[0].String()
+		var data any
+		if err := json.Unmarshal([]byte(content), &data); err != nil {
+			return NilValue{}, fmt.Errorf("invalid json in %s: %w", targetPath, err)
+		}
+		keys := strings.Split(keyPath, ".")
+		cur := data
+		for _, k := range keys {
+			if m, ok := cur.(map[string]any); ok {
+				cur = m[k]
+			} else {
+				return NilValue{}, nil
 			}
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
-
-	// RemoveUntil(startPattern, untilPattern)
-	fileEnv.Set("RemoveUntil", FunctionValue{
-		Name: "RemoveUntil",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 2 {
-				return NilValue{}, fmt.Errorf("RemoveUntil requires start pattern and until pattern")
-			}
-			startPat := args[0].String()
-			untilPat := args[1].String()
-
-			sIdx := strings.Index(content, startPat)
-			if sIdx != -1 {
-				lineStart := strings.LastIndex(content[:sIdx], "\n")
-				if lineStart == -1 {
-					lineStart = 0
-				} else {
-					lineStart += 1
-				}
-
-				uRel := strings.Index(content[sIdx:], untilPat)
-				if uRel != -1 {
-					untilIdx := sIdx + uRel
-					lineUntil := strings.LastIndex(content[:untilIdx], "\n")
-					if lineUntil == -1 || lineUntil < lineStart {
-						lineUntil = untilIdx
-					} else {
-						lineUntil += 1
-					}
-					content = content[:lineStart] + content[lineUntil:]
-					modified = true
-				}
-			}
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
-
-	// RemoveLines(pattern)
-	fileEnv.Set("RemoveLines", FunctionValue{
-		Name: "RemoveLines",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 1 {
-				return NilValue{}, fmt.Errorf("RemoveLines requires pattern string")
-			}
-			pattern := args[0].String()
-			lines := strings.Split(content, "\n")
-			var kept []string
-			changed := false
-			for _, line := range lines {
-				if strings.Contains(line, pattern) {
-					changed = true
-					continue
-				}
-				kept = append(kept, line)
-			}
-			if changed {
-				content = strings.Join(kept, "\n")
-				modified = true
-			}
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
-
-	// ReplaceLine(pattern, replacement)
-	fileEnv.Set("ReplaceLine", FunctionValue{
-		Name: "ReplaceLine",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 2 {
-				return NilValue{}, fmt.Errorf("ReplaceLine requires pattern string and replacement")
-			}
-			pattern := args[0].String()
-			repl := args[1].String()
-			lines := strings.Split(content, "\n")
-			changed := false
-			for i, line := range lines {
-				if strings.Contains(line, pattern) {
-					lines[i] = repl
-					changed = true
-				}
-			}
-			if changed {
-				content = strings.Join(lines, "\n")
-				modified = true
-			}
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
-
-	// CommentOut(pattern)
-	fileEnv.Set("CommentOut", FunctionValue{
-		Name: "CommentOut",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 1 {
-				return NilValue{}, fmt.Errorf("CommentOut requires pattern string")
-			}
-			pattern := args[0].String()
-			lines := strings.Split(content, "\n")
-			changed := false
-			for i, line := range lines {
-				if strings.Contains(line, pattern) && !strings.HasPrefix(strings.TrimSpace(line), "//") {
-					lines[i] = "// " + line
-					changed = true
-				}
-			}
-			if changed {
-				content = strings.Join(lines, "\n")
-				modified = true
-			}
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
-
-	// Append(text)
-	fileEnv.Set("Append", FunctionValue{
-		Name: "Append",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 1 {
-				return NilValue{}, fmt.Errorf("Append requires string")
-			}
-			content += "\n" + args[0].String()
-			modified = true
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
-
-	// Prepend(text)
-	fileEnv.Set("Prepend", FunctionValue{
-		Name: "Prepend",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 1 {
-				return NilValue{}, fmt.Errorf("Prepend requires string")
-			}
-			content = args[0].String() + "\n" + content
-			modified = true
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
-
-	// JsonSet(keyPath, val)
-	fileEnv.Set("JsonSet", FunctionValue{
-		Name: "JsonSet",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 2 {
-				return NilValue{}, fmt.Errorf("JsonSet requires key path and value")
-			}
-			keyPath := args[0].String()
-			val := args[1].String()
-
-			var data map[string]any
-			if err := json.Unmarshal([]byte(content), &data); err != nil {
-				return NilValue{}, fmt.Errorf("invalid json in %s: %w", targetPath, err)
-			}
-			keys := strings.Split(keyPath, ".")
-			setNestedJson(data, keys, val)
-
-			updatedBytes, err := json.MarshalIndent(data, "", "  ")
-			if err != nil {
-				return NilValue{}, err
-			}
-			content = string(updatedBytes) + "\n"
-			modified = true
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
-
-	// JsonRemove(key)
-	fileEnv.Set("JsonRemove", FunctionValue{
-		Name: "JsonRemove",
-		Fn: func(args []Value) (Value, error) {
-			if len(args) < 1 {
-				return NilValue{}, fmt.Errorf("JsonRemove requires key name")
-			}
-			key := args[0].String()
-
-			var data map[string]any
-			if err := json.Unmarshal([]byte(content), &data); err != nil {
-				return NilValue{}, fmt.Errorf("invalid json in %s: %w", targetPath, err)
-			}
-			delete(data, key)
-
-			updatedBytes, err := json.MarshalIndent(data, "", "  ")
-			if err != nil {
-				return NilValue{}, err
-			}
-			content = string(updatedBytes) + "\n"
-			modified = true
-			return BoolValue{Val: true}, nil
-		},
-	}, false)
-
-	// 3. Exécution de toutes les instructions dans le scope du fichier
-	for _, s := range fileStmt.Body {
-		if _, err := ev.Eval(s, fileEnv); err != nil {
+		}
+		return goValueToXruValue(cur), nil
+	}
+	docUnit.Methods["setJson"] = func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("setJson requires keyPath and value arguments")
+		}
+		keyPath := args[0].String()
+		val := xruValueToGoValue(args[1])
+		var data map[string]any
+		if err := json.Unmarshal([]byte(content), &data); err != nil {
+			data = make(map[string]any)
+		}
+		keys := strings.Split(keyPath, ".")
+		setNestedJson(data, keys, val)
+		updatedBytes, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
 			return NilValue{}, err
 		}
+		updateContent(string(updatedBytes))
+		return BoolValue{Val: true}, nil
 	}
-
-	// 4. Écriture si le fichier a été modifié
-	if modified {
-		if err := os.WriteFile(targetPath, []byte(content), 0644); err != nil {
-			return NilValue{}, fmt.Errorf("failed to write file '%s': %w", targetPath, err)
+	docUnit.Methods["removeJson"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("removeJson requires keyPath argument")
 		}
+		keyPath := args[0].String()
+		var data map[string]any
+		if err := json.Unmarshal([]byte(content), &data); err != nil {
+			return NilValue{}, err
+		}
+		keys := strings.Split(keyPath, ".")
+		removeNestedJson(data, keys)
+		updatedBytes, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return NilValue{}, err
+		}
+		updateContent(string(updatedBytes))
+		return BoolValue{Val: true}, nil
 	}
 
-	return BoolValue{Val: true}, nil
+	// === VUE 4 : OPÉRATIONS CHIRURGICALES & SÉMANTIQUES ===
+	docUnit.Methods["replace"] = func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("replace requires target string and replacement")
+		}
+		target := args[0].String()
+		repl := args[1].String()
+		if strings.Contains(content, target) {
+			updateContent(strings.ReplaceAll(content, target, repl))
+		}
+		return BoolValue{Val: true}, nil
+	}
+
+	docUnit.Methods["replaceFuzzy"] = func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("replaceFuzzy requires target pattern and replacement")
+		}
+		target := args[0].String()
+		repl := args[1].String()
+		re, err := makeFuzzyRegex(target)
+		if err != nil {
+			return NilValue{}, err
+		}
+		if re.MatchString(content) {
+			updateContent(re.ReplaceAllString(content, repl))
+		}
+		return BoolValue{Val: true}, nil
+	}
+
+	docUnit.Methods["remove"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("remove requires target string")
+		}
+		target := args[0].String()
+		if strings.Contains(content, target) {
+			updateContent(strings.ReplaceAll(content, target, ""))
+		}
+		return BoolValue{Val: true}, nil
+	}
+
+	docUnit.Methods["removeFuzzy"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("removeFuzzy requires target pattern")
+		}
+		target := args[0].String()
+		re, err := makeFuzzyRegex(target)
+		if err != nil {
+			return NilValue{}, err
+		}
+		if re.MatchString(content) {
+			updateContent(re.ReplaceAllString(content, ""))
+		}
+		return BoolValue{Val: true}, nil
+	}
+
+	docUnit.Methods["insertAfter"] = func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("insertAfter requires anchor and content to insert")
+		}
+		anchor := args[0].String()
+		toInsert := args[1].String()
+		idx := strings.Index(content, anchor)
+		if idx != -1 {
+			pos := idx + len(anchor)
+			updateContent(content[:pos] + toInsert + content[pos:])
+		}
+		return BoolValue{Val: true}, nil
+	}
+
+	docUnit.Methods["insertBefore"] = func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("insertBefore requires anchor and content to insert")
+		}
+		anchor := args[0].String()
+		toInsert := args[1].String()
+		idx := strings.Index(content, anchor)
+		if idx != -1 {
+			updateContent(content[:idx] + toInsert + content[idx:])
+		}
+		return BoolValue{Val: true}, nil
+	}
+
+	// removeBetween(startPattern, endPattern, includeBounds = true)
+	docUnit.Methods["removeBetween"] = func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("removeBetween requires startPattern and endPattern")
+		}
+		startPattern := args[0].String()
+		endPattern := args[1].String()
+		includeBounds := true
+		if len(args) > 2 {
+			if b, ok := args[2].(BoolValue); ok {
+				includeBounds = b.Val
+			}
+		}
+
+		startRe, err := makeFuzzyRegex(startPattern)
+		if err != nil {
+			return NilValue{}, err
+		}
+		endRe, err := makeFuzzyRegex(endPattern)
+		if err != nil {
+			return NilValue{}, err
+		}
+
+		startLoc := startRe.FindStringIndex(content)
+		if startLoc == nil {
+			return BoolValue{Val: false}, nil
+		}
+
+		// Recherche endPattern après la position de startPattern
+		subContent := content[startLoc[1]:]
+		endLoc := endRe.FindStringIndex(subContent)
+		if endLoc == nil {
+			return BoolValue{Val: false}, nil
+		}
+
+		actualEndStart := startLoc[1] + endLoc[0]
+		actualEndEnd := startLoc[1] + endLoc[1]
+
+		if includeBounds {
+			updateContent(content[:startLoc[0]] + content[actualEndEnd:])
+		} else {
+			updateContent(content[:startLoc[1]] + content[actualEndStart:])
+		}
+		return BoolValue{Val: true}, nil
+	}
+
+	// removeBalanced(startAnchor, openChar = "{", closeChar = "}")
+	docUnit.Methods["removeBalanced"] = func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("removeBalanced requires startAnchor")
+		}
+		startAnchor := args[0].String()
+		openChar := "{"
+		closeChar := "}"
+		if len(args) > 1 {
+			openChar = args[1].String()
+		}
+		if len(args) > 2 {
+			closeChar = args[2].String()
+		}
+
+		anchorRe, err := makeFuzzyRegex(startAnchor)
+		if err != nil {
+			return NilValue{}, err
+		}
+		loc := anchorRe.FindStringIndex(content)
+		if loc == nil {
+			return BoolValue{Val: false}, nil
+		}
+
+		startIndex := loc[0]
+		openIndex := strings.Index(content[loc[1]:], openChar)
+		if openIndex == -1 {
+			return BoolValue{Val: false}, nil
+		}
+		curr := loc[1] + openIndex
+
+		// Algorithme d'appariement équilibré ignorant les guillemets
+		depth := 1
+		i := curr + len(openChar)
+		inString := byte(0)
+		endIndex := -1
+
+		for i < len(content) {
+			ch := content[i]
+			if inString != 0 {
+				if ch == '\\' && i+1 < len(content) {
+					i += 2
+					continue
+				}
+				if ch == inString {
+					inString = 0
+				}
+				i++
+				continue
+			}
+
+			if ch == '"' || ch == '\'' || ch == '`' {
+				inString = ch
+				i++
+				continue
+			}
+
+			if strings.HasPrefix(content[i:], openChar) {
+				depth++
+				i += len(openChar)
+				continue
+			}
+			if strings.HasPrefix(content[i:], closeChar) {
+				depth--
+				if depth == 0 {
+					endIndex = i + len(closeChar)
+					break
+				}
+				i += len(closeChar)
+				continue
+			}
+			i++
+		}
+
+		if endIndex != -1 {
+			// Englober le point-virgule ou retour à la ligne éventuel qui suit
+			for endIndex < len(content) && (content[endIndex] == ';' || content[endIndex] == ' ' || content[endIndex] == '\t') {
+				endIndex++
+			}
+			if endIndex < len(content) && content[endIndex] == '\n' {
+				endIndex++
+			}
+			updateContent(content[:startIndex] + content[endIndex:])
+			return BoolValue{Val: true}, nil
+		}
+
+		return BoolValue{Val: false}, nil
+	}
+
+	docUnit.Methods["save"] = func(args []Value) (Value, error) {
+		err := os.WriteFile(targetPath, []byte(content), 0644)
+		if err != nil {
+			return NilValue{}, err
+		}
+		modified = false
+		docUnit.Properties["isModified"] = BoolValue{Val: false}
+		return BoolValue{Val: true}, nil
+	}
+
+	// 3. Exécution moderne via Handler Lambda (doc, err) -> { ... }
+	if fileStmt.Handler != nil {
+		var errVal Value = NilValue{}
+		if readErr != nil {
+			errVal = StringValue{Val: readErr.Error()}
+		}
+
+		// Si l'utilisateur n'a déclaré qu'un paramètre (doc) et qu'il y a une erreur de lecture -> crash
+		executeHandler := func(fnVal Value, callArgs []Value) error {
+			if lambda, ok := fnVal.(LambdaValue); ok {
+				_, err := ev.CallLambda(lambda, callArgs)
+				return err
+			}
+			if fn, ok := fnVal.(FunctionValue); ok {
+				_, err := fn.Fn(callArgs)
+				return err
+			}
+			return fmt.Errorf("file handler must be a function or lambda, got %s", fnVal.Type())
+		}
+
+		if lambda, ok := fileStmt.Handler.(*ast.LambdaExpression); ok {
+			if len(lambda.Parameters) < 2 && readErr != nil {
+				return NilValue{}, fmt.Errorf("failed to open file '%s': %w", targetPath, readErr)
+			}
+			fnVal, err := ev.Eval(fileStmt.Handler, env)
+			if err != nil {
+				return nil, err
+			}
+			callArgs := []Value{docUnit}
+			if len(lambda.Parameters) >= 2 {
+				callArgs = append(callArgs, errVal)
+			}
+			if err := executeHandler(fnVal, callArgs); err != nil {
+				return nil, err
+			}
+		} else {
+			fnVal, err := ev.Eval(fileStmt.Handler, env)
+			if err != nil {
+				return nil, err
+			}
+			if err := executeHandler(fnVal, []Value{docUnit, errVal}); err != nil {
+				return nil, err
+			}
+		}
+
+		// Auto-sauvegarde à la sortie si modifié et sans erreur
+		if modified && readErr == nil {
+			_ = os.WriteFile(targetPath, []byte(content), 0644)
+		}
+		return docUnit, nil
+	}
+
+	// 4. Rétrocompatibilité : Ancien bloc direct file "path" { ... }
+	if len(fileStmt.Body) > 0 {
+		if readErr != nil {
+			return NilValue{}, fmt.Errorf("failed to open file '%s': %w", targetPath, readErr)
+		}
+		fileEnv := NewEnvironment(env)
+		fileEnv.SetCurrentDir(filepath.Dir(targetPath))
+
+		// Injection des méthodes avec alias PascalCase et minuscules
+		for mName, mFn := range docUnit.Methods {
+			fn := mFn
+			fileEnv.Set(mName, FunctionValue{Name: mName, Fn: fn}, false)
+			fileEnv.Set(strings.ToLower(mName), FunctionValue{Name: strings.ToLower(mName), Fn: fn}, false)
+			fileEnv.Set(strings.Title(mName), FunctionValue{Name: strings.Title(mName), Fn: fn}, false)
+		}
+
+		fileEnv.Set("RemoveBlock", FunctionValue{
+			Name: "RemoveBlock",
+			Fn: func(args []Value) (Value, error) {
+				return docUnit.Methods["removeBetween"](args)
+			},
+		}, false)
+		fileEnv.Set("removeBlock", FunctionValue{
+			Name: "removeBlock",
+			Fn: func(args []Value) (Value, error) {
+				return docUnit.Methods["removeBetween"](args)
+			},
+		}, false)
+		fileEnv.Set("RemoveLines", FunctionValue{
+			Name: "RemoveLines",
+			Fn: func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return NilValue{}, fmt.Errorf("RemoveLines requires pattern")
+				}
+				pat := args[0].String()
+				lines := strings.Split(content, "\n")
+				var rem []string
+				for _, l := range lines {
+					if !strings.Contains(l, pat) {
+						rem = append(rem, l)
+					}
+				}
+				updateContent(strings.Join(rem, "\n"))
+				return BoolValue{Val: true}, nil
+			},
+		}, false)
+
+		for _, stmt := range fileStmt.Body {
+			if _, err := ev.Eval(stmt, fileEnv); err != nil {
+				return nil, err
+			}
+		}
+
+		if modified {
+			_ = os.WriteFile(targetPath, []byte(content), 0644)
+		}
+		return docUnit, nil
+	}
+
+	return docUnit, nil
 }
 
-func setNestedJson(data map[string]any, keys []string, val any) {
-	if len(keys) == 1 {
-		data[keys[0]] = val
+// makeFuzzyRegex transforme une chaîne en regex tolérante aux espaces multiples et retours à la ligne
+func makeFuzzyRegex(pattern string) (*regexp.Regexp, error) {
+	tokens := strings.Fields(pattern)
+	if len(tokens) == 0 {
+		return regexp.Compile("")
+	}
+	var escapedTokens []string
+	for _, tok := range tokens {
+		escapedTokens = append(escapedTokens, regexp.QuoteMeta(tok))
+	}
+	fuzzyPattern := strings.Join(escapedTokens, `\s+`)
+	return regexp.Compile(fuzzyPattern)
+}
+
+func setNestedJson(data map[string]any, keys []string, value any) {
+	if len(keys) == 0 {
 		return
 	}
-	currentKey := keys[0]
-	subMap, exists := data[currentKey].(map[string]any)
-	if !exists {
-		subMap = make(map[string]any)
-		data[currentKey] = subMap
+	if len(keys) == 1 {
+		data[keys[0]] = value
+		return
 	}
-	setNestedJson(subMap, keys[1:], val)
+	next, exists := data[keys[0]]
+	if !exists {
+		nextMap := make(map[string]any)
+		data[keys[0]] = nextMap
+		setNestedJson(nextMap, keys[1:], value)
+		return
+	}
+	if nextMap, ok := next.(map[string]any); ok {
+		setNestedJson(nextMap, keys[1:], value)
+	} else {
+		nextMap := make(map[string]any)
+		data[keys[0]] = nextMap
+		setNestedJson(nextMap, keys[1:], value)
+	}
+}
+
+func removeNestedJson(data map[string]any, keys []string) {
+	if len(keys) == 0 {
+		return
+	}
+	if len(keys) == 1 {
+		delete(data, keys[0])
+		return
+	}
+	if nextMap, ok := data[keys[0]].(map[string]any); ok {
+		removeNestedJson(nextMap, keys[1:])
+	}
 }

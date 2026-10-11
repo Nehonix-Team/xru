@@ -446,7 +446,7 @@ func (p *Parser) isAheadLambda() bool {
 
 	p.nextToken() // premier token après '('
 	if p.curTokenIs(lexer.RPAREN) {
-		return p.peekTokenIs(lexer.FAT_ARROW)
+		return p.peekTokenIs(lexer.FAT_ARROW) || p.peekTokenIs(lexer.ARROW)
 	}
 
 	for p.curTokenIs(lexer.IDENT) {
@@ -466,7 +466,7 @@ func (p *Parser) isAheadLambda() bool {
 
 	if p.peekTokenIs(lexer.RPAREN) {
 		p.nextToken() // ')'
-		return p.peekTokenIs(lexer.FAT_ARROW)
+		return p.peekTokenIs(lexer.FAT_ARROW) || p.peekTokenIs(lexer.ARROW)
 	}
 
 	return false
@@ -501,7 +501,11 @@ func (p *Parser) parseParenOrLambdaExpression() ast.Expression {
 			}
 			p.expectPeek(lexer.RPAREN)
 		}
-		p.expectPeek(lexer.FAT_ARROW)
+		if p.peekTokenIs(lexer.FAT_ARROW) || p.peekTokenIs(lexer.ARROW) {
+			p.nextToken()
+		} else {
+			p.expectPeek(lexer.FAT_ARROW)
+		}
 		p.nextToken() // premier token du corps
 		var body ast.Expression
 		if p.curTokenIs(lexer.LBRACE) {

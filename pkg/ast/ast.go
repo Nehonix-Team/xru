@@ -409,12 +409,19 @@ func (s *DispatchTreeStatement) String() string {
 type FileStatement struct {
 	Position lexer.Position
 	Path     string
+	PathExpr Expression
+	Handler  Expression
 	Body     []Statement
 }
 
 func (s *FileStatement) statementNode()      {}
 func (s *FileStatement) Pos() lexer.Position { return s.Position }
-func (s *FileStatement) String() string      { return fmt.Sprintf("#FILE %s", s.Path) }
+func (s *FileStatement) String() string {
+	if s.PathExpr != nil {
+		return fmt.Sprintf("file %s", s.PathExpr.String())
+	}
+	return fmt.Sprintf("file %s", s.Path)
+}
 
 // ExpressionStatement encapsule un appel de fonction ou méthode libre
 type ExpressionStatement struct {

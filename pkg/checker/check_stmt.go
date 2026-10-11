@@ -38,6 +38,46 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.ExpressionStatement:
 		c.checkExpression(s.Expression)
 	case *ast.FileStatement:
+		if s.PathExpr != nil {
+			c.checkExpression(s.PathExpr)
+			pType := c.inferType(s.PathExpr)
+			if pType != "string" && pType != "any" {
+				c.addError(s.PathExpr.Pos(), "ERR_TYPE_MISMATCH",
+					fmt.Sprintf("File path expression expects string, got '%s'", pType))
+			}
+		}
+
+		if s.Handler != nil {
+			if lambda, ok := s.Handler.(*ast.LambdaExpression); ok {
+				childScope := NewScope(c.scope, false)
+				oldScope := c.scope
+				c.scope = childScope
+
+				if len(lambda.Parameters) > 0 {
+					docSym := CreateDocumentSymbol(lambda.Parameters[0].Name)
+					docSym.Pos = lambda.Pos()
+					_ = c.scope.Define(docSym)
+				}
+				if len(lambda.Parameters) > 1 {
+					errSym := &Symbol{
+						Name: lambda.Parameters[1].Name,
+						Kind: SymVar,
+						Type: "string",
+						Pos:  lambda.Pos(),
+					}
+					_ = c.scope.Define(errSym)
+				}
+
+				if lambda.Body != nil {
+					c.checkExpression(lambda.Body)
+				}
+
+				c.scope = oldScope
+			} else {
+				c.checkExpression(s.Handler)
+			}
+		}
+
 		for _, bodyStmt := range s.Body {
 			c.checkStatement(bodyStmt)
 		}

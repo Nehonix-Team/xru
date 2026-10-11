@@ -169,15 +169,21 @@ func (c *Checker) checkArg(s *ast.ArgStatement) {
 		inferredType = c.inferType(s.DefaultValue)
 	}
 
-	sym := &Symbol{
-		Name:     s.Name,
-		Kind:     kind,
-		Type:     inferredType,
-		Pos:      s.Pos(),
-		ValueStr: valStr,
-	}
-	if err := c.scope.Define(sym); err != nil {
-		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+	if existing, ok := c.scope.Resolve(s.Name); ok && existing.Pos.Line == 0 {
+		existing.Type = inferredType
+		existing.ValueStr = valStr
+		existing.Pos = s.Pos()
+	} else {
+		sym := &Symbol{
+			Name:     s.Name,
+			Kind:     kind,
+			Type:     inferredType,
+			Pos:      s.Pos(),
+			ValueStr: valStr,
+		}
+		if err := c.scope.Define(sym); err != nil {
+			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+		}
 	}
 
 	if s.DefaultValue != nil {

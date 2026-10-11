@@ -215,6 +215,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return ev.evalFor(n, env)
 	case *ast.RangeExpression:
 		return ev.evalRange(n, env)
+	case *ast.CatchExpression:
+		return ev.evalCatch(n, env)
 	case *ast.Identifier:
 		if strings.EqualFold(n.Value, "nil") || strings.EqualFold(n.Value, "null") {
 			return NilValue{}, nil

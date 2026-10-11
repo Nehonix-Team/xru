@@ -211,6 +211,27 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	case *ast.RangeExpression:
 		c.checkExpression(e.Start)
 		c.checkExpression(e.End)
+
+	case *ast.CatchExpression:
+		if e.ErrVar != "" {
+			errSym := &Symbol{
+				Name: e.ErrVar,
+				Kind: SymVar,
+				Type: "string",
+				Pos:  e.Pos(),
+			}
+			if _, exists := c.scope.symbols[e.ErrVar]; !exists {
+				_ = c.scope.Define(errSym)
+			}
+		}
+		c.checkExpression(e.Target)
+		if e.Fallback != nil {
+			if expr, ok := e.Fallback.(ast.Expression); ok {
+				c.checkExpression(expr)
+			} else if stmt, ok := e.Fallback.(ast.Statement); ok {
+				c.checkStatement(stmt)
+			}
+		}
 	}
 }
 

@@ -204,3 +204,26 @@ func isTruthy(val Value) bool {
 		return true
 	}
 }
+
+func (ev *Evaluator) evalCatch(c *ast.CatchExpression, env *Environment) (Value, error) {
+	val, err := ev.Eval(c.Target, env)
+	if err == nil {
+		if c.ErrVar != "" {
+			_ = env.Set(c.ErrVar, NilValue{}, false)
+		}
+		return val, nil
+	}
+
+	// Erreur interceptée sans crash
+	errStr := err.Error()
+	if c.ErrVar != "" {
+		_ = env.Set(c.ErrVar, StringValue{Val: errStr}, false)
+	}
+
+	if c.Fallback != nil {
+		return ev.Eval(c.Fallback, env)
+	}
+
+	return NilValue{}, nil
+}
+

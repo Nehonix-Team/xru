@@ -286,6 +286,18 @@ var KeywordsDocs = map[string]DocItem{
 		Detail: "unit <Name> { ... }",
 		Doc:    "Declares a structured reusable unit containing methods and directives.",
 	},
+	"for": {
+		Detail: "for <item> in <collection | start..end> { ... }",
+		Doc:    "Iterates sequentially over a collection or numeric range (e.g. `1..totalItems`).",
+	},
+	"in": {
+		Detail: "for <item> in <collection | start..end>",
+		Doc:    "Specifies the collection or range target in a `for` loop.",
+	},
+	"catch": {
+		Detail: "<expr> catch <err> [or <fallback>]",
+		Doc:    "Safely traps runtime errors from an expression or action into `<err>` with optional `or <fallback>` value or block.",
+	},
 }
 
 // GetDocForWord recherche une documentation complète pour un mot ou une expression membre
@@ -481,6 +493,12 @@ var SyntaxSnippets = []DirectiveDoc{
 		Snippet: "let ${1:task} = with ${2:targetOperation()}\nlet ${3:result} = ${1:task}.wait()",
 		Detail:  "let <task> = with <expr>",
 		Doc:     "Launches an asynchronous background task.",
+	},
+	{
+		Name:    "catch err or",
+		Snippet: "catch ${1:err} or ${2:\"default\"}",
+		Detail:  "<expr> catch <err> or <fallback>",
+		Doc:     "Traps runtime errors and provides a fallback value or handler.",
 	},
 	{
 		Name:    "replace",

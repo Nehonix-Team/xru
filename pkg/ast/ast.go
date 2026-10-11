@@ -641,4 +641,26 @@ func (e *IfExpression) String() string {
 	return fmt.Sprintf("if %s -> %s else %s", e.Condition.String(), e.Consequence.String(), e.Alternative.String())
 }
 
+// CatchExpression : Target catch [errVar] [or Fallback]
+type CatchExpression struct {
+	Position lexer.Position
+	Target   Expression
+	ErrVar   string
+	Fallback Node
+}
+
+func (e *CatchExpression) expressionNode()      {}
+func (e *CatchExpression) Pos() lexer.Position { return e.Position }
+func (e *CatchExpression) String() string {
+	res := e.Target.String() + " catch"
+	if e.ErrVar != "" {
+		res += " " + e.ErrVar
+	}
+	if e.Fallback != nil {
+		res += fmt.Sprintf(" or %s", e.Fallback.String())
+	}
+	return res
+}
+
+
 

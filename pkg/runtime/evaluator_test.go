@@ -883,3 +883,80 @@ let doneAfter = task.isDone()
 	}
 }
 
+func TestCatchExpression(t *testing.T) {
+	code := `
+use fs as Fs
+
+// 1. Division by zero trapped with fallback
+let safeVal = (10 / 0) catch err or 42
+let hadErr1 = (err != nil)
+
+// 2. Successful call: err is nil
+let okVal = (10 / 2) catch err2 or 99
+let hadErr2 = (err2 != nil)
+
+// 3. Direct action catch (void): removing nonexistent file fails but is trapped
+Fs.remove("/nonexistent_path_test_1234") catch err3
+let hadErr3 = (err3 != nil)
+
+// 4. Guard / early exit inside function: catch err or return <val>
+func testGuard(shouldFail: bool) -> string {
+    if shouldFail {
+        (10 / 0) catch e or return "failed_cleanly"
+    }
+    return "completed"
+}
+
+let guard1 = testGuard(true)
+let guard2 = testGuard(false)
+`
+	l := lexer.New("catch_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	safeVal, _ := env.Get("safeVal")
+	if safeVal.String() != "42" {
+		t.Errorf("Expected safeVal to be '42', got %v", safeVal)
+	}
+
+	hadErr1, _ := env.Get("hadErr1")
+	if hadErr1.String() != "true" {
+		t.Errorf("Expected hadErr1 to be true, got %v", hadErr1)
+	}
+
+	okVal, _ := env.Get("okVal")
+	if okVal.String() != "5" {
+		t.Errorf("Expected okVal to be '5', got %v", okVal)
+	}
+
+	hadErr2, _ := env.Get("hadErr2")
+	if hadErr2.String() != "false" {
+		t.Errorf("Expected hadErr2 to be false, got %v", hadErr2)
+	}
+
+	hadErr3, _ := env.Get("hadErr3")
+	if hadErr3.String() != "true" {
+		t.Errorf("Expected hadErr3 to be true, got %v", hadErr3)
+	}
+
+	guard1, _ := env.Get("guard1")
+	if guard1.String() != "failed_cleanly" {
+		t.Errorf("Expected guard1 to be 'failed_cleanly', got %v", guard1)
+	}
+
+	guard2, _ := env.Get("guard2")
+	if guard2.String() != "completed" {
+		t.Errorf("Expected guard2 to be 'completed', got %v", guard2)
+	}
+}
+
+

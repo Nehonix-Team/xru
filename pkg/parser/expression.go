@@ -15,6 +15,7 @@ import (
 const (
 	_ int = iota
 	LOWEST
+	CATCH_PREC  // catch
 	LOGICAL_OR  // || or
 	LOGICAL_AND // &&
 	EQUALS      // == !=
@@ -26,6 +27,7 @@ const (
 )
 
 var precedences = map[lexer.TokenType]int{
+	lexer.CATCH:      CATCH_PREC,
 	lexer.OR:         LOGICAL_OR,
 	lexer.OR_LOGICAL: LOGICAL_OR,
 	lexer.AND:        LOGICAL_AND,
@@ -94,6 +96,44 @@ func (p *Parser) parseExpressionWithPrecedence(precedence int) ast.Expression {
 
 	// Gestion des opérateurs infixes (arithmétique +, -, *, /, % et comparaisons ==, !=, <, <=, >, >=)
 	for precedence < p.peekPrecedence() {
+		if p.peekTokenIs(lexer.CATCH) {
+			p.nextToken() // saute 'catch', curToken est 'catch'
+			catchPos := p.curToken.Pos
+			var errVar string
+			var fallback ast.Node
+
+			if p.peekTokenIs(lexer.IDENT) {
+				p.nextToken()
+				errVar = p.curToken.Literal
+			}
+
+			if p.peekTokenIs(lexer.OR) {
+				p.nextToken() // saute 'or', curToken est 'or'
+				if p.peekTokenIs(lexer.RETURN) {
+					p.nextToken()
+					fallback = p.parseReturnStatement()
+				} else if p.peekTokenIs(lexer.LBRACE) {
+					p.nextToken()
+					fallback = p.parseBlockStatement()
+				} else {
+					p.nextToken()
+					fallback = p.parseExpressionWithPrecedence(CATCH_PREC)
+				}
+			} else if errVar == "" && !p.peekTokenIs(lexer.EOF) && !p.peekTokenIs(lexer.RPAREN) && !p.peekTokenIs(lexer.RBRACE) && !p.peekTokenIs(lexer.COMMA) {
+				// Fallback direct sans variable d'erreur, ex: expr catch "fallback"
+				p.nextToken()
+				fallback = p.parseExpressionWithPrecedence(CATCH_PREC)
+			}
+
+			expr = &ast.CatchExpression{
+				Position: catchPos,
+				Target:   expr,
+				ErrVar:   errVar,
+				Fallback: fallback,
+			}
+			continue
+		}
+
 		p.nextToken()
 		op := p.curToken.Literal
 		opPrec := p.curPrecedence()

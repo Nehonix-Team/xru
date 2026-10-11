@@ -156,6 +156,20 @@ func (c *Checker) inferType(expr ast.Expression) string {
 			return altType
 		}
 		return "any"
+	case *ast.CatchExpression:
+		targetType := c.inferType(e.Target)
+		if e.Fallback != nil {
+			if fbExpr, ok := e.Fallback.(ast.Expression); ok {
+				fbType := c.inferType(fbExpr)
+				if targetType == "" || targetType == "any" {
+					return fbType
+				}
+			}
+		}
+		if targetType != "" {
+			return targetType
+		}
+		return "any"
 	default:
 		return "any"
 	}

@@ -51,6 +51,7 @@ const (
 	MOD           TokenType = "mod"
 	FOR           TokenType = "for"
 	IN            TokenType = "in"
+	CATCH         TokenType = "catch"
 
 	// Operators & Symbols
 	ASSIGN     TokenType = "="
@@ -143,6 +144,7 @@ var keywords = map[string]TokenType{
 	"mod":           MOD,
 	"for":           FOR,
 	"in":            IN,
+	"catch":         CATCH,
 }
 
 func LookupIdent(ident string) TokenType {

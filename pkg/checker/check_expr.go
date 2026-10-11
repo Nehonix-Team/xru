@@ -209,6 +209,14 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			c.checkExpression(arg)
 		}
 
+	case *ast.GlobalCallExpression:
+		for _, arg := range e.Arguments {
+			c.checkExpression(arg)
+		}
+		if sym, ok := c.scope.Resolve(e.Function); ok {
+			sym.Used = true
+		}
+
 	case *ast.ScopeAccessExpression:
 		if sym, ok := c.scope.Resolve(e.Scope); ok {
 			sym.Used = true

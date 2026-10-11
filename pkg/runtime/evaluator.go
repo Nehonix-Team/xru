@@ -361,7 +361,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			return nil, fmt.Errorf("error in '_mod.xru': %s", errs[0])
 		}
 
-		loadModuleInstance := func(modName string) (*UnitInstance, error) {
+		var loadSingleModule func(string) (*UnitInstance, error)
+		loadSingleModule = func(modName string) (*UnitInstance, error) {
 			modDetails, err := modCfg.ResolveModule(n.Source, modName)
 			if err != nil {
 				return nil, err
@@ -443,6 +444,34 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			}
 			ev.loadedModules[absPath] = unitInst
 			return unitInst, nil
+		}
+
+		loadModuleInstance := func(modName string) (*UnitInstance, error) {
+			if modName == "all" {
+				nsMods, err := modCfg.GetNamespaceModules(n.Source)
+				if err != nil {
+					return nil, err
+				}
+				combined := &UnitInstance{
+					UnitName:   "all",
+					Properties: make(map[string]Value),
+					Methods:    make(map[string]NativeMethod),
+					Directives: make(map[string]NativeDirective),
+				}
+				for mName := range nsMods {
+					u, err := loadSingleModule(mName)
+					if err == nil && u != nil {
+						for k, v := range u.Properties {
+							combined.Properties[k] = v
+						}
+						for k, v := range u.Methods {
+							combined.Methods[k] = v
+						}
+					}
+				}
+				return combined, nil
+			}
+			return loadSingleModule(modName)
 		}
 
 		// Cas 1: multi-modules (auth, cdn)

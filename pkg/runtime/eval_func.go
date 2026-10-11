@@ -186,8 +186,14 @@ func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *
 		if dropVal, ok := callerEnv.Get("Drop"); ok {
 			_ = fnEnv.Set("Drop", dropVal, false)
 		}
+		if dropVal, ok := callerEnv.Get("drop"); ok {
+			_ = fnEnv.Set("drop", dropVal, false)
+		}
 		if keepVal, ok := callerEnv.Get("Keep"); ok {
 			_ = fnEnv.Set("Keep", keepVal, false)
+		}
+		if keepVal, ok := callerEnv.Get("keep"); ok {
+			_ = fnEnv.Set("keep", keepVal, false)
 		}
 		if uvVal, ok := callerEnv.Get("UseVariant"); ok {
 			_ = fnEnv.Set("UseVariant", uvVal, false)

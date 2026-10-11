@@ -668,6 +668,7 @@ file "package.json", (content, error) -> {
     const a = 87
     content.
     error.
+    std.println("Name: $f{content.")
 }
 `
 	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
@@ -691,13 +692,19 @@ file "package.json", (content, error) -> {
 		"position":     map[string]any{"line": 4, "character": 12},
 	})
 
-	// 3. Hover on "content" on line 2, col 24
+	// 3. Member completion on "content." inside string interpolation on line 6, col 35
+	compInterpMemberReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 6, "character": 35},
+	})
+
+	// 4. Hover on "content" on line 2, col 24
 	hoverContentReq := formatLSPMessage("textDocument/hover", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     map[string]any{"line": 2, "character": 24},
 	})
 
-	testInput := bytes.NewBufferString(didOpenReq + compLocalReq + compContentReq + hoverContentReq)
+	testInput := bytes.NewBufferString(didOpenReq + compLocalReq + compContentReq + compInterpMemberReq + hoverContentReq)
 	testOutput := &bytes.Buffer{}
 
 	srv := lsp.NewServer(testInput, testOutput)

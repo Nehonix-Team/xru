@@ -59,8 +59,14 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 		lastOpenBrace := strings.LastIndex(prefixLine, "$f{")
 		lastCloseBrace := strings.LastIndex(prefixLine, "}")
 		if lastOpenBrace != -1 && lastOpenBrace > lastCloseBrace {
-			// Le curseur est à l'intérieur d'un bloc d'interpolation `$f{...}` (ex: `"$f{re|"`)
-			// Proposer tous les symboles locaux pertinents (variables, arguments, paramètres, &prop)
+			// Le curseur est à l'intérieur d'un bloc d'interpolation `$f{...}` (ex: `"$f{content."`)
+			subPrefix := prefixLine[lastOpenBrace+3:]
+			if strings.Contains(subPrefix, ".") {
+				if memberList, handled := s.handleMemberCompletion(uri, lines, subPrefix); handled {
+					return memberList
+				}
+			}
+			// Sinon, proposer tous les symboles locaux pertinents (variables, arguments, paramètres, &prop)
 			localItems := collectLocalSymbols(lines, pos.Line)
 			return &CompletionList{IsIncomplete: false, Items: localItems}
 		}

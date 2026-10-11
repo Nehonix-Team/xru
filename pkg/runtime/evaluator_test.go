@@ -21,7 +21,7 @@ use fs as Fs
 arg app_name: string = "demo-app"
 let version = "1.0.0"
 
-std.println("<green>[TEST]</> Orchestration {app_name} v{version}")
+std.println("<green>[TEST]</> Orchestration $f{app_name} v$f{version}")
 `
 	l := lexer.New("runtime_test.xru", code)
 	p := parser.New(l)
@@ -174,12 +174,12 @@ dispatch "./src", ".rules.xru"
 func TestGlobalFunctionInvocationSyntax(t *testing.T) {
 	code := `
 global func Greet(name: string) {
-    let msg = "Hello {name}"
+    let msg = "Hello $f{name}"
     return msg
 }
 
 func LocalGreet(name: string) {
-    let msg = "Hi {name}"
+    let msg = "Hi $f{name}"
     return msg
 }
 
@@ -609,8 +609,8 @@ func TestUnitPropertyRestriction(t *testing.T) {
 		t.Fatalf("Expected error evaluating &baseDir outside unit, got nil")
 	}
 
-	// 2. {&prop} in string interpolation outside unit should fail
-	code2 := `let a = "{&baseDir}/target"`
+	// 2. $f{&prop} in string interpolation outside unit should fail
+	code2 := `let a = "$f{&baseDir}/target"`
 	l2 := lexer.New("test2.xru", code2)
 	p2 := parser.New(l2)
 	prog2 := p2.ParseProgram()
@@ -966,14 +966,15 @@ use crypto as Crypto
 unit UserHelper {
     declare prefix: string = "USR"
     func tag(id: number) -> string {
-        return "{&prefix}_{id * 2}"
+        return "$f{&prefix}_$f{id * 2}"
     }
 }
 
 let h = @UserHelper()
-let res1 = "Result: {10 + 25}"
-let res2 = "ID: {h.tag(5)}"
-let res3 = "Hex: {Crypto.GetRandomBytes(4)}"
+let res1 = "Result: $f{10 + 25}"
+let res2 = "ID: $f{h.tag(5)}"
+let res3 = "Hex: $f{Crypto.GetRandomBytes(4)}"
+let codeLiteral = "import { UserService } from '${apiHost}/users'"
 `
 	l := lexer.New("interp_test.xru", code)
 	p := parser.New(l)
@@ -1001,6 +1002,11 @@ let res3 = "Hex: {Crypto.GetRandomBytes(4)}"
 	res3Val, _ := env.Get("res3")
 	if !strings.HasPrefix(res3Val.String(), "Hex: ") || len(res3Val.String()) != 13 {
 		t.Errorf("Expected 'Hex: <8 chars hex>', got %v", res3Val)
+	}
+
+	litVal, _ := env.Get("codeLiteral")
+	if litVal.String() != "import { UserService } from '${apiHost}/users'" {
+		t.Errorf("Expected code literal to remain unmolested, got %v", litVal)
 	}
 }
 

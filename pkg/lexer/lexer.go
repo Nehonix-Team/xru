@@ -88,6 +88,8 @@ func (l *Lexer) NextToken() Token {
 			str := l.readTripleString('\'')
 			return Token{Type: STRING, Literal: str, Pos: startPos}
 		}
+		str := l.readQuotedString('\'')
+		return Token{Type: STRING, Literal: str, Pos: startPos}
 	}
 	if l.ch == '`' {
 		str := l.readRawBacktickString()
@@ -294,14 +296,18 @@ func (l *Lexer) readIdentifier() string {
 }
 
 func (l *Lexer) readString() string {
-	l.readChar() // saute le premier "
+	return l.readQuotedString('"')
+}
+
+func (l *Lexer) readQuotedString(delim rune) string {
+	l.readChar() // saute le premier delim
 	var buf strings.Builder
-	for l.ch != '"' && l.ch != 0 {
+	for l.ch != delim && l.ch != 0 {
 		if l.ch == '\\' {
 			next := l.peekChar()
 			switch next {
-			case '"':
-				buf.WriteRune('"')
+			case delim:
+				buf.WriteRune(delim)
 				l.readChar()
 				l.readChar()
 				continue
@@ -334,11 +340,12 @@ func (l *Lexer) readString() string {
 		buf.WriteRune(l.ch)
 		l.readChar()
 	}
-	if l.ch == '"' {
-		l.readChar() // saute le dernier "
+	if l.ch == delim {
+		l.readChar() // saute le dernier delim
 	}
 	return buf.String()
 }
+
 
 func (l *Lexer) readTripleString(quote rune) string {
 	l.readChar() // saute 1er quote

@@ -219,7 +219,7 @@ func (c *Checker) DefineUnit(name string) {
 func CreateDocumentSymbol(name string) *Symbol {
 	return &Symbol{
 		Name: name,
-		Kind: SymUnit,
+		Kind: SymVar,
 		Type: "Document",
 		Methods: map[string]*Symbol{
 			"getContent":     {Name: "getContent", Kind: SymFunc, Type: "string"},

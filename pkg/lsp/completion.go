@@ -56,10 +56,10 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 	}
 	if quoteCount%2 != 0 {
 		// Dans une chaîne de caractères ouverte
-		lastOpenBrace := strings.LastIndex(prefixLine, "{")
+		lastOpenBrace := strings.LastIndex(prefixLine, "$f{")
 		lastCloseBrace := strings.LastIndex(prefixLine, "}")
-		if lastOpenBrace > lastCloseBrace {
-			// Le curseur est à l'intérieur d'un bloc d'interpolation `{...}` (ex: `"{re|"`)
+		if lastOpenBrace != -1 && lastOpenBrace > lastCloseBrace {
+			// Le curseur est à l'intérieur d'un bloc d'interpolation `$f{...}` (ex: `"$f{re|"`)
 			// Proposer tous les symboles locaux pertinents (variables, arguments, paramètres, &prop)
 			localItems := collectLocalSymbols(lines, pos.Line)
 			return &CompletionList{IsIncomplete: false, Items: localItems}

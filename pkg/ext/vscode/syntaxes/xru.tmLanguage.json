@@ -10,6 +10,7 @@
     { "include": "#strings_heredoc_triple" },
     { "include": "#strings_backtick" },
     { "include": "#strings" },
+    { "include": "#strings_single" },
     { "include": "#loops" },
     { "include": "#keywords_control" },
     { "include": "#keywords_declaration" },
@@ -100,38 +101,34 @@
         { "include": "#interpolation" }
       ]
     },
+    "strings_single": {
+      "name": "string.quoted.single.xru",
+      "begin": "'",
+      "end": "'",
+      "patterns": [
+        {
+          "name": "constant.character.escape.xru",
+          "match": "\\\\."
+        },
+        { "include": "#interpolation" }
+      ]
+    },
     "interpolation": {
       "patterns": [
         {
           "name": "meta.template.expression.xru",
-          "begin": "\\{\\{",
-          "end": "\\}\\}",
-          "beginCaptures": {
-            "0": { "name": "punctuation.definition.template-expression.begin.xru punctuation.section.embedded.begin.xru" }
-          },
-          "endCaptures": {
-            "0": { "name": "punctuation.definition.template-expression.end.xru punctuation.section.embedded.end.xru" }
-          },
-          "patterns": [
-            { "include": "#prop_access" },
-            { "include": "#builtins" },
-            { "include": "#functions_call" },
-            { "include": "#operators" },
-            { "include": "#numbers" },
-            { "include": "#identifiers" }
-          ]
-        },
-        {
-          "name": "meta.template.expression.xru",
-          "begin": "\\{",
+          "begin": "(\\$f)(\\{)",
           "end": "\\}",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.template-expression.begin.xru punctuation.section.embedded.begin.xru" }
+            "1": { "name": "keyword.other.template.xru punctuation.definition.template-expression.begin.xru" },
+            "2": { "name": "punctuation.section.embedded.begin.xru" }
           },
           "endCaptures": {
-            "0": { "name": "punctuation.definition.template-expression.end.xru punctuation.section.embedded.end.xru" }
+            "0": { "name": "punctuation.section.embedded.end.xru punctuation.definition.template-expression.end.xru" }
           },
           "patterns": [
+            { "include": "#strings" },
+            { "include": "#strings_single" },
             { "include": "#prop_access" },
             { "include": "#builtins" },
             { "include": "#functions_call" },

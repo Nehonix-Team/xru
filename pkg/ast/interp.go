@@ -2,16 +2,16 @@ package ast
 
 import "strings"
 
-// InterpSpan represents a single interpolation block {...} inside a string literal.
+// InterpSpan represents a single interpolation block $f{...} inside a string literal.
 type InterpSpan struct {
-	Raw      string // Raw text including braces, e.g. "{Crypto.GetRandomBytes(12)}"
+	Raw      string // Raw text including sigil and braces, e.g. "$f{Crypto.GetRandomBytes(12)}"
 	Expr     string // Extracted expression, e.g. "Crypto.GetRandomBytes(12)"
-	StartIdx int    // 0-based index of '{' in the string literal content
+	StartIdx int    // 0-based index of '$' in the string literal content
 	EndIdx   int    // 0-based index of '}' in the string literal content
 }
 
-// ExtractInterpolations scans a string content and extracts all valid `{...}` interpolation blocks.
-// It ignores escaped braces (\{, \}) and double braces ({{...}} used in file templates).
+// ExtractInterpolations scans a string content and extracts all valid `$f{...}` interpolation blocks.
+// Plain `{...}`, `${...}`, or escaped `\$f{...}` are treated as literal text.
 func ExtractInterpolations(s string) []InterpSpan {
 	var spans []InterpSpan
 	n := len(s)
@@ -21,20 +21,12 @@ func ExtractInterpolations(s string) []InterpSpan {
 			i += 2
 			continue
 		}
-		if s[i] == '{' && i+1 < n && s[i+1] == '{' {
-			idx := strings.Index(s[i+2:], "}}")
-			if idx != -1 {
-				i = i + 2 + idx + 2
-			} else {
-				i += 2
-			}
-			continue
-		}
-		if s[i] == '{' {
+		// Détection exclusive du token $f{
+		if i+2 < n && s[i] == '$' && s[i+1] == 'f' && s[i+2] == '{' {
 			start := i
 			braceCount := 1
 			inQuote := byte(0)
-			j := i + 1
+			j := i + 3
 			for j < n && braceCount > 0 {
 				ch := s[j]
 				if inQuote != 0 {
@@ -58,7 +50,7 @@ func ExtractInterpolations(s string) []InterpSpan {
 			}
 			if braceCount == 0 {
 				raw := s[start:j]
-				expr := strings.TrimSpace(s[start+1 : j-1])
+				expr := strings.TrimSpace(s[start+3 : j-1])
 				spans = append(spans, InterpSpan{
 					Raw:      raw,
 					Expr:     expr,

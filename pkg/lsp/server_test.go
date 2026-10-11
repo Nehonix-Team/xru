@@ -616,7 +616,7 @@ let downloadTask = with Net.fetch("https://example.com") catch err or "fallback"
 for item, idx in 1..5 {
     std.println("Test: {")
 }
-std.println("Result: {re
+std.println("Result: $f{re
 std.println(re
 `
 	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
@@ -628,10 +628,10 @@ std.println(re
 		},
 	})
 
-	// 1. Completion inside interpolation "{re" on line 6, col 25
+	// 1. Completion inside interpolation "$f{re" on line 6, col 27
 	compInterpReq := formatLSPMessage("textDocument/completion", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
-		"position":     map[string]any{"line": 6, "character": 25},
+		"position":     map[string]any{"line": 6, "character": 27},
 	})
 
 	// 2. Completion inside call argument "std.println(re" on line 7, col 14

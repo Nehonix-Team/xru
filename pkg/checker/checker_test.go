@@ -37,7 +37,7 @@ let x = &baseDir
 
 	// 1b. Test violation : {&prop} dans une string interpolation hors d'une unit
 	badCode1b := `
-let s = "{&baseDir}/target"
+let s = "$f{&baseDir}/target"
 `
 	l1b := lexer.New("bad1b.xru", badCode1b)
 	p1b := parser.New(l1b)

@@ -128,6 +128,9 @@ func (ev *Evaluator) evalInfix(infix *ast.InfixExpression, env *Environment) (Va
 		if left.Type() == ValNil && right.Type() == ValNil {
 			return BoolValue{Val: true}, nil
 		}
+		if (left.Type() == ValNil && right.String() == "") || (right.Type() == ValNil && left.String() == "") {
+			return BoolValue{Val: true}, nil
+		}
 		if left.Type() == ValNil || right.Type() == ValNil {
 			return BoolValue{Val: false}, nil
 		}
@@ -145,6 +148,9 @@ func (ev *Evaluator) evalInfix(infix *ast.InfixExpression, env *Environment) (Va
 
 	case "!=":
 		if left.Type() == ValNil && right.Type() == ValNil {
+			return BoolValue{Val: false}, nil
+		}
+		if (left.Type() == ValNil && right.String() == "") || (right.Type() == ValNil && left.String() == "") {
 			return BoolValue{Val: false}, nil
 		}
 		if left.Type() == ValNil || right.Type() == ValNil {

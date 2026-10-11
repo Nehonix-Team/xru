@@ -46,7 +46,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 				continue
 			}
 			varPos := e.Pos()
-			varPos.Column += 1 + span.StartIdx + 1
+			varPos.Column += 1 + span.StartIdx + 3
 
 			if strings.HasPrefix(span.Expr, "&") {
 				propName := strings.TrimPrefix(span.Expr, "&")
@@ -70,7 +70,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			parsedExpr := subParser.ParseExpression()
 			if len(subParser.Errors()) > 0 {
 				c.addError(varPos, "ERR_INVALID_INTERPOLATION",
-					fmt.Sprintf("Syntax error in string interpolation '{%s}': %s", span.Expr, subParser.Errors()[0]))
+					fmt.Sprintf("Syntax error in string interpolation '$f{%s}': %s", span.Expr, subParser.Errors()[0]))
 				continue
 			}
 
@@ -138,6 +138,8 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 					} else {
 						var unitSym *Symbol
 						if sym.Kind == SymUnit {
+							unitSym = sym
+						} else if sym.Methods != nil {
 							unitSym = sym
 						} else if sym.Type != "" {
 							if uSym, ok := c.scope.Resolve(sym.Type); ok && uSym.Kind == SymUnit {

@@ -34,9 +34,7 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.WhileStatement:
 		c.checkWhile(s)
 	case *ast.BlockStatement:
-		for _, bodyStmt := range s.Statements {
-			c.checkStatement(bodyStmt)
-		}
+		c.checkStatementList(s.Statements)
 	case *ast.ExpressionStatement:
 		c.checkExpression(s.Expression)
 	case *ast.FileStatement:
@@ -511,4 +509,3 @@ func (c *Checker) checkIn(stmt *ast.InStatement) {
 	}
 	c.scope = oldScope
 }
-

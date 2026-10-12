@@ -205,7 +205,7 @@
       "patterns": [
         {
           "name": "entity.name.type.xru",
-          "match": "\\b(string|number|bool|duration|any|list|map|void)\\b"
+          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task)\\b"
         }
       ]
     },
@@ -217,7 +217,7 @@
         },
         {
           "name": "support.function.builtin.xru",
-          "match": "\\b(println|print|info|success|warn|error|sleep|replace|replaceLine|remove|removeLines|removeBlock|removeUntil|commentOut|append|prepend|jsonSet|jsonRemove|Drop|drop|Keep|keep)\\b(?=\\()"
+          "match": "\\b(println|print|info|success|warn|error|sleep|fatal|exit|replace|replaceLine|remove|removeLines|removeBlock|removeUntil|commentOut|append|prepend|jsonSet|jsonRemove|Drop|drop|Keep|keep)\\b(?=\\()"
         }
       ]
     },

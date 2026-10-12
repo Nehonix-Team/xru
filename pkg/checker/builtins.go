@@ -76,6 +76,8 @@ func (c *Checker) initBuiltinUnits() {
 			"Error":   {Name: "Error", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
 			"sleep":   {Name: "sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
 			"Sleep":   {Name: "Sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
+			"fatal":   {Name: "fatal", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "message", Type: "any"}, {Name: "code", Type: "number"}}, MinArgs: 1, HasOptional: true},
+			"Fatal":   {Name: "Fatal", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "message", Type: "any"}, {Name: "code", Type: "number"}}, MinArgs: 1, HasOptional: true},
 		},
 	}
 	sysUnit := &Symbol{
@@ -90,6 +92,8 @@ func (c *Checker) initBuiltinUnits() {
 			"arch":   {Name: "arch", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"Sleep":  {Name: "Sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
 			"sleep":  {Name: "sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
+			"Exit":   {Name: "Exit", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "code", Type: "number"}}, MinArgs: 0, HasOptional: true},
+			"exit":   {Name: "exit", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "code", Type: "number"}}, MinArgs: 0, HasOptional: true},
 		},
 	}
 	cmdUnit := &Symbol{
@@ -405,4 +409,3 @@ func GetListMethodSpec(name string) (NativeMethodSpec, bool) {
 	spec, ok := ListMethodSpecs[strings.ToLower(name)]
 	return spec, ok
 }
-

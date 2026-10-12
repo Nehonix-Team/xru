@@ -11,10 +11,10 @@ type Request struct {
 }
 
 type Response struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      any         `json:"id"`
-	Result  any         `json:"result,omitempty"`
-	Error   *RPCError   `json:"error,omitempty"`
+	JSONRPC string    `json:"jsonrpc"`
+	ID      any       `json:"id"`
+	Result  any       `json:"result,omitempty"`
+	Error   *RPCError `json:"error,omitempty"`
 }
 
 type Notification struct {
@@ -237,7 +237,6 @@ type CompletionItem struct {
 	AdditionalTextEdits []TextEdit         `json:"additionalTextEdits,omitempty"`
 }
 
-
 type CompletionList struct {
 	IsIncomplete bool             `json:"isIncomplete"`
 	Items        []CompletionItem `json:"items"`
@@ -310,6 +309,3 @@ type CodeAction struct {
 type WorkspaceEdit struct {
 	Changes map[string][]TextEdit `json:"changes,omitempty"`
 }
-
-
-

@@ -232,4 +232,3 @@ func (ev *Evaluator) evalCatch(c *ast.CatchExpression, env *Environment) (Value,
 
 	return NilValue{}, nil
 }
-

@@ -626,7 +626,6 @@ func valMatchesType(val Value, expected string) bool {
 	}
 }
 
-
 func isDeclarativeExpr(expr ast.Expression) bool {
 	if expr == nil {
 		return true

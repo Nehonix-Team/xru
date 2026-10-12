@@ -70,6 +70,45 @@ func (s *Server) validateAndPublish(uri, text string) {
 				Tags:     []DiagnosticTag{DiagnosticTagUnnecessary},
 			})
 		}
+
+		lines := strings.Split(text, "\n")
+		fullLine := func(line int) Range {
+			end := 0
+			if line >= 0 && line < len(lines) {
+				end = len(strings.TrimRight(lines[line], "\r"))
+			}
+			return Range{Start: Position{Line: line, Character: 0}, End: Position{Line: line, Character: end}}
+		}
+
+		// 4. Imports 'use' non utilisés (ligne entière grisée)
+		for _, sym := range c.UnusedImports() {
+			line := sym.Pos.Line - 1
+			if line < 0 {
+				line = 0
+			}
+			diagnostics = append(diagnostics, Diagnostic{
+				Range:    fullLine(line),
+				Severity: SeverityHint,
+				Source:   "xru",
+				Message:  fmt.Sprintf("Module '%s' is imported but never used", sym.Name),
+				Tags:     []DiagnosticTag{DiagnosticTagUnnecessary},
+			})
+		}
+
+		// 5. Code inatteignable après un appel 'never' (std.fatal, Sys.exit)
+		for _, pos := range c.UnreachablePositions() {
+			line := pos.Line - 1
+			if line < 0 {
+				line = 0
+			}
+			diagnostics = append(diagnostics, Diagnostic{
+				Range:    fullLine(line),
+				Severity: SeverityHint,
+				Source:   "xru",
+				Message:  "Unreachable code",
+				Tags:     []DiagnosticTag{DiagnosticTagUnnecessary},
+			})
+		}
 	}
 
 	_ = s.writeNotification("textDocument/publishDiagnostics", PublishDiagnosticsParams{

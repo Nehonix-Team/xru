@@ -30,22 +30,27 @@ type Value interface {
 }
 
 type StringValue struct{ Val string }
+
 func (v StringValue) Type() ValueType { return ValString }
 func (v StringValue) String() string  { return v.Val }
 
 type NumberValue struct{ Val float64 }
+
 func (v NumberValue) Type() ValueType { return ValNumber }
 func (v NumberValue) String() string  { return fmt.Sprintf("%v", v.Val) }
 
 type BoolValue struct{ Val bool }
+
 func (v BoolValue) Type() ValueType { return ValBool }
 func (v BoolValue) String() string  { return fmt.Sprintf("%t", v.Val) }
 
 type DurationValue struct{ Val time.Duration }
+
 func (v DurationValue) Type() ValueType { return ValDuration }
 func (v DurationValue) String() string  { return v.Val.String() }
 
 type ListValue struct{ Elements []Value }
+
 func (v ListValue) Type() ValueType { return ValList }
 func (v ListValue) String() string {
 	var s []string
@@ -56,6 +61,7 @@ func (v ListValue) String() string {
 }
 
 type MapValue struct{ Pairs map[string]Value }
+
 func (v MapValue) Type() ValueType { return ValMap }
 func (v MapValue) String() string {
 	var s []string
@@ -66,6 +72,7 @@ func (v MapValue) String() string {
 }
 
 type NilValue struct{}
+
 func (v NilValue) Type() ValueType { return ValNil }
 func (v NilValue) String() string  { return "nil" }
 
@@ -168,4 +175,3 @@ type LambdaValue struct {
 
 func (l LambdaValue) Type() ValueType { return "function" }
 func (l LambdaValue) String() string  { return "<lambda>" }
-

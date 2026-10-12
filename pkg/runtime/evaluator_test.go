@@ -1569,12 +1569,3 @@ let checkMember = m.name
 		t.Errorf("Expected checkMember to be 'cool-app', got: %v", checkMember)
 	}
 }
-
-
-
-
-
-
-
-
-

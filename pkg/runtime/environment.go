@@ -141,7 +141,6 @@ func (e *Environment) Get(name string) (Value, bool) {
 	return nil, false
 }
 
-
 func (e *Environment) GetLocal(name string) (Value, bool) {
 	if val, ok := e.store[name]; ok {
 		return val, true

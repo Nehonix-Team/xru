@@ -90,26 +90,55 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		return BoolValue{Val: true}, nil
 	}
 
+	// exitCodeArg extrait un code de sortie optionnel à l'index donné.
+	exitCodeArg := func(args []Value, idx int, def int) int {
+		if len(args) > idx {
+			if n, ok := args[idx].(NumberValue); ok {
+				return int(n.Val)
+			}
+		}
+		return def
+	}
+
+	// fatalFn : sortie brutale non rattrapable (équivalent de panic/throw non capturé).
+	fatalFn := func(args []Value) (Value, error) {
+		msg := ""
+		if len(args) > 0 {
+			msg = args[0].String()
+		}
+		fmt.Fprintln(os.Stderr, formatTerminalColors("<red>[FATAL]</> "+msg))
+		os.Exit(exitCodeArg(args, 1, 1))
+		return NilValue{}, nil
+	}
+
+	// exitFn : arrêt immédiat du processus sans message.
+	exitFn := func(args []Value) (Value, error) {
+		os.Exit(exitCodeArg(args, 0, 0))
+		return NilValue{}, nil
+	}
+
 	stdUnit := &UnitInstance{
 		UnitName:   "std",
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
-			"log":            printlnFn,
-			"Log":            printlnFn,
-			"println":        printlnFn,
-			"Println":        printlnFn,
-			"print":          printFn,
-			"Print":          printFn,
-			"info":           infoFn,
-			"Info":           infoFn,
-			"success":        successFn,
-			"Success":        successFn,
-			"warn":           warnFn,
-			"Warn":           warnFn,
-			"error":          errorFn,
-			"Error":          errorFn,
-			"sleep":          sleepFn,
-			"Sleep":          sleepFn,
+			"log":     printlnFn,
+			"Log":     printlnFn,
+			"println": printlnFn,
+			"Println": printlnFn,
+			"print":   printFn,
+			"Print":   printFn,
+			"info":    infoFn,
+			"Info":    infoFn,
+			"success": successFn,
+			"Success": successFn,
+			"warn":    warnFn,
+			"Warn":    warnFn,
+			"error":   errorFn,
+			"Error":   errorFn,
+			"sleep":   sleepFn,
+			"Sleep":   sleepFn,
+			"fatal":   fatalFn,
+			"Fatal":   fatalFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}
@@ -265,46 +294,46 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 
 	// 3. #UNIT Net
 	fetchFn := func(args []Value) (Value, error) {
-				if len(args) < 1 {
-					return NilValue{}, fmt.Errorf("Net.Fetch requires url")
-				}
-				url := args[0].String()
-				if len(args) >= 2 {
-					dest := args[1].String()
-					resp, err := http.Get(url)
-					if err != nil {
-						return BoolValue{Val: false}, err
-					}
-					defer resp.Body.Close()
-
-					if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
-						return BoolValue{Val: false}, err
-					}
-
-					out, err := os.Create(dest)
-					if err != nil {
-						return BoolValue{Val: false}, err
-					}
-					defer out.Close()
-
-					_, err = io.Copy(out, resp.Body)
-					return BoolValue{Val: err == nil}, err
-				}
-
-				resp, err := http.Get(url)
-				if err != nil {
-					return NilValue{}, err
-				}
-				defer resp.Body.Close()
-				if resp.StatusCode >= 400 {
-					return NilValue{}, fmt.Errorf("HTTP error: %s", resp.Status)
-				}
-				bodyBytes, err := io.ReadAll(resp.Body)
-				if err != nil {
-					return NilValue{}, err
-				}
-				return StringValue{Val: string(bodyBytes)}, nil
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("Net.Fetch requires url")
+		}
+		url := args[0].String()
+		if len(args) >= 2 {
+			dest := args[1].String()
+			resp, err := http.Get(url)
+			if err != nil {
+				return BoolValue{Val: false}, err
 			}
+			defer resp.Body.Close()
+
+			if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+				return BoolValue{Val: false}, err
+			}
+
+			out, err := os.Create(dest)
+			if err != nil {
+				return BoolValue{Val: false}, err
+			}
+			defer out.Close()
+
+			_, err = io.Copy(out, resp.Body)
+			return BoolValue{Val: err == nil}, err
+		}
+
+		resp, err := http.Get(url)
+		if err != nil {
+			return NilValue{}, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			return NilValue{}, fmt.Errorf("HTTP error: %s", resp.Status)
+		}
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return NilValue{}, err
+		}
+		return StringValue{Val: string(bodyBytes)}, nil
+	}
 	var netUnit *UnitInstance
 	cloneFn := func(args []Value) (Value, error) {
 		if len(args) < 2 {
@@ -356,6 +385,8 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			},
 			"Sleep": sleepFn,
 			"sleep": sleepFn,
+			"Exit":  exitFn,
+			"exit":  exitFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}
@@ -839,4 +870,3 @@ func xruValueToGoValue(v Value) any {
 		return val.String()
 	}
 }
-

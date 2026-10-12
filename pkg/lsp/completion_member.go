@@ -169,7 +169,6 @@ func (s *Server) handleMemberCompletion(uri string, lines []string, prefixLine s
 		return &CompletionList{IsIncomplete: false, Items: unitMembers}, true
 	}
 
-
 	// 2.E Strictly return member items or empty list.
 	// Do NOT fall through to global snippets or keywords after dot!
 	return &CompletionList{IsIncomplete: false, Items: items}, true
@@ -289,4 +288,3 @@ func getListCompletionItems() []CompletionItem {
 	}
 	return items
 }
-

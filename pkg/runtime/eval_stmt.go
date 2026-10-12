@@ -379,7 +379,6 @@ func validateSandbox(allowedDir, targetPath string) error {
 	return nil
 }
 
-
 func (ev *Evaluator) evalRange(r *ast.RangeExpression, env *Environment) (Value, error) {
 	startVal, err := ev.Eval(r.Start, env)
 	if err != nil {
@@ -529,4 +528,3 @@ func (ev *Evaluator) evalMatch(m *ast.MatchStatement, env *Environment) (Value, 
 
 	return NilValue{}, nil
 }
-

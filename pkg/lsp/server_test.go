@@ -728,4 +728,3 @@ file "package.json", (content, error) -> {
 		t.Errorf("Expected 'Document' in hover, got: %s", outStr)
 	}
 }
-

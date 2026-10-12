@@ -39,6 +39,8 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 		}
 		if err := c.scope.Define(aliasSym); err != nil {
 			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+		} else {
+			c.importedSyms = append(c.importedSyms, aliasSym)
 		}
 	} else {
 		c.addError(s.Pos(), "ERR_UNKNOWN_MODULE", fmt.Sprintf("Module '%s' does not exist", s.Module))

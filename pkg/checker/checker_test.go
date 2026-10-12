@@ -328,18 +328,18 @@ func TestModuleResolutionErrors(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name: "unmapped namespace",
-			code: `from "unknownNamespace" use auth`,
+			name:        "unmapped namespace",
+			code:        `from "unknownNamespace" use auth`,
 			expectedErr: "ERR_UNKNOWN_NAMESPACE",
 		},
 		{
-			name: "nonexistent module in valid namespace",
-			code: `from "services" use nonExistentService`,
+			name:        "nonexistent module in valid namespace",
+			code:        `from "services" use nonExistentService`,
 			expectedErr: "ERR_MODULE_NOT_FOUND",
 		},
 		{
-			name: "nonexistent member on valid module",
-			code: `from "services" use auth::nonExistentMember`,
+			name:        "nonexistent member on valid module",
+			code:        `from "services" use auth::nonExistentMember`,
 			expectedErr: "ERR_MEMBER_NOT_FOUND",
 		},
 	}
@@ -785,8 +785,3 @@ let part = "hello".slice(1, 3)
 		t.Errorf("Expected 0 errors for valid native calls, got: %v", c3.Errors())
 	}
 }
-
-
-
-
-

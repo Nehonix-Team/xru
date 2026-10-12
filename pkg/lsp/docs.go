@@ -44,6 +44,14 @@ var BuiltinUnitsDocs = map[string]struct {
 				Detail: "std.error(message: any) -> void",
 				Doc:    "Prints an error message to standard error with a red [ERROR] tag.",
 			},
+			"sleep": {
+				Detail: "std.sleep(duration: duration) -> void",
+				Doc:    "Pauses the current execution for the given duration (e.g. `std.sleep(120ms)`).",
+			},
+			"fatal": {
+				Detail: "std.fatal(message: any, code?: number = 1) -> never",
+				Doc:    "Prints a red [FATAL] message to stderr and terminates the process immediately with `code`. Cannot be caught. Code after it is unreachable.",
+			},
 		},
 	},
 	"net": {
@@ -158,6 +166,10 @@ var BuiltinUnitsDocs = map[string]struct {
 		Detail: "unit Sys",
 		Doc:    "Operating system and host environment inspection unit.",
 		Methods: map[string]DocItem{
+			"exit": {
+				Detail: "Sys.exit(code?: number = 0) -> never",
+				Doc:    "Terminates the process immediately with the given exit code, without printing anything. Code after it is unreachable.",
+			},
 			"getenv": {
 				Detail: "Sys.getEnv(name: string, fallback?: string) -> string",
 				Doc:    "Retrieves the value of an OS environment variable with optional fallback.",
@@ -624,7 +636,6 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 	return nil
 }
 
-
 func FormatMarkdown(item *DocItem) string {
 	if item == nil {
 		return ""
@@ -797,4 +808,3 @@ var SyntaxSnippets = []DirectiveDoc{
 		Doc:     "Deletes the code block between start and end patterns.",
 	},
 }
-

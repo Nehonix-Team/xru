@@ -276,9 +276,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		}
 
 	case *ast.BlockStatement:
-		for _, stmt := range e.Statements {
-			c.checkStatement(stmt)
-		}
+		c.checkStatementList(e.Statements)
 
 	case *ast.IfExpression:
 		c.checkExpression(e.Condition)
@@ -286,6 +284,10 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		c.checkExpression(e.Alternative)
 
 	case *ast.WithExpression:
+		if _, isCatch := e.Target.(*ast.CatchExpression); isCatch {
+			c.addError(e.Pos(), "ERR_CATCH_ON_TASK",
+				"'catch' on a 'with' expression never captures async errors in the caller: the task is still running. Use 'task.wait() catch err' instead")
+		}
 		c.checkExpression(e.Target)
 		switch t := e.Target.(type) {
 		case *ast.Identifier:
@@ -317,6 +319,10 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		c.checkExpression(e.End)
 
 	case *ast.CatchExpression:
+		if _, isWith := e.Target.(*ast.WithExpression); isWith {
+			c.addError(e.Pos(), "ERR_CATCH_ON_TASK",
+				"'catch' on a 'with' expression never captures async errors: the task is still running. Use 'task.wait() catch err' instead")
+		}
 		if e.ErrVar != "" {
 			errSym := &Symbol{
 				Name: e.ErrVar,
@@ -354,6 +360,12 @@ func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, sym *S
 		if actualCount < minArgs {
 			c.addError(call.Pos(), "ERR_ARG_COUNT",
 				fmt.Sprintf("Function '%s' expects at least %d argument(s), but got %d", name, minArgs, actualCount))
+			return
+		}
+	} else if sym.HasOptional {
+		if actualCount < sym.MinArgs || actualCount > expectedCount {
+			c.addError(call.Pos(), "ERR_ARG_COUNT",
+				fmt.Sprintf("Function '%s' expects %d to %d argument(s), but got %d", name, sym.MinArgs, expectedCount, actualCount))
 			return
 		}
 	} else {

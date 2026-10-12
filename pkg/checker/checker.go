@@ -16,6 +16,8 @@ type Checker struct {
 	availableModules map[string]*Symbol
 	hasModStmt       bool
 	declaredVars     []*Symbol
+	importedSyms     []*Symbol        // Alias créés par 'use' (pour détecter les imports inutilisés)
+	unreachable      []lexer.Position // Instructions situées après un appel 'never' (std.fatal, Sys.exit)
 }
 
 func New() *Checker {
@@ -67,6 +69,40 @@ func (c *Checker) UnusedSymbols() []*Symbol {
 	return unused
 }
 
+// UnusedImports retourne les modules importés via 'use' qui ne sont jamais référencés.
+func (c *Checker) UnusedImports() []*Symbol {
+	var unused []*Symbol
+	for _, sym := range c.importedSyms {
+		if !sym.Used {
+			unused = append(unused, sym)
+		}
+	}
+	return unused
+}
+
+// UnreachablePositions retourne les positions des instructions jamais exécutées
+// car situées après un appel de type 'never' (std.fatal, Sys.exit).
+func (c *Checker) UnreachablePositions() []lexer.Position {
+	return c.unreachable
+}
+
+// checkStatementList vérifie une séquence d'instructions et marque comme
+// inatteignables celles qui suivent un appel de type 'never'.
+func (c *Checker) checkStatementList(stmts []ast.Statement) {
+	terminated := false
+	for _, stmt := range stmts {
+		if terminated {
+			c.unreachable = append(c.unreachable, stmt.Pos())
+		}
+		c.checkStatement(stmt)
+		if es, ok := stmt.(*ast.ExpressionStatement); ok && es.Expression != nil {
+			if c.inferType(es.Expression) == "never" {
+				terminated = true
+			}
+		}
+	}
+}
+
 func (c *Checker) addError(pos lexer.Position, code string, msg string) {
 	c.errors = append(c.errors, fmt.Sprintf("%s: [%s] %s", pos, code, msg))
 }
@@ -86,7 +122,5 @@ func (c *Checker) Check(prog *ast.Program) {
 		}
 	}
 
-	for _, stmt := range prog.Statements {
-		c.checkStatement(stmt)
-	}
+	c.checkStatementList(prog.Statements)
 }

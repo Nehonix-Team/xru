@@ -87,13 +87,6 @@ func (ev *Evaluator) evalWithExpression(w *ast.WithExpression, env *Environment)
 	go func() {
 		defer close(task.done)
 		res, err := ev.Eval(w.Target, asyncEnv)
-		if err == nil && res != nil {
-			if unitInst, ok := res.(*UnitInstance); ok && unitInst.Methods != nil {
-				if completeFn, ok := unitInst.Methods["__complete"]; ok {
-					res, err = completeFn(nil)
-				}
-			}
-		}
 		task.mu.Lock()
 		defer task.mu.Unlock()
 		task.result = res
@@ -105,66 +98,39 @@ func (ev *Evaluator) evalWithExpression(w *ast.WithExpression, env *Environment)
 }
 
 func (ev *Evaluator) evalWith(with *ast.WithStatement, env *Environment) (Value, error) {
-	if with.Target == nil && len(with.Body) > 0 {
-		ctx, cancel := context.WithCancel(context.Background())
-		_ = ctx
-		task := &TaskValue{
-			done:   make(chan struct{}),
-			cancel: cancel,
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = ctx
+	task := &TaskValue{
+		done:   make(chan struct{}),
+		cancel: cancel,
+	}
+	asyncEnv := NewEnvironment(env)
+	go func() {
+		defer close(task.done)
+		var res Value = NilValue{}
+		var err error
+		if with.Target != nil {
+			res, err = ev.Eval(with.Target, asyncEnv)
 		}
-		asyncEnv := NewEnvironment(env)
-		go func() {
-			defer close(task.done)
-			var res Value = NilValue{}
-			var err error
-			for _, stmt := range with.Body {
-				r, e := ev.Eval(stmt, asyncEnv)
-				if e != nil {
-					err = e
-					break
-				}
-				if ret, ok := r.(ReturnValue); ok {
-					res = ret.Val
-					break
-				}
-				res = r
+		for _, stmt := range with.Body {
+			r, e := ev.Eval(stmt, asyncEnv)
+			if e != nil {
+				err = e
+				break
 			}
-			task.mu.Lock()
-			defer task.mu.Unlock()
-			task.result = res
-			task.err = err
-			task.isDone = true
-		}()
-		return task, nil
-	}
-
-	targetVal, err := ev.Eval(with.Target, env)
-	if err != nil {
-		return nil, err
-	}
-
-	withEnv := NewEnvironment(env)
-	if unitInst, ok := targetVal.(*UnitInstance); ok {
-		withEnv.unitRef = unitInst
-	}
-
-	for _, stmt := range with.Body {
-		res, err := ev.Eval(stmt, withEnv)
-		if err != nil {
-			return nil, err
+			if ret, ok := r.(ReturnValue); ok {
+				res = ret.Val
+				break
+			}
+			res = r
 		}
-		if ret, ok := res.(ReturnValue); ok {
-			return ret, nil
-		}
-	}
-
-	if withEnv.unitRef != nil && withEnv.unitRef.Methods != nil {
-		if completeFn, ok := withEnv.unitRef.Methods["__complete"]; ok {
-			return completeFn(nil)
-		}
-	}
-
-	return NilValue{}, nil
+		task.mu.Lock()
+		defer task.mu.Unlock()
+		task.result = res
+		task.err = err
+		task.isDone = true
+	}()
+	return task, nil
 }
 
 func (ev *Evaluator) evalCustomDirective(dir *ast.CustomDirectiveInvocation, env *Environment) (Value, error) {
@@ -324,15 +290,25 @@ func InjectSandboxedPrimitives(dir string, env *Environment) {
 			return NilValue{}, err
 		}
 
+		baseDir := filepath.Base(dir)
+
 		for _, item := range dropList.Elements {
 			pattern := item.String()
+			cleanPattern := filepath.Clean(pattern)
+
+			// Si le pattern cible le dossier courant lui-même (ex: ".", "./", "servers", "./servers/", "./servers")
+			if pattern == "." || pattern == "./" || cleanPattern == "." || cleanPattern == baseDir || pattern == "./"+baseDir || pattern == "./"+baseDir+"/" {
+				_ = os.RemoveAll(dir)
+				continue
+			}
+
 			for _, entry := range entries {
 				name := entry.Name()
 				if strings.HasSuffix(name, ".xru") {
 					continue
 				}
 				matched, _ := filepath.Match(pattern, name)
-				if pattern == "*" || matched || pattern == name {
+				if pattern == "*" || matched || pattern == name || cleanPattern == name {
 					targetPath := filepath.Join(dir, name)
 					if err := validateSandbox(dir, targetPath); err != nil {
 						return NilValue{}, err

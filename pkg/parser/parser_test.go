@@ -32,10 +32,8 @@ unit TemplateManager {
     }
 }
 
-with Net.Fetch("https://api.github.com/releases") {
-    set Method = "GET"
-    header "Accept" -> "application/json"
-}
+let downloadTask = with Net.Fetch("https://api.github.com/releases")
+let res = downloadTask.wait()
 
 if port == 3000 {
     Utils.Log("Default port used")
@@ -83,11 +81,19 @@ let files: list[string] = ["index.ts", "server.ts"]
 	hasMatch := false
 
 	for _, stmt := range prog.Statements {
-		switch stmt.(type) {
+		switch s := stmt.(type) {
 		case *ast.UnitStatement:
 			hasUnit = true
 		case *ast.WithStatement:
 			hasWith = true
+		case *ast.VarStatement:
+			if _, ok := s.Value.(*ast.WithExpression); ok {
+				hasWith = true
+			}
+		case *ast.ExpressionStatement:
+			if _, ok := s.Expression.(*ast.WithExpression); ok {
+				hasWith = true
+			}
 		case *ast.IfStatement:
 			hasIf = true
 		case *ast.MatchStatement:
@@ -109,46 +115,51 @@ let files: list[string] = ["index.ts", "server.ts"]
 	}
 }
 
-func TestWithLambdaAndBlockClosure(t *testing.T) {
-	input := `use utils as Utils
-use net as Net
-
-let a: string = "testing with block"
-Utils.Log(a)
-
-with Net.Fetch("https://api.github.com/repos/Nehonix-Team/xypriss-templates/releases/latest") {
-    set Method = "GET"
-    set Timeout = 30s
-    set ExtractTo = "./src"
-
-    header "Accept" -> "application/vnd.github.v3+json"
-    header "User-Agent" -> "XRU-Engine"
-
-    on Progress -> (percent, speed) => Utils.Log("<cyan>[PROGRESS]</> {percent}% à {speed}")
-    on Complete -> (data, err) => {
-        if err != nil {
-            Utils.Log("Failed")
-        } else {
-            Utils.Log("<green>[DONE]</> Téléchargement terminé.")
-        }
-    }
-}
+func TestWithAsyncAndRejectBlock(t *testing.T) {
+	// 1. Valid async with expression / statement
+	validInput := `use net as Net
+let downloadTask = with Net.Fetch("https://api.github.com/releases")
+let content = downloadTask.wait()
+with Net.Fetch("https://example.com")
 `
-	l := lexer.New("test.xru", input)
+	l := lexer.New("valid.xru", validInput)
 	p := parser.New(l)
 	prog := p.ParseProgram()
-	for _, err := range p.Errors() {
-		t.Errorf("Error: %s", err)
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Expected 0 errors for valid async with, got: %v", p.Errors())
 	}
-	if len(prog.Statements) == 0 {
-		t.Fatal("No statements")
+	if len(prog.Statements) != 4 {
+		t.Fatalf("Expected 4 statements, got %d", len(prog.Statements))
+	}
+
+	// 2. Reject magic block on with
+	invalidInput := `use net as Net
+with Net.Fetch("https://api.github.com/releases") {
+    on Complete -> (data, err) => { }
+}
+`
+	l2 := lexer.New("invalid.xru", invalidInput)
+	p2 := parser.New(l2)
+	p2.ParseProgram()
+	if len(p2.Errors()) == 0 {
+		t.Fatal("Expected syntax error when passing block to 'with', got none")
+	}
+	foundExpected := false
+	for _, err := range p2.Errors() {
+		if strings.Contains(err, "'with' operator does not accept a block") {
+			foundExpected = true
+			break
+		}
+	}
+	if !foundExpected {
+		t.Fatalf("Expected error about 'with' not accepting a block, got: %v", p2.Errors())
 	}
 }
 
 func TestUnclosedBlock(t *testing.T) {
 	input := `
-with Net.Fetch("https://example.com") {
-    set Method = "GET"
+if port == 3000 {
+    let a = "ok"
 `
 	l := lexer.New("unclosed.xru", input)
 	p := parser.New(l)
@@ -165,7 +176,7 @@ with Net.Fetch("https://example.com") {
 		}
 	}
 	if !foundExpected {
-		t.Errorf("Expected 'expected token '}' error, got: %v", p.Errors())
+		t.Fatalf("Expected 'expected token '}' error, got: %v", p.Errors())
 	}
 }
 

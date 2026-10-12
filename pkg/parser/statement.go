@@ -34,7 +34,8 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.GLOBAL:
 		return p.parseGlobalStatement()
 	case lexer.SET, lexer.HEADER, lexer.ON:
-		return p.parseCustomDirective()
+		p.addError(p.curToken.Pos, fmt.Sprintf("magic directive '%s' is deprecated and unsupported in XRU 2.0: use standard async task syntax", p.curToken.Literal))
+		return nil
 	case lexer.RETURN:
 		return p.parseReturnStatement()
 	case lexer.MAP:
@@ -82,9 +83,6 @@ func (p *Parser) parseStatement() ast.Statement {
 			p.addError(p.peekToken.Pos, fmt.Sprintf("cannot assign with '=': use '=:' to mutate variable '%s' (e.g. %s =: <value>)", p.curToken.Literal, p.curToken.Literal))
 			return nil
 		}
-		if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.STRING) {
-			return p.parseCustomDirective()
-		}
 		return p.parseExpressionStatement()
 	default:
 		// Expression libre (ex: appel de fonction ou méthode)
@@ -116,6 +114,9 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 			block.Statements = append(block.Statements, stmt)
 		}
 		p.nextToken()
+	}
+	if p.curTokenIs(lexer.EOF) {
+		p.addError(block.Position, "unclosed block (missing '}')")
 	}
 	return block
 }

@@ -165,15 +165,25 @@ func (d *Dispatcher) injectLocalPrimitives(dir string, descriptorPath string, en
 			return runtime.NilValue{}, err
 		}
 
+		baseDir := filepath.Base(dir)
+
 		for _, item := range dropList.Elements {
 			pattern := item.String()
+			cleanPattern := filepath.Clean(pattern)
+
+			// Si le pattern cible le dossier courant lui-même (ex: ".", "./", "servers", "./servers/", "./servers")
+			if pattern == "." || pattern == "./" || cleanPattern == "." || cleanPattern == baseDir || pattern == "./"+baseDir || pattern == "./"+baseDir+"/" {
+				_ = os.RemoveAll(dir)
+				continue
+			}
+
 			for _, entry := range entries {
 				name := entry.Name()
 				if name == descriptorName || strings.HasSuffix(name, ".xru") {
 					continue
 				}
 				matched, _ := filepath.Match(pattern, name)
-				if pattern == "*" || matched || pattern == name {
+				if pattern == "*" || matched || pattern == name || cleanPattern == name {
 					targetPath := filepath.Join(dir, name)
 					if err := d.validateSandbox(dir, targetPath); err != nil {
 						return runtime.NilValue{}, err

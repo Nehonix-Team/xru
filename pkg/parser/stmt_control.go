@@ -5,26 +5,14 @@ import (
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 )
 
-// with Target { ... } ou with Target (asynchrone)
+// with Target (asynchrone)
 func (p *Parser) parseWithStatement() ast.Statement {
 	pos := p.curToken.Pos
 	p.nextToken()
 
-	// Cas with { ... } (bloc concurrent sans cible explicite)
 	if p.curTokenIs(lexer.LBRACE) {
-		stmt := &ast.WithStatement{Position: pos}
-		p.nextToken()
-		for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
-			bodyStmt := p.parseStatement()
-			if bodyStmt != nil {
-				stmt.Body = append(stmt.Body, bodyStmt)
-			}
-			p.nextToken()
-		}
-		if p.curTokenIs(lexer.EOF) {
-			p.addError(stmt.Position, "unclosed with block (missing '}')")
-		}
-		return stmt
+		p.addError(pos, "'with' operator does not accept a block: use 'with <expr>' to spawn an async task (see syntax_specification.md)")
+		return nil
 	}
 
 	target := p.parseExpression()
@@ -33,25 +21,12 @@ func (p *Parser) parseWithStatement() ast.Statement {
 		return nil
 	}
 
-	// Si suivi d'un bloc '{' : bloc with avec cible
+	// XRU 2.0: 'with' est un opérateur asynchrone strict qui ne prend plus de bloc magique
 	if p.peekTokenIs(lexer.LBRACE) {
-		stmt := &ast.WithStatement{Position: pos, Target: target}
-		p.nextToken() // saute sur '{'
-		p.nextToken()
-		for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
-			bodyStmt := p.parseStatement()
-			if bodyStmt != nil {
-				stmt.Body = append(stmt.Body, bodyStmt)
-			}
-			p.nextToken()
-		}
-		if p.curTokenIs(lexer.EOF) {
-			p.addError(stmt.Position, "unclosed with block (missing '}')")
-		}
-		return stmt
+		p.addError(p.peekToken.Pos, "'with' operator does not accept a block: use 'with <expr>' to spawn an async task (see syntax_specification.md)")
+		return nil
 	}
 
-	// Sinon : expression de tâche asynchrone autonome (ex: with Net.fetch("..."))
 	return &ast.ExpressionStatement{
 		Position: pos,
 		Expression: &ast.WithExpression{
@@ -130,6 +105,10 @@ func (p *Parser) parseIfStatement() ast.Statement {
 		}
 		p.nextToken()
 	}
+	if p.curTokenIs(lexer.EOF) {
+		p.addError(stmt.Position, "unclosed block (missing '}')")
+		return nil
+	}
 
 	for p.peekTokenIs(lexer.ELIF) {
 		p.nextToken() // saute 'elif'
@@ -147,6 +126,10 @@ func (p *Parser) parseIfStatement() ast.Statement {
 			}
 			p.nextToken()
 		}
+		if p.curTokenIs(lexer.EOF) {
+			p.addError(elif.Condition.Pos(), "unclosed block (missing '}')")
+			return nil
+		}
 		stmt.ElifBlocks = append(stmt.ElifBlocks, elif)
 	}
 
@@ -162,6 +145,10 @@ func (p *Parser) parseIfStatement() ast.Statement {
 				stmt.Alternative = append(stmt.Alternative, bodyStmt)
 			}
 			p.nextToken()
+		}
+		if p.curTokenIs(lexer.EOF) {
+			p.addError(stmt.Position, "unclosed block (missing '}')")
+			return nil
 		}
 	}
 

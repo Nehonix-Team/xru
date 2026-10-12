@@ -92,11 +92,21 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			if targetVar != n.Name {
 				_ = env.Set(targetVar, v, false)
 			}
+			if n.IsGlobal {
+				env.SetGlobal(n.Name, v)
+				if targetVar != n.Name {
+					env.SetGlobal(targetVar, v)
+				}
+			}
 			return v, nil
 		}
 		if v, exists := env.Get(targetVar); exists {
 			if n.Type != "" && !valMatchesType(v, n.Type) {
 				return nil, fmt.Errorf("argument '%s' of type '%s' received invalid value of type '%s'", targetVar, n.Type, v.Type())
+			}
+			if n.IsGlobal {
+				env.SetGlobal(targetVar, v)
+				env.SetGlobal(n.Name, v)
 			}
 			return v, nil
 		}
@@ -107,6 +117,12 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			}
 			if n.Type != "" && !valMatchesType(val, n.Type) {
 				return nil, fmt.Errorf("argument '%s' of type '%s' has default value of type '%s'", targetVar, n.Type, val.Type())
+			}
+			if n.IsGlobal {
+				env.SetGlobal(targetVar, val)
+				if targetVar != n.Name {
+					env.SetGlobal(n.Name, val)
+				}
 			}
 			return val, env.Set(targetVar, val, false)
 		}
@@ -390,7 +406,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				delete(ev.loadingModules, absPath)
 			}()
 
-			modEnv := NewEnvironment(nil)
+			modEnv := NewEnvironment(env)
 			modEnv.SetCurrentDir(filepath.Dir(modDetails.FilePath))
 			content, err := os.ReadFile(modDetails.FilePath)
 			if err != nil {
@@ -421,6 +437,12 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 					}
 				case *ast.VarStatement:
 					if s.IsGlobal || isDeclarativeExpr(s.Value) {
+						if _, err := ev.Eval(s, modEnv); err != nil {
+							return nil, err
+						}
+					}
+				case *ast.ArgStatement:
+					if s.IsGlobal {
 						if _, err := ev.Eval(s, modEnv); err != nil {
 							return nil, err
 						}
@@ -476,15 +498,19 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			if err != nil {
 				return nil, err
 			}
+			targetName := n.Member
+			if n.Alias != "" {
+				targetName = n.Alias
+			}
 			if prop, ok := unit.Properties[n.Member]; ok {
-				if err := env.Set(n.Member, prop, false); err != nil {
+				if err := env.Set(targetName, prop, false); err != nil {
 					return nil, err
 				}
 				return prop, nil
 			}
 			if method, ok := unit.Methods[n.Member]; ok {
-				fnVal := FunctionValue{Name: n.Member, Fn: method}
-				if err := env.Set(n.Member, fnVal, false); err != nil {
+				fnVal := FunctionValue{Name: targetName, Fn: method}
+				if err := env.Set(targetName, fnVal, false); err != nil {
 					return nil, err
 				}
 				return fnVal, nil
@@ -505,6 +531,27 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			return nil, err
 		}
 		return unit, nil
+	case *ast.MemberExpression:
+		obj, err := ev.Eval(n.Object, env)
+		if err != nil {
+			return nil, err
+		}
+		if unit, ok := obj.(*UnitInstance); ok {
+			if prop, exists := unit.Properties[n.Property]; exists {
+				return prop, nil
+			}
+			if method, exists := unit.Methods[n.Property]; exists {
+				return FunctionValue{Name: n.Property, Fn: method}, nil
+			}
+			return nil, fmt.Errorf("property '%s' not found on module '%s'", n.Property, unit.UnitName)
+		}
+		if mp, ok := obj.(MapValue); ok {
+			if val, exists := mp.Pairs[n.Property]; exists {
+				return val, nil
+			}
+			return NilValue{}, nil
+		}
+		return nil, fmt.Errorf("cannot access property '%s' on %s", n.Property, obj.Type())
 	case *ast.ScopeAccessExpression:
 		scopeVal, ok := env.Get(n.Scope)
 		if !ok {

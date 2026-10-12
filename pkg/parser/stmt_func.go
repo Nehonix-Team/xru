@@ -106,6 +106,14 @@ func (p *Parser) parseGlobalStatement() ast.Statement {
 		}
 		return nil
 	}
+	if p.curTokenIs(lexer.ARG) {
+		argStmt := p.parseArgStatement()
+		if argStmt != nil {
+			argStmt.IsGlobal = true
+			return argStmt
+		}
+		return nil
+	}
 	stmt := p.parseStatement()
 	return stmt
 }

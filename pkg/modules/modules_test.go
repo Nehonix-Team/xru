@@ -144,3 +144,51 @@ map {
 		t.Errorf("Expected auto-import candidate for 'login'")
 	}
 }
+
+func TestExportedArgs(t *testing.T) {
+	tempDir := t.TempDir()
+	modFile := filepath.Join(tempDir, "_mod.xru")
+	modContent := `map {
+    root -> "./"
+}`
+	if err := os.WriteFile(modFile, []byte(modContent), 0644); err != nil {
+		t.Fatalf("Failed to write _mod.xru: %v", err)
+	}
+
+	mainFile := filepath.Join(tempDir, "main.xru")
+	mainContent := `mod main
+global arg name: string = "app-name"
+export arg port: number = 8080
+arg internalFlag: bool = false
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("Failed to write main.xru: %v", err)
+	}
+
+	cfg, errs := modules.LoadModConfig(modFile)
+	if len(errs) > 0 {
+		t.Fatalf("Errors loading _mod.xru: %v", errs)
+	}
+
+	modDetails, err := cfg.ResolveModule("root", "main")
+	if err != nil {
+		t.Fatalf("Failed to resolve main module: %v", err)
+	}
+
+	if exp, ok := modDetails.Exports["name"]; !ok {
+		t.Errorf("Expected 'name' to be exported")
+	} else if exp.Kind != "arg" || exp.Type != "string" {
+		t.Errorf("Expected 'name' to have kind 'arg' and type 'string', got: %v", exp)
+	}
+
+	if exp, ok := modDetails.Exports["port"]; !ok {
+		t.Errorf("Expected 'port' to be exported")
+	} else if exp.Kind != "arg" || exp.Type != "number" {
+		t.Errorf("Expected 'port' to have kind 'arg' and type 'number', got: %v", exp)
+	}
+
+	if _, ok := modDetails.Exports["internalFlag"]; ok {
+		t.Errorf("Non-global arg 'internalFlag' should not be exported")
+	}
+}
+

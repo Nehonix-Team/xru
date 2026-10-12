@@ -183,6 +183,7 @@ func (c *Checker) checkArg(s *ast.ArgStatement) {
 			Type:     inferredType,
 			Pos:      s.Pos(),
 			ValueStr: valStr,
+			IsGlobal: s.IsGlobal,
 		}
 		if err := c.scope.Define(sym); err != nil {
 			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())

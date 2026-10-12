@@ -228,6 +228,19 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 					Position: s.Pos(),
 				}
 			}
+		case *ast.ArgStatement:
+			if s != nil && s.IsGlobal {
+				memberType := s.Type
+				if memberType == "" && s.DefaultValue != nil {
+					memberType = inferBasicType(s.DefaultValue)
+				}
+				exports[s.Name] = &ExportedMember{
+					Name:     s.Name,
+					Kind:     "arg",
+					Type:     memberType,
+					Position: s.Pos(),
+				}
+			}
 		}
 	}
 

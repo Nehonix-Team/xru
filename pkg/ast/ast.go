@@ -65,13 +65,14 @@ func (s *UseStatement) String() string {
 	return fmt.Sprintf("#USE %s", s.Module)
 }
 
-// ArgStatement : arg NAME [as ALIAS]: type = default  /  #ARG NAME: type or default
+// ArgStatement : [global/export] arg NAME [as ALIAS]: type = default  /  #ARG NAME: type or default
 type ArgStatement struct {
 	Position     lexer.Position
 	Name         string
 	Alias        string // Optional alias for the internal variable name (e.g. arg mode as _e)
 	Type         string // "string", "number", "bool", "duration", etc.
 	DefaultValue Expression
+	IsGlobal     bool
 }
 
 func (s *ArgStatement) VarName() string {
@@ -84,14 +85,18 @@ func (s *ArgStatement) VarName() string {
 func (s *ArgStatement) statementNode()      {}
 func (s *ArgStatement) Pos() lexer.Position { return s.Position }
 func (s *ArgStatement) String() string {
+	prefix := ""
+	if s.IsGlobal {
+		prefix = "global "
+	}
 	namePart := s.Name
 	if s.Alias != "" {
 		namePart = fmt.Sprintf("%s as %s", s.Name, s.Alias)
 	}
 	if s.DefaultValue != nil {
-		return fmt.Sprintf("arg %s: %s = %s", namePart, s.Type, s.DefaultValue.String())
+		return fmt.Sprintf("%sarg %s: %s = %s", prefix, namePart, s.Type, s.DefaultValue.String())
 	}
-	return fmt.Sprintf("arg %s: %s", namePart, s.Type)
+	return fmt.Sprintf("%sarg %s: %s", prefix, namePart, s.Type)
 }
 
 // MapStatement : map { alias -> path }

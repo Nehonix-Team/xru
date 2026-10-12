@@ -297,17 +297,21 @@ func (m *Mangler) Minify(prog *ast.Program) string {
 func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 	switch s := stmt.(type) {
 	case *ast.ArgStatement:
+		prefix := ""
+		if s.IsGlobal {
+			prefix = "global "
+		}
 		alias := s.VarName()
 		if alias != s.Name {
 			if s.DefaultValue != nil {
-				return fmt.Sprintf("arg %s as %s: %s = %s", s.Name, alias, s.Type, m.minifyExpression(s.DefaultValue))
+				return fmt.Sprintf("%sarg %s as %s: %s = %s", prefix, s.Name, alias, s.Type, m.minifyExpression(s.DefaultValue))
 			}
-			return fmt.Sprintf("arg %s as %s: %s", s.Name, alias, s.Type)
+			return fmt.Sprintf("%sarg %s as %s: %s", prefix, s.Name, alias, s.Type)
 		}
 		if s.DefaultValue != nil {
-			return fmt.Sprintf("arg %s: %s = %s", s.Name, s.Type, m.minifyExpression(s.DefaultValue))
+			return fmt.Sprintf("%sarg %s: %s = %s", prefix, s.Name, s.Type, m.minifyExpression(s.DefaultValue))
 		}
-		return fmt.Sprintf("arg %s: %s", s.Name, s.Type)
+		return fmt.Sprintf("%sarg %s: %s", prefix, s.Name, s.Type)
 
 	case *ast.UseStatement:
 		if s.Alias != "" {

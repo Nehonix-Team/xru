@@ -65,7 +65,7 @@ func (s *Server) handleFromCompletion(uri, prefixLine, trimmedPrefix string) []C
 			if err == nil && modDetails != nil {
 				for _, exp := range modDetails.Exports {
 					kind := CompletionItemKindFunction
-					if exp.Kind == "var" || exp.Kind == "const" {
+					if exp.Kind == "var" || exp.Kind == "const" || exp.Kind == "arg" {
 						kind = CompletionItemKindVariable
 					}
 					items = append(items, CompletionItem{

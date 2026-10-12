@@ -212,19 +212,21 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 
 		declArg := declaredArgs[targetKey]
 		actualKey := declArg.VarName()
+		var assignedVal runtime.Value
 		if isNegative {
-			env.Set(declArg.Name, runtime.BoolValue{Val: false}, false)
-			env.Set(actualKey, runtime.BoolValue{Val: false}, false)
-			env.Set(targetKey, runtime.BoolValue{Val: false}, false)
+			assignedVal = runtime.BoolValue{Val: false}
 		} else if hasValue {
-			val := parseCliVal(valStr)
-			env.Set(declArg.Name, val, false)
-			env.Set(actualKey, val, false)
-			env.Set(targetKey, val, false)
+			assignedVal = parseCliVal(valStr)
 		} else {
-			env.Set(declArg.Name, runtime.BoolValue{Val: true}, false)
-			env.Set(actualKey, runtime.BoolValue{Val: true}, false)
-			env.Set(targetKey, runtime.BoolValue{Val: true}, false)
+			assignedVal = runtime.BoolValue{Val: true}
+		}
+		env.Set(declArg.Name, assignedVal, false)
+		env.Set(actualKey, assignedVal, false)
+		env.Set(targetKey, assignedVal, false)
+		if declArg.IsGlobal {
+			env.SetGlobal(declArg.Name, assignedVal)
+			env.SetGlobal(actualKey, assignedVal)
+			env.SetGlobal(targetKey, assignedVal)
 		}
 	}
 

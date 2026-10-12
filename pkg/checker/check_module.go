@@ -149,14 +149,18 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		} else if exp.Kind == "const" {
 			symKind = SymConst
 		}
+		targetName := s.Member
+		if s.Alias != "" {
+			targetName = s.Alias
+		}
 		memberSym := &Symbol{
-			Name:   s.Member,
+			Name:   targetName,
 			Kind:   symKind,
 			Type:   exp.Type,
 			Params: exp.Params,
 			Pos:    s.Pos(),
 		}
-		if existing, ok := c.scope.Resolve(s.Member); ok && existing.Pos.Line == 0 {
+		if existing, ok := c.scope.Resolve(targetName); ok && existing.Pos.Line == 0 {
 			existing.Kind = symKind
 			existing.Type = exp.Type
 			existing.Params = exp.Params

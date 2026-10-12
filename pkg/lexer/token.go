@@ -140,6 +140,7 @@ var keywords = map[string]TokenType{
 	"dispatch_tree": DISPATCH_TREE,
 	"file":          FILE,
 	"global":        GLOBAL,
+	"export":        GLOBAL,
 	"pass":          PASS,
 	"map":           MAP,
 	"from":          FROM,

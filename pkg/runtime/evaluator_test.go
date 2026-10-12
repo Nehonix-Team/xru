@@ -1507,6 +1507,70 @@ let out = Cmd.exec("cat marker.txt")
 	}
 }
 
+func TestImportExportArg(t *testing.T) {
+	tempDir := t.TempDir()
+	modFile := filepath.Join(tempDir, "_mod.xru")
+	modContent := `map {
+    root -> "./"
+}`
+	if err := os.WriteFile(modFile, []byte(modContent), 0644); err != nil {
+		t.Fatalf("Failed to write _mod.xru: %v", err)
+	}
+
+	mainFile := filepath.Join(tempDir, "main.xru")
+	mainContent := `mod main
+global arg name: string = "cool-app"
+export arg port: number = 3000
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("Failed to write main.xru: %v", err)
+	}
+
+	subFile := filepath.Join(tempDir, "sub.xru")
+	subContent := `
+from "root" use main::name
+from "root" use main::port as myPort
+from "root" use main as m
+let checkName = name
+let checkPort = myPort
+let checkMember = m.name
+`
+	if err := os.WriteFile(subFile, []byte(subContent), 0644); err != nil {
+		t.Fatalf("Failed to write sub.xru: %v", err)
+	}
+
+	l := lexer.New("sub.xru", subContent)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	env.SetCurrentDir(tempDir)
+
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	checkName, ok := env.Get("checkName")
+	if !ok || checkName.String() != "cool-app" {
+		t.Errorf("Expected checkName to be 'cool-app', got: %v", checkName)
+	}
+
+	checkPort, ok := env.Get("checkPort")
+	if !ok || checkPort.String() != "3000" {
+		t.Errorf("Expected checkPort to be '3000', got: %v", checkPort)
+	}
+
+	checkMember, ok := env.Get("checkMember")
+	if !ok || checkMember.String() != "cool-app" {
+		t.Errorf("Expected checkMember to be 'cool-app', got: %v", checkMember)
+	}
+}
+
+
 
 
 

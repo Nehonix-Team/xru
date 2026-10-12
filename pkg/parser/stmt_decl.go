@@ -222,7 +222,6 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 			return nil
 		}
 		stmt.Member = p.curToken.Literal
-		return stmt
 	}
 
 	if p.peekTokenIs(lexer.AS) {

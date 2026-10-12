@@ -406,6 +406,22 @@ func (s *DispatchTreeStatement) String() string {
 	return fmt.Sprintf("dispatch %s", s.Path)
 }
 
+// InStatement : in <path> { ... }
+type InStatement struct {
+	Position lexer.Position
+	Path     Expression
+	Body     []Statement
+}
+
+func (s *InStatement) statementNode()      {}
+func (s *InStatement) Pos() lexer.Position { return s.Position }
+func (s *InStatement) String() string {
+	if s.Path != nil {
+		return fmt.Sprintf("in %s (%d stmts)", s.Path.String(), len(s.Body))
+	}
+	return fmt.Sprintf("in (%d stmts)", len(s.Body))
+}
+
 type FileStatement struct {
 	Position lexer.Position
 	Path     string

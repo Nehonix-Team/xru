@@ -92,6 +92,8 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		if s.PatternExpr != nil {
 			c.checkExpression(s.PatternExpr)
 		}
+	case *ast.InStatement:
+		c.checkIn(s)
 	case *ast.ReassignStatement:
 		c.checkReassign(s)
 	case *ast.ReturnStatement:
@@ -463,3 +465,32 @@ func (c *Checker) checkMatch(s *ast.MatchStatement) {
 		c.scope = c.scope.parent
 	}
 }
+
+func (c *Checker) checkIn(stmt *ast.InStatement) {
+	if stmt.Path != nil {
+		c.checkExpression(stmt.Path)
+		pType := c.inferType(stmt.Path)
+		if pType != "string" && pType != "any" {
+			c.addError(stmt.Path.Pos(), "ERR_TYPE_MISMATCH",
+				fmt.Sprintf("In path expression expects string, got '%s'", pType))
+		}
+	}
+
+	childScope := NewScope(c.scope, false)
+	// Primitives de sandboxing locales
+	childScope.Define(&Symbol{Name: "keep", Kind: SymFunc, Type: "any", Pos: stmt.Pos()})
+	childScope.Define(&Symbol{Name: "Keep", Kind: SymFunc, Type: "any", Pos: stmt.Pos()})
+	childScope.Define(&Symbol{Name: "drop", Kind: SymFunc, Type: "any", Pos: stmt.Pos()})
+	childScope.Define(&Symbol{Name: "Drop", Kind: SymFunc, Type: "any", Pos: stmt.Pos()})
+	childScope.Define(&Symbol{Name: "UseVariant", Kind: SymFunc, Type: "any", Pos: stmt.Pos()})
+	childScope.Define(&Symbol{Name: "useVariant", Kind: SymFunc, Type: "any", Pos: stmt.Pos()})
+	childScope.Define(&Symbol{Name: "Local", Kind: SymUnit, Type: "Unit", Pos: stmt.Pos()})
+
+	oldScope := c.scope
+	c.scope = childScope
+	for _, bodyStmt := range stmt.Body {
+		c.checkStatement(bodyStmt)
+	}
+	c.scope = oldScope
+}
+

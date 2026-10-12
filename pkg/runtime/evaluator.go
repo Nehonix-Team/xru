@@ -205,6 +205,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return ReturnValue{Val: val}, nil
 	case *ast.DispatchTreeStatement:
 		return ev.evalDispatchTree(n, env)
+	case *ast.InStatement:
+		return ev.evalIn(n, env)
 	case *ast.MatchStatement:
 		return ev.evalMatch(n, env)
 	case *ast.CallExpression:

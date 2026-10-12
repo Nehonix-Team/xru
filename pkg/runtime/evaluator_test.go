@@ -1423,6 +1423,56 @@ file "%s", (doc, err) -> {
 	}
 }
 
+func TestInStatementEvaluation(t *testing.T) {
+	tmpDir := t.TempDir()
+	subDir := filepath.Join(tmpDir, "sub")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	keepFile := filepath.Join(subDir, "keep.ts")
+	dropFile := filepath.Join(subDir, "drop.ts")
+	_ = os.WriteFile(keepFile, []byte("const hello = 'foo';"), 0644)
+	_ = os.WriteFile(dropFile, []byte("should be deleted"), 0644)
+
+	code := fmt.Sprintf(`
+in "%s" {
+    keep(["keep.ts"])
+    file "keep.ts", (doc) -> {
+        doc.replace("foo", "bar")
+    }
+}
+`, subDir)
+
+	l := lexer.New("test_in.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	// Verify keep.ts content was modified
+	content, err := os.ReadFile(keepFile)
+	if err != nil {
+		t.Fatalf("Failed to read keep.ts: %v", err)
+	}
+	if !strings.Contains(string(content), "bar") {
+		t.Errorf("Expected keep.ts to contain 'bar', got: %s", string(content))
+	}
+
+	// Verify drop.ts was removed by keep([...])
+	if _, err := os.Stat(dropFile); !os.IsNotExist(err) {
+		t.Errorf("Expected drop.ts to be deleted by keep")
+	}
+}
+
+
 
 
 

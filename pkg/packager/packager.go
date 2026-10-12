@@ -94,7 +94,27 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 		return err
 	}
 
-	// 2. Parcourt et inclusion compartimentée : core/ et rules/
+	// 2. Bundling & Minification unifiée : main.xru à la racine de l'archive
+	bundledContent, err := p.BundleAndMinify()
+	if err != nil {
+		return fmt.Errorf("failed to bundle and minify rules: %w", err)
+	}
+
+	if bundledContent != "" {
+		mainHdr := &tar.Header{
+			Name: "main.xru",
+			Mode: 0644,
+			Size: int64(len(bundledContent)),
+		}
+		if err := tw.WriteHeader(mainHdr); err != nil {
+			return err
+		}
+		if _, err := tw.Write([]byte(bundledContent)); err != nil {
+			return err
+		}
+	}
+
+	// 3. Parcourt et inclusion du template : core/ (sans duplication de fichiers .xru)
 	sourcePath := filepath.Join(p.rootDir, entryDir)
 	return filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -138,19 +158,12 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 		cleanRel := filepath.ToSlash(relPath)
 		baseName := filepath.Base(cleanRel)
 
-		// Compartimentage : les fichiers .xru vont dans rules/, le reste dans core/
-		var targetTarPath string
-		isRuleFile := strings.HasSuffix(baseName, ".xru")
-
-		if isRuleFile {
-			if cleanRel == "main.xru" {
-				targetTarPath = "rules/main.xru"
-			} else {
-				targetTarPath = "rules/" + cleanRel
-			}
-		} else {
-			targetTarPath = "core/" + cleanRel
+		// Les fichiers .xru sont déjà assemblés et minifiés dans main.xru
+		if strings.HasSuffix(baseName, ".xru") {
+			return nil
 		}
+
+		targetTarPath := "core/" + cleanRel
 
 		// Gestion des liens symboliques de dossiers
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -174,10 +187,10 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 							return nil
 						}
 						if subInfo.Mode().IsRegular() {
-							nestedTarPath := "core/" + nestedRel
 							if strings.HasSuffix(filepath.Base(nestedRel), ".xru") {
-								nestedTarPath = "rules/" + nestedRel
+								return nil
 							}
+							nestedTarPath := "core/" + nestedRel
 							if p.Verbose {
 								fmt.Printf("  \033[32m[ADD]\033[0m %s (%d bytes)\n", nestedTarPath, subInfo.Size())
 							}

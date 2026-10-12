@@ -45,6 +45,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseFromUseStatement()
 	case lexer.FOR:
 		return p.parseForStatement()
+	case lexer.IN:
+		return p.parseInStatement()
 	case lexer.ILLEGAL:
 		p.addError(p.curToken.Pos, fmt.Sprintf("illegal character '%s'", p.curToken.Literal))
 		return nil
@@ -180,3 +182,43 @@ func (p *Parser) parseForStatement() *ast.ForStatement {
 
 	return stmt
 }
+
+// in <path> { ... }
+func (p *Parser) parseInStatement() *ast.InStatement {
+	pos := p.curToken.Pos
+
+	// saute 'in'
+	p.nextToken()
+
+	pathExpr := p.parseExpression()
+	if pathExpr == nil {
+		p.addError(pos, "expected path expression after 'in'")
+		return nil
+	}
+
+	if !p.expectPeek(lexer.LBRACE) {
+		p.addError(p.curToken.Pos, "expected '{' after in <path>")
+		return nil
+	}
+
+	stmt := &ast.InStatement{
+		Position: pos,
+		Path:     pathExpr,
+	}
+
+	p.nextToken() // saute '{'
+	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		bodyStmt := p.parseStatement()
+		if bodyStmt != nil {
+			stmt.Body = append(stmt.Body, bodyStmt)
+		}
+		p.nextToken()
+	}
+
+	if p.curTokenIs(lexer.EOF) {
+		p.addError(pos, "unclosed 'in' block (missing '}')")
+	}
+
+	return stmt
+}
+

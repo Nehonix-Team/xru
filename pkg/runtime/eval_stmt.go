@@ -3,6 +3,8 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -231,6 +233,176 @@ func (ev *Evaluator) evalDispatchTree(dt *ast.DispatchTreeStatement, env *Enviro
 	}
 	return BoolValue{Val: true}, nil
 }
+
+func (ev *Evaluator) evalIn(inStmt *ast.InStatement, env *Environment) (Value, error) {
+	pathVal, err := ev.Eval(inStmt.Path, env)
+	if err != nil {
+		return NilValue{}, err
+	}
+	targetPath := pathVal.String()
+
+	baseDir := env.CurrentDir()
+	if baseDir == "" {
+		baseDir = "."
+	}
+	var fullDir string
+	if filepath.IsAbs(targetPath) {
+		fullDir = targetPath
+	} else {
+		fullDir = filepath.Clean(filepath.Join(baseDir, targetPath))
+	}
+
+	scopedEnv := NewEnvironment(env)
+	scopedEnv.SetCurrentDir(fullDir)
+
+	InjectSandboxedPrimitives(fullDir, scopedEnv)
+
+	for k, v := range env.All() {
+		_ = scopedEnv.Set(strings.ToLower(k), v, false)
+		_ = scopedEnv.Set(strings.ToUpper(k), v, false)
+	}
+
+	for _, stmt := range inStmt.Body {
+		res, err := ev.Eval(stmt, scopedEnv)
+		if err != nil {
+			return NilValue{}, err
+		}
+		if ret, ok := res.(ReturnValue); ok {
+			return ret, nil
+		}
+	}
+	return BoolValue{Val: true}, nil
+}
+
+func InjectSandboxedPrimitives(dir string, env *Environment) {
+	keepMethod := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, nil
+		}
+		keepList, ok := args[0].(ListValue)
+		if !ok {
+			return NilValue{}, fmt.Errorf("keep requires a list of file names")
+		}
+
+		keepMap := make(map[string]bool)
+		for _, el := range keepList.Elements {
+			keepMap[el.String()] = true
+		}
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return NilValue{}, err
+		}
+
+		for _, entry := range entries {
+			name := entry.Name()
+			if strings.HasSuffix(name, ".xru") {
+				continue
+			}
+			if !keepMap[name] {
+				targetPath := filepath.Join(dir, name)
+				if err := validateSandbox(dir, targetPath); err != nil {
+					return NilValue{}, err
+				}
+				_ = os.RemoveAll(targetPath)
+			}
+		}
+		return BoolValue{Val: true}, nil
+	}
+
+	dropMethod := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, nil
+		}
+		dropList, ok := args[0].(ListValue)
+		if !ok {
+			return NilValue{}, fmt.Errorf("drop requires a list of file names/patterns")
+		}
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return NilValue{}, err
+		}
+
+		for _, item := range dropList.Elements {
+			pattern := item.String()
+			for _, entry := range entries {
+				name := entry.Name()
+				if strings.HasSuffix(name, ".xru") {
+					continue
+				}
+				matched, _ := filepath.Match(pattern, name)
+				if pattern == "*" || matched || pattern == name {
+					targetPath := filepath.Join(dir, name)
+					if err := validateSandbox(dir, targetPath); err != nil {
+						return NilValue{}, err
+					}
+					_ = os.RemoveAll(targetPath)
+				}
+			}
+		}
+		return BoolValue{Val: true}, nil
+	}
+
+	useVariantMethod := func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("UseVariant requires target and variant source")
+		}
+		target := args[0].String()
+		variant := args[1].String()
+
+		targetPath := filepath.Join(dir, target)
+		variantPath := filepath.Join(dir, variant)
+
+		if err := validateSandbox(dir, targetPath); err != nil {
+			return NilValue{}, err
+		}
+		if err := validateSandbox(dir, variantPath); err != nil {
+			return NilValue{}, err
+		}
+
+		if _, err := os.Stat(variantPath); os.IsNotExist(err) {
+			return NilValue{}, fmt.Errorf("[ERR_TARGET_NOT_FOUND] Variant source '%s' does not exist in %s", variant, dir)
+		}
+
+		data, err := os.ReadFile(variantPath)
+		if err != nil {
+			return NilValue{}, err
+		}
+		if err := os.WriteFile(targetPath, data, 0644); err != nil {
+			return NilValue{}, err
+		}
+		_ = os.Remove(variantPath)
+		return BoolValue{Val: true}, nil
+	}
+
+	scopeUnit := &UnitInstance{
+		UnitName:   "LocalScope",
+		Properties: make(map[string]Value),
+		Methods: map[string]NativeMethod{
+			"Keep":       keepMethod,
+			"Drop":       dropMethod,
+			"UseVariant": useVariantMethod,
+		},
+		Directives: make(map[string]NativeDirective),
+	}
+	_ = env.Set("Local", scopeUnit, true)
+	_ = env.Set("Keep", FunctionValue{Name: "Keep", Fn: keepMethod}, true)
+	_ = env.Set("keep", FunctionValue{Name: "keep", Fn: keepMethod}, true)
+	_ = env.Set("Drop", FunctionValue{Name: "Drop", Fn: dropMethod}, true)
+	_ = env.Set("drop", FunctionValue{Name: "drop", Fn: dropMethod}, true)
+	_ = env.Set("UseVariant", FunctionValue{Name: "UseVariant", Fn: useVariantMethod}, true)
+	_ = env.Set("useVariant", FunctionValue{Name: "useVariant", Fn: useVariantMethod}, true)
+}
+
+func validateSandbox(allowedDir, targetPath string) error {
+	rel, err := filepath.Rel(allowedDir, targetPath)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return fmt.Errorf("[ERR_SANDBOX_VIOLATION] Path '%s' escapes local sandbox '%s'", targetPath, allowedDir)
+	}
+	return nil
+}
+
 
 func (ev *Evaluator) evalRange(r *ast.RangeExpression, env *Environment) (Value, error) {
 	startVal, err := ev.Eval(r.Start, env)

@@ -52,6 +52,7 @@ const (
 	MOD           TokenType = "mod"
 	FOR           TokenType = "for"
 	IN            TokenType = "in"
+	WHILE         TokenType = "while"
 	CATCH         TokenType = "catch"
 
 	// Operators & Symbols
@@ -147,6 +148,7 @@ var keywords = map[string]TokenType{
 	"mod":           MOD,
 	"for":           FOR,
 	"in":            IN,
+	"while":         WHILE,
 	"catch":         CATCH,
 }
 

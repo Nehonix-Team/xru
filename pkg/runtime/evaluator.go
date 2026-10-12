@@ -260,6 +260,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return ev.Eval(n.Alternative, env)
 	case *ast.ForStatement:
 		return ev.evalFor(n, env)
+	case *ast.WhileStatement:
+		return ev.evalWhile(n, env)
 	case *ast.RangeExpression:
 		return ev.evalRange(n, env)
 	case *ast.CatchExpression:

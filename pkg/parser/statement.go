@@ -46,6 +46,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseFromUseStatement()
 	case lexer.FOR:
 		return p.parseForStatement()
+	case lexer.WHILE:
+		return p.parseWhileStatement()
 	case lexer.IN:
 		return p.parseInStatement()
 	case lexer.ILLEGAL:

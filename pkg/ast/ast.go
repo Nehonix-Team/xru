@@ -319,6 +319,19 @@ func (s *ForStatement) String() string {
 	return fmt.Sprintf("for %s in %s (%d stmts)", s.Item, s.Iterable.String(), len(s.Body))
 }
 
+// WhileStatement : while condition { ... }
+type WhileStatement struct {
+	Position  lexer.Position
+	Condition Expression
+	Body      []Statement
+}
+
+func (s *WhileStatement) statementNode()      {}
+func (s *WhileStatement) Pos() lexer.Position { return s.Position }
+func (s *WhileStatement) String() string {
+	return fmt.Sprintf("while %s (%d stmts)", s.Condition.String(), len(s.Body))
+}
+
 // RangeExpression : start..end
 type RangeExpression struct {
 	Position lexer.Position

@@ -71,6 +71,25 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		return NilValue{}, nil
 	}
 
+	sleepFn := func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("sleep requires duration")
+		}
+		if dur, ok := args[0].(DurationValue); ok {
+			time.Sleep(dur.Val)
+			return BoolValue{Val: true}, nil
+		}
+		if num, ok := args[0].(NumberValue); ok {
+			time.Sleep(time.Duration(num.Val) * time.Millisecond)
+			return BoolValue{Val: true}, nil
+		}
+		if parsed, err := time.ParseDuration(args[0].String()); err == nil {
+			time.Sleep(parsed)
+			return BoolValue{Val: true}, nil
+		}
+		return BoolValue{Val: true}, nil
+	}
+
 	stdUnit := &UnitInstance{
 		UnitName:   "std",
 		Properties: make(map[string]Value),
@@ -89,6 +108,8 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Warn":           warnFn,
 			"error":          errorFn,
 			"Error":          errorFn,
+			"sleep":          sleepFn,
+			"Sleep":          sleepFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}
@@ -333,6 +354,8 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Time": func(args []Value) (Value, error) {
 				return StringValue{Val: time.Now().Format(time.RFC3339)}, nil
 			},
+			"Sleep": sleepFn,
+			"sleep": sleepFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}

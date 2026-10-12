@@ -212,3 +212,40 @@ func (p *Parser) parseMatchStatement() *ast.MatchStatement {
 	}
 	return stmt
 }
+
+// while condition { ... }
+func (p *Parser) parseWhileStatement() ast.Statement {
+	startPos := p.curToken.Pos
+	p.nextToken() // saute 'while'
+
+	condition := p.parseExpression()
+	if condition == nil {
+		p.addError(startPos, "expected condition expression after 'while'")
+		return nil
+	}
+
+	if !p.expectPeek(lexer.LBRACE) {
+		return nil
+	}
+
+	p.nextToken() // saute '{'
+	stmt := &ast.WhileStatement{
+		Position:  startPos,
+		Condition: condition,
+	}
+
+	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		bodyStmt := p.parseStatement()
+		if bodyStmt != nil {
+			stmt.Body = append(stmt.Body, bodyStmt)
+		}
+		p.nextToken()
+	}
+
+	if p.curTokenIs(lexer.EOF) {
+		p.addError(stmt.Position, "unclosed while block (missing '}')")
+		return nil
+	}
+
+	return stmt
+}

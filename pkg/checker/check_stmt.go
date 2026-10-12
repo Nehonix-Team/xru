@@ -31,6 +31,8 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		c.checkFromUse(s)
 	case *ast.ForStatement:
 		c.checkFor(s)
+	case *ast.WhileStatement:
+		c.checkWhile(s)
 	case *ast.BlockStatement:
 		for _, bodyStmt := range s.Statements {
 			c.checkStatement(bodyStmt)
@@ -439,6 +441,20 @@ func (c *Checker) checkFor(s *ast.ForStatement) {
 		}
 		_ = c.scope.Define(idxSym)
 	}
+
+	for _, stmt := range s.Body {
+		c.checkStatement(stmt)
+	}
+}
+
+func (c *Checker) checkWhile(s *ast.WhileStatement) {
+	if s.Condition != nil {
+		c.checkExpression(s.Condition)
+	}
+
+	loopScope := NewScope(c.scope, false)
+	c.scope = loopScope
+	defer func() { c.scope = c.scope.parent }()
 
 	for _, stmt := range s.Body {
 		c.checkStatement(stmt)

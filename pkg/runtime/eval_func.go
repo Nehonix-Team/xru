@@ -65,12 +65,7 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 			args = append(args, a)
 		}
 		if unit.UnitName == "Fs" && env != nil && env.CurrentDir() != "" {
-			for i := 0; i < len(args); i++ {
-				strVal := args[i].String()
-				if !filepath.IsAbs(strVal) {
-					args[i] = StringValue{Val: filepath.Join(env.CurrentDir(), strVal)}
-				}
-			}
+			resolveFsPathArgs(c.Property, args, env.CurrentDir())
 		}
 		return method(args)
 	case *ast.ScopeAccessExpression:
@@ -107,12 +102,7 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 			args = append(args, a)
 		}
 		if unit.UnitName == "Fs" && env != nil && env.CurrentDir() != "" {
-			for i := 0; i < len(args); i++ {
-				strVal := args[i].String()
-				if !filepath.IsAbs(strVal) {
-					args[i] = StringValue{Val: filepath.Join(env.CurrentDir(), strVal)}
-				}
-			}
+			resolveFsPathArgs(c.Member, args, env.CurrentDir())
 		}
 		return method(args)
 	case *ast.Identifier:
@@ -487,5 +477,31 @@ func (ev *Evaluator) evalListMethod(c *ast.MemberExpression, listVal ListValue, 
 		return ListValue{Elements: elems[start:end]}, nil
 	default:
 		return nil, fmt.Errorf("method '%s' not found on list", c.Property)
+	}
+}
+
+func resolveFsPathArgs(methodName string, args []Value, currentDir string) {
+	if currentDir == "" || len(args) == 0 {
+		return
+	}
+	m := strings.ToLower(methodName)
+	switch m {
+	case "write", "append":
+		// Only args[0] is the destination file path. args[1] is the content!
+		if !filepath.IsAbs(args[0].String()) {
+			args[0] = StringValue{Val: filepath.Join(currentDir, args[0].String())}
+		}
+	case "move", "copy":
+		// Both args[0] (src) and args[1] (dst) are file paths.
+		for i := 0; i < len(args) && i < 2; i++ {
+			if !filepath.IsAbs(args[i].String()) {
+				args[i] = StringValue{Val: filepath.Join(currentDir, args[i].String())}
+			}
+		}
+	default:
+		// read, exists, isdir, isfile, size, remove, etc. - only args[0] is path.
+		if !filepath.IsAbs(args[0].String()) {
+			args[0] = StringValue{Val: filepath.Join(currentDir, args[0].String())}
+		}
 	}
 }

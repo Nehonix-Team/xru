@@ -397,6 +397,30 @@ func (ev *Evaluator) evalRange(r *ast.RangeExpression, env *Environment) (Value,
 	return RangeValue{Start: int64(startNum.Val), End: int64(endNum.Val)}, nil
 }
 
+func (ev *Evaluator) evalWhile(w *ast.WhileStatement, env *Environment) (Value, error) {
+	loopEnv := NewEnvironment(env)
+	for {
+		condVal, err := ev.Eval(w.Condition, loopEnv)
+		if err != nil {
+			return nil, err
+		}
+		if !isTruthy(condVal) {
+			break
+		}
+
+		for _, stmt := range w.Body {
+			res, err := ev.Eval(stmt, loopEnv)
+			if err != nil {
+				return nil, err
+			}
+			if ret, ok := res.(ReturnValue); ok {
+				return ret, nil
+			}
+		}
+	}
+	return NilValue{}, nil
+}
+
 func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, error) {
 	iterVal, err := ev.Eval(f.Iterable, env)
 	if err != nil {

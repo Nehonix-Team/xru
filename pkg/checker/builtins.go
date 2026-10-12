@@ -74,6 +74,8 @@ func (c *Checker) initBuiltinUnits() {
 			"Warn":    {Name: "Warn", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
 			"error":   {Name: "error", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
 			"Error":   {Name: "Error", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "message", Type: "string"}}},
+			"sleep":   {Name: "sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
+			"Sleep":   {Name: "Sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
 		},
 	}
 	sysUnit := &Symbol{
@@ -86,6 +88,8 @@ func (c *Checker) initBuiltinUnits() {
 			"os":     {Name: "os", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"Arch":   {Name: "Arch", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"arch":   {Name: "arch", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"Sleep":  {Name: "Sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
+			"sleep":  {Name: "sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
 		},
 	}
 	cmdUnit := &Symbol{

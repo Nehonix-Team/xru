@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -84,10 +83,20 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		}
 		return val, nil
 	case *ast.ArgStatement:
-		// S'il existe déjà dans l'environnement (fourni par les CLI args), on le valide
+		targetVar := n.VarName()
+		// S'il existe déjà dans l'environnement (fourni par les CLI args via Name ou Alias), on le valide
 		if v, exists := env.Get(n.Name); exists {
 			if n.Type != "" && !valMatchesType(v, n.Type) {
 				return nil, fmt.Errorf("argument '%s' of type '%s' received invalid value of type '%s'", n.Name, n.Type, v.Type())
+			}
+			if targetVar != n.Name {
+				_ = env.Set(targetVar, v, false)
+			}
+			return v, nil
+		}
+		if v, exists := env.Get(targetVar); exists {
+			if n.Type != "" && !valMatchesType(v, n.Type) {
+				return nil, fmt.Errorf("argument '%s' of type '%s' received invalid value of type '%s'", targetVar, n.Type, v.Type())
 			}
 			return v, nil
 		}
@@ -97,9 +106,9 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				return nil, err
 			}
 			if n.Type != "" && !valMatchesType(val, n.Type) {
-				return nil, fmt.Errorf("argument '%s' of type '%s' has default value of type '%s'", n.Name, n.Type, val.Type())
+				return nil, fmt.Errorf("argument '%s' of type '%s' has default value of type '%s'", targetVar, n.Type, val.Type())
 			}
-			return val, env.Set(n.Name, val, false)
+			return val, env.Set(targetVar, val, false)
 		}
 		return NilValue{}, nil
 	case *ast.UseStatement:
@@ -568,25 +577,6 @@ func valMatchesType(val Value, expected string) bool {
 	}
 }
 
-var (
-	reInterpolationIdentifier = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
-	reUnitPropInterpolation   = regexp.MustCompile(`\{&([a-zA-Z_][a-zA-Z0-9_]*)\}`)
-)
-
-func findUndefinedInterpolations(str string) []string {
-	// Masquer temporairement les accolades doubles {{...}} (placeholders de fichiers)
-	masked := strings.ReplaceAll(str, "{{", "\x00\x00")
-	masked = strings.ReplaceAll(masked, "}}", "\x01\x01")
-
-	matches := reInterpolationIdentifier.FindAllStringSubmatch(masked, -1)
-	var undefinedVars []string
-	for _, m := range matches {
-		if len(m) > 1 {
-			undefinedVars = append(undefinedVars, m[1])
-		}
-	}
-	return undefinedVars
-}
 
 func isDeclarativeExpr(expr ast.Expression) bool {
 	if expr == nil {

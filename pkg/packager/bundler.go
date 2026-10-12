@@ -189,15 +189,21 @@ func NewMangler(prog *ast.Program) *Mangler {
 		m.reserved[b] = true
 	}
 
-	// Preserve declared #ARG and arg names
+	// For each arg statement: assign a mangled alias so internal variable name becomes _a, _b...
 	for _, stmt := range prog.Statements {
 		if argStmt, ok := stmt.(*ast.ArgStatement); ok {
-			m.reserved[argStmt.Name] = true
-			m.reserved[strings.ToLower(argStmt.Name)] = true
-			m.reserved[strings.ToUpper(argStmt.Name)] = true
+			var alias string
+			if argStmt.Alias != "" {
+				alias = argStmt.Alias
+			} else {
+				alias = m.nextName()
+				argStmt.Alias = alias
+			}
+			m.nameMap[argStmt.Name] = alias
+			m.nameMap[strings.ToLower(argStmt.Name)] = alias
+			m.nameMap[strings.ToUpper(argStmt.Name)] = alias
+			m.nameMap[alias] = alias
 			m.argParams[argStmt.Name] = true
-			m.argParams[strings.ToLower(argStmt.Name)] = true
-			m.argParams[strings.ToUpper(argStmt.Name)] = true
 		}
 	}
 
@@ -291,7 +297,13 @@ func (m *Mangler) Minify(prog *ast.Program) string {
 func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 	switch s := stmt.(type) {
 	case *ast.ArgStatement:
-		// Preserve arg declarations
+		alias := s.VarName()
+		if alias != s.Name {
+			if s.DefaultValue != nil {
+				return fmt.Sprintf("arg %s as %s: %s = %s", s.Name, alias, s.Type, m.minifyExpression(s.DefaultValue))
+			}
+			return fmt.Sprintf("arg %s as %s: %s", s.Name, alias, s.Type)
+		}
 		if s.DefaultValue != nil {
 			return fmt.Sprintf("arg %s: %s = %s", s.Name, s.Type, m.minifyExpression(s.DefaultValue))
 		}

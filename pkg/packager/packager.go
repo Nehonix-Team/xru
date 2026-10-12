@@ -337,29 +337,30 @@ func (p *Packager) loadIgnoredPatterns() []string {
 }
 
 func (p *Packager) isIgnored(relPath string, patterns []string) bool {
-	cleanPath := filepath.ToSlash(relPath)
+	cleanPath := filepath.ToSlash(filepath.Clean(relPath))
 	baseName := filepath.Base(cleanPath)
 
-	for _, pat := range patterns {
-		pat = filepath.ToSlash(strings.TrimSpace(pat))
+	for _, rawPat := range patterns {
+		pat := filepath.ToSlash(strings.TrimSpace(rawPat))
+		pat = strings.TrimPrefix(pat, "./")
 		if pat == "" || strings.HasPrefix(pat, "#") {
 			continue
 		}
 
-		// 1. Dossier ciblé explicitement avec slash terminal (ex: "dist/", "node_modules/")
-		if strings.HasSuffix(pat, "/") {
-			dirPat := strings.TrimSuffix(pat, "/")
+		// 1. Dossier ciblé explicitement avec wildcard ou slash (ex: "mods/*", "mods/**", "dist/", "data/")
+		if strings.HasSuffix(pat, "/*") || strings.HasSuffix(pat, "/**") || strings.HasSuffix(pat, "/") {
+			dirPat := pat
+			dirPat = strings.TrimSuffix(dirPat, "/**")
+			dirPat = strings.TrimSuffix(dirPat, "/*")
+			dirPat = strings.TrimSuffix(dirPat, "/")
 			if cleanPath == dirPat || strings.HasPrefix(cleanPath, dirPat+"/") {
 				return true
 			}
 			continue
 		}
 
-		// 2. Correspondance exacte sur chemin complet ou segment (ex: "README.md", ".git")
-		if cleanPath == pat {
-			return true
-		}
-		if strings.HasPrefix(cleanPath, pat+"/") {
+		// 2. Correspondance exacte sur chemin complet ou segment (ex: "README.md", ".git", "dist")
+		if cleanPath == pat || strings.HasPrefix(cleanPath, pat+"/") {
 			return true
 		}
 
@@ -368,7 +369,18 @@ func (p *Packager) isIgnored(relPath string, patterns []string) bool {
 			return true
 		}
 
-		// 4. Glob matching sur le chemin relatif complet (ex: "tests/*", "docs/*.md")
+		// 4. Glob matching avec sous-dossier (ex: "data/*.xems", "src/*.tmp")
+		if strings.Contains(pat, "/") {
+			dirPart := filepath.Dir(pat)
+			filePart := filepath.Base(pat)
+			if filepath.Dir(cleanPath) == dirPart {
+				if matched, _ := filepath.Match(filePart, baseName); matched {
+					return true
+				}
+			}
+		}
+
+		// 5. Glob matching sur le chemin relatif complet (ex: "tests/*", "docs/*.md")
 		if matched, _ := filepath.Match(pat, cleanPath); matched {
 			return true
 		}

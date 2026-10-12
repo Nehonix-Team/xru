@@ -25,13 +25,21 @@ func (p *Parser) parseUseStatement() *ast.UseStatement {
 	return stmt
 }
 
-// arg name: type = default  /  arg name: type or default
+// arg name [as alias]: type = default  /  arg name: type or default
 func (p *Parser) parseArgStatement() *ast.ArgStatement {
 	stmt := &ast.ArgStatement{Position: p.curToken.Pos}
 	if !p.expectPeek(lexer.IDENT) {
 		return nil
 	}
 	stmt.Name = p.curToken.Literal
+
+	if p.peekTokenIs(lexer.AS) {
+		p.nextToken() // mange 'as'
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.Alias = p.curToken.Literal
+	}
 
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // mange ':'

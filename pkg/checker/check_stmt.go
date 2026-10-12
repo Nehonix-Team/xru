@@ -171,13 +171,14 @@ func (c *Checker) checkArg(s *ast.ArgStatement) {
 		inferredType = c.inferType(s.DefaultValue)
 	}
 
-	if existing, ok := c.scope.Resolve(s.Name); ok && existing.Pos.Line == 0 {
+	varName := s.VarName()
+	if existing, ok := c.scope.Resolve(varName); ok && existing.Pos.Line == 0 {
 		existing.Type = inferredType
 		existing.ValueStr = valStr
 		existing.Pos = s.Pos()
 	} else {
 		sym := &Symbol{
-			Name:     s.Name,
+			Name:     varName,
 			Kind:     kind,
 			Type:     inferredType,
 			Pos:      s.Pos(),

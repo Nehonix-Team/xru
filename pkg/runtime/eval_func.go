@@ -40,6 +40,9 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		if unit.IsPrototype {
 			return nil, fmt.Errorf("cannot call method '%s' directly on unit definition '%s'. You must first instantiate it with '@%s()'", c.Property, unit.UnitName, unit.UnitName)
 		}
+		if env != nil && env.CurrentDir() != "" {
+			unit.WorkingDir = env.CurrentDir()
+		}
 		method, ok := unit.Methods[c.Property]
 		if !ok {
 			for mName, mFn := range unit.Methods {
@@ -79,6 +82,9 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		if !ok {
 			return nil, fmt.Errorf("'%s' is not an executable module", c.Scope)
 		}
+		if env != nil && env.CurrentDir() != "" {
+			unit.WorkingDir = env.CurrentDir()
+		}
 		method, ok := unit.Methods[c.Member]
 		if !ok {
 			for mName, mFn := range unit.Methods {
@@ -99,6 +105,14 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 				return nil, err
 			}
 			args = append(args, a)
+		}
+		if unit.UnitName == "Fs" && env != nil && env.CurrentDir() != "" {
+			for i := 0; i < len(args); i++ {
+				strVal := args[i].String()
+				if !filepath.IsAbs(strVal) {
+					args[i] = StringValue{Val: filepath.Join(env.CurrentDir(), strVal)}
+				}
+			}
 		}
 		return method(args)
 	case *ast.Identifier:

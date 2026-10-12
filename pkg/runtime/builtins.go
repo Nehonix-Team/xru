@@ -457,21 +457,28 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 				}
 				return fetchCtx, nil
 			}
+	var netUnit *UnitInstance
 	cloneFn := func(args []Value) (Value, error) {
 		if len(args) < 2 {
 			return NilValue{}, fmt.Errorf("Net.Clone requires repo url and dest")
 		}
 		repo := args[0].String()
 		dest := args[1].String()
+		if !filepath.IsAbs(dest) && netUnit != nil && netUnit.WorkingDir != "" {
+			dest = filepath.Join(netUnit.WorkingDir, dest)
+		}
 
 		cmd := exec.Command("git", "clone", "--depth", "1", repo, dest)
+		if netUnit != nil && netUnit.WorkingDir != "" {
+			cmd.Dir = netUnit.WorkingDir
+		}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
 		return BoolValue{Val: err == nil}, err
 	}
 
-	netUnit := &UnitInstance{
+	netUnit = &UnitInstance{
 		UnitName:   "Net",
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
@@ -505,41 +512,63 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	units["Sys"] = sysUnit
 
 	// 5. #UNIT Cmd (exécution de commandes terminal cross-platform)
-	cmdUnit := &UnitInstance{
+	var cmdUnit *UnitInstance
+	cmdExecFn := func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("Cmd.Exec requires command string")
+		}
+		commandLine := args[0].String()
+		var cmd *exec.Cmd
+		if goRuntime.GOOS == "windows" {
+			cmd = exec.Command("cmd.exe", "/c", commandLine)
+		} else {
+			cmd = exec.Command("sh", "-c", commandLine)
+		}
+
+		workDir := ""
+		if cmdUnit != nil && cmdUnit.WorkingDir != "" {
+			workDir = cmdUnit.WorkingDir
+		}
+		if len(args) > 1 && args[1].String() != "" {
+			customDir := args[1].String()
+			if !filepath.IsAbs(customDir) && workDir != "" {
+				workDir = filepath.Join(workDir, customDir)
+			} else {
+				workDir = customDir
+			}
+		}
+		if workDir != "" {
+			cmd.Dir = workDir
+		}
+
+		var stdoutBuf, stderrBuf bytes.Buffer
+		cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
+		cmd.Stderr = &stderrBuf
+		err := cmd.Run()
+		if err != nil {
+			errMsg := strings.TrimSpace(stderrBuf.String())
+			if errMsg == "" {
+				errMsg = strings.TrimSpace(stdoutBuf.String())
+			}
+			if errMsg == "" {
+				errMsg = err.Error()
+			}
+			return StringValue{Val: stdoutBuf.String()}, fmt.Errorf("%s", errMsg)
+		}
+		return StringValue{Val: stdoutBuf.String()}, nil
+	}
+
+	cmdUnit = &UnitInstance{
 		UnitName:   "Cmd",
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
-			"Exec": func(args []Value) (Value, error) {
-				if len(args) < 1 {
-					return NilValue{}, fmt.Errorf("Cmd.Exec requires command string")
-				}
-				commandLine := args[0].String()
-				var cmd *exec.Cmd
-				if goRuntime.GOOS == "windows" {
-					cmd = exec.Command("cmd.exe", "/c", commandLine)
-				} else {
-					cmd = exec.Command("sh", "-c", commandLine)
-				}
-				var stdoutBuf, stderrBuf bytes.Buffer
-				cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
-				cmd.Stderr = &stderrBuf
-				err := cmd.Run()
-				if err != nil {
-					errMsg := strings.TrimSpace(stderrBuf.String())
-					if errMsg == "" {
-						errMsg = strings.TrimSpace(stdoutBuf.String())
-					}
-					if errMsg == "" {
-						errMsg = err.Error()
-					}
-					return StringValue{Val: stdoutBuf.String()}, fmt.Errorf("%s", errMsg)
-				}
-				return StringValue{Val: stdoutBuf.String()}, nil
-			},
+			"Exec": cmdExecFn,
+			"exec": cmdExecFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}
 	units["Cmd"] = cmdUnit
+	units["cmd"] = cmdUnit
 
 	// 6. #UNIT Crypto (génération cryptographique sécurisée)
 	cryptoUnit := &UnitInstance{

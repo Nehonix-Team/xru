@@ -1472,6 +1472,42 @@ in "%s" {
 	}
 }
 
+func TestCmdExecWorkingDir(t *testing.T) {
+	tempDir := t.TempDir()
+	testFile := filepath.Join(tempDir, "marker.txt")
+	if err := os.WriteFile(testFile, []byte("hello-xru"), 0644); err != nil {
+		t.Fatalf("Failed to write marker file: %v", err)
+	}
+
+	input := `
+use cmd as Cmd
+let out = Cmd.exec("cat marker.txt")
+`
+	l := lexer.New("test.xru", input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	env.SetCurrentDir(tempDir)
+
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	val, ok := env.Get("out")
+	if !ok {
+		t.Fatalf("Expected variable 'out' to be set")
+	}
+	if !strings.Contains(val.String(), "hello-xru") {
+		t.Errorf("Expected out to contain 'hello-xru', got: %q", val.String())
+	}
+}
+
+
 
 
 

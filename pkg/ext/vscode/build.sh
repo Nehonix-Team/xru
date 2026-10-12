@@ -23,3 +23,10 @@ cd "$(dirname "$0")"
 vsce package --out $EXT_NAME
 
 echo -e "${GREEN}[SUCCESS]${NC} Extension packaged: $EXT_NAME"
+
+# Install into current VS Code instance if --current or -c is provided
+if [[ "$*" == *"--current"* || "$*" == *"-c"* ]]; then
+    echo -e "${BLUE}[INFO]${NC} Installing extension into VS Code..."
+    code --install-extension "$EXT_NAME" --force
+    echo -e "${GREEN}[SUCCESS]${NC} Extension successfully installed to current VS Code instance!"
+fi

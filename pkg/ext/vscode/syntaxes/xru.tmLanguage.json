@@ -18,8 +18,8 @@
     { "include": "#builtins" },
     { "include": "#functions_call" },
     { "include": "#constants" },
-    { "include": "#numbers" },
     { "include": "#durations" },
+    { "include": "#numbers" },
     { "include": "#operators" },
     { "include": "#global_access" },
     { "include": "#prop_access" },
@@ -38,7 +38,7 @@
     "imports": {
       "patterns": [
         {
-          "match": "\\b(from|use|as|mod|map)\\b",
+          "match": "\\b(from|use|as|mod|map|export|import)\\b",
           "name": "keyword.control.xru"
         }
       ]
@@ -65,12 +65,29 @@
         }
       ]
     },
+    "color_tags": {
+      "patterns": [
+        {
+          "match": "(</?)(red|green|yellow|blue|magenta|cyan|gray|white|bold|underline|reset)(>)",
+          "captures": {
+            "1": { "name": "punctuation.definition.tag.xru" },
+            "2": { "name": "entity.name.tag.color.xru" },
+            "3": { "name": "punctuation.definition.tag.xru" }
+          }
+        },
+        {
+          "name": "entity.name.tag.color.xru punctuation.definition.tag.xru",
+          "match": "</>"
+        }
+      ]
+    },
     "strings_heredoc_chevron": {
       "name": "string.quoted.triple.chevron.xru",
       "begin": "<<<",
       "end": ">>>",
       "patterns": [
-        { "include": "#interpolation" }
+        { "include": "#interpolation" },
+        { "include": "#color_tags" }
       ]
     },
     "strings_heredoc_triple": {
@@ -78,7 +95,8 @@
       "begin": "\"\"\"",
       "end": "\"\"\"",
       "patterns": [
-        { "include": "#interpolation" }
+        { "include": "#interpolation" },
+        { "include": "#color_tags" }
       ]
     },
     "strings_backtick": {
@@ -86,7 +104,8 @@
       "begin": "`",
       "end": "`",
       "patterns": [
-        { "include": "#interpolation" }
+        { "include": "#interpolation" },
+        { "include": "#color_tags" }
       ]
     },
     "strings": {
@@ -98,7 +117,8 @@
           "name": "constant.character.escape.xru",
           "match": "\\\\."
         },
-        { "include": "#interpolation" }
+        { "include": "#interpolation" },
+        { "include": "#color_tags" }
       ]
     },
     "strings_single": {
@@ -110,7 +130,8 @@
           "name": "constant.character.escape.xru",
           "match": "\\\\."
         },
-        { "include": "#interpolation" }
+        { "include": "#interpolation" },
+        { "include": "#color_tags" }
       ]
     },
     "interpolation": {
@@ -165,6 +186,10 @@
             "2": { "name": "variable.parameter.loop.xru" },
             "3": { "name": "keyword.control.loop.xru" }
           }
+        },
+        {
+          "match": "\\b(while)\\b",
+          "name": "keyword.control.loop.xru"
         }
       ]
     },
@@ -172,7 +197,7 @@
       "patterns": [
         {
           "name": "keyword.control.xru",
-          "match": "\\b(if|elif|else|match|case|default|for|in|return|with|catch|or|then|file|dispatch|dispatch_tree|pass)\\b"
+          "match": "\\b(if|elif|else|match|case|default|for|while|in|return|with|catch|or|then|file|dispatch|dispatch_tree|pass)\\b"
         }
       ]
     },
@@ -192,7 +217,7 @@
         },
         {
           "name": "support.function.builtin.xru",
-          "match": "\\b(println|print|info|success|warn|error|replace|replaceLine|remove|removeLines|removeBlock|removeUntil|commentOut|append|prepend|jsonSet|jsonRemove|Drop|drop|Keep|keep)\\b(?=\\()"
+          "match": "\\b(println|print|info|success|warn|error|sleep|replace|replaceLine|remove|removeLines|removeBlock|removeUntil|commentOut|append|prepend|jsonSet|jsonRemove|Drop|drop|Keep|keep)\\b(?=\\()"
         }
       ]
     },

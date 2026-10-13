@@ -34,7 +34,9 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.WhileStatement:
 		c.checkWhile(s)
 	case *ast.BlockStatement:
+		c.scope = NewScope(c.scope, false)
 		c.checkStatementList(s.Statements)
+		c.scope = c.scope.parent
 	case *ast.ExpressionStatement:
 		c.checkExpression(s.Expression)
 	case *ast.FileStatement:
@@ -162,6 +164,10 @@ func (c *Checker) checkReassign(s *ast.ReassignStatement) {
 
 func (c *Checker) checkArg(s *ast.ArgStatement) {
 	kind := SymVar
+	if s.IsGlobal && c.scope.parent != nil {
+		c.addError(s.Pos(), "ERR_GLOBAL_IN_BLOCK", "Cannot declare 'global arg' inside a block, function, or loop. Global declarations are only permitted at the module root level.")
+	}
+
 	valStr := ""
 	if s.DefaultValue != nil {
 		valStr = s.DefaultValue.String()
@@ -203,6 +209,10 @@ func (c *Checker) checkArg(s *ast.ArgStatement) {
 }
 
 func (c *Checker) checkVar(s *ast.VarStatement) {
+	if s.IsGlobal && c.scope.parent != nil {
+		c.addError(s.Pos(), "ERR_GLOBAL_IN_BLOCK", "Cannot declare 'global/export' variable or constant inside a block, function, or loop. Global declarations are only permitted at the module root level.")
+	}
+
 	kind := SymVar
 	if s.IsConst {
 		kind = SymConst
@@ -359,6 +369,10 @@ func (c *Checker) checkWith(s *ast.WithStatement) {
 }
 
 func (c *Checker) checkFunc(s *ast.FuncStatement) {
+	if s.IsGlobal && c.scope.parent != nil {
+		c.addError(s.Pos(), "ERR_GLOBAL_IN_BLOCK", "Cannot declare 'global/export func' inside a block, function, or loop. Global declarations are only permitted at the module root level.")
+	}
+
 	fnSym := &Symbol{
 		Name:     s.Name,
 		Kind:     SymFunc,
@@ -393,17 +407,27 @@ func (c *Checker) checkFunc(s *ast.FuncStatement) {
 
 func (c *Checker) checkIf(s *ast.IfStatement) {
 	c.checkExpression(s.Condition)
+
+	c.scope = NewScope(c.scope, false)
 	for _, stmt := range s.Consequence {
 		c.checkStatement(stmt)
 	}
+	c.scope = c.scope.parent
+
 	for _, elif := range s.ElifBlocks {
 		c.checkExpression(elif.Condition)
+		c.scope = NewScope(c.scope, false)
 		for _, stmt := range elif.Body {
 			c.checkStatement(stmt)
 		}
+		c.scope = c.scope.parent
 	}
-	for _, stmt := range s.Alternative {
-		c.checkStatement(stmt)
+	if len(s.Alternative) > 0 {
+		c.scope = NewScope(c.scope, false)
+		for _, stmt := range s.Alternative {
+			c.checkStatement(stmt)
+		}
+		c.scope = c.scope.parent
 	}
 }
 

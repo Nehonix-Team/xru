@@ -163,6 +163,9 @@ func (ev *Evaluator) evalGlobalCall(call *ast.GlobalCallExpression, env *Environ
 func (ev *Evaluator) evalFunc(fn *ast.FuncStatement, env *Environment) (Value, error) {
 	userFn := UserFunction{Stmt: fn, Env: env}
 	if fn.IsGlobal {
+		if env.parent != nil {
+			return nil, fmt.Errorf("cannot declare global/export function '%s' inside a block or function: global declarations are only permitted at module root level", fn.Name)
+		}
 		env.SetGlobal(fn.Name, userFn)
 	} else {
 		if err := env.Set(fn.Name, userFn, false); err != nil {

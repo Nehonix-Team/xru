@@ -127,6 +127,7 @@ type FromUseStatement struct {
 	Source   string   // e.g. "services"
 	Module   string   // e.g. "auth"
 	Member   string   // e.g. "b" (when from "services" use auth::b)
+	Members  []string // e.g. ["name", "xems"] (when from "services" use auth::{name, xems})
 	Alias    string   // e.g. "a" (when from "services" use auth as a)
 	Modules  []string // e.g. ["auth", "cdn", "db"] (when from "services" use (auth, cdn, db))
 }
@@ -136,6 +137,9 @@ func (s *FromUseStatement) Pos() lexer.Position { return s.Position }
 func (s *FromUseStatement) String() string {
 	if len(s.Modules) > 0 {
 		return fmt.Sprintf("from %q use (%s)", s.Source, strings.Join(s.Modules, ", "))
+	}
+	if len(s.Members) > 0 {
+		return fmt.Sprintf("from %q use %s::{%s}", s.Source, s.Module, strings.Join(s.Members, ", "))
 	}
 	if s.Member != "" {
 		return fmt.Sprintf("from %q use %s::%s", s.Source, s.Module, s.Member)

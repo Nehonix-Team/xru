@@ -80,17 +80,23 @@ func (s *Server) validateAndPublish(uri, text string) {
 			return Range{Start: Position{Line: line, Character: 0}, End: Position{Line: line, Character: end}}
 		}
 
-		// 4. Imports 'use' non utilisés (ligne entière grisée)
+		// 4. Imports 'use' / 'from ... use' non utilisés (ligne entière grisée)
 		for _, sym := range c.UnusedImports() {
 			line := sym.Pos.Line - 1
 			if line < 0 {
 				line = 0
 			}
+			msg := fmt.Sprintf("Module '%s' is imported but never used", sym.Name)
+			if sym.Kind == checker.SymFunc {
+				msg = fmt.Sprintf("Imported function '%s' is never used", sym.Name)
+			} else if sym.Kind == checker.SymConst || sym.Kind == checker.SymVar {
+				msg = fmt.Sprintf("Imported symbol '%s' is never used", sym.Name)
+			}
 			diagnostics = append(diagnostics, Diagnostic{
 				Range:    fullLine(line),
 				Severity: SeverityHint,
 				Source:   "xru",
-				Message:  fmt.Sprintf("Module '%s' is imported but never used", sym.Name),
+				Message:  msg,
 				Tags:     []DiagnosticTag{DiagnosticTagUnnecessary},
 			})
 		}

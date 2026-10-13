@@ -99,8 +99,18 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 		return nil
 	}
 
+	assignPos := p.curToken.Pos
+	if p.peekToken.Pos.Line != assignPos.Line || p.peekTokenIs(lexer.EOF) || p.peekTokenIs(lexer.RBRACE) {
+		p.addError(assignPos, "expected expression after '=' in variable declaration")
+		return stmt
+	}
+
 	p.nextToken() // début de la valeur
 	stmt.Value = p.parseExpression()
+	if stmt.Value == nil {
+		p.addError(assignPos, "expected expression after '=' in variable declaration")
+		return stmt
+	}
 	if p.peekToken.Pos.Line == p.curToken.Pos.Line && !p.peekTokenIs(lexer.EOF) && !p.peekTokenIs(lexer.RBRACE) && !p.peekTokenIs(lexer.COMMENT) {
 		p.addError(p.peekToken.Pos, fmt.Sprintf("unexpected token '%s' on same line after variable declaration", p.peekToken.Literal))
 	}
@@ -127,8 +137,17 @@ func (p *Parser) parseDeclareStatement() *ast.DeclareStatement {
 
 	if p.peekTokenIs(lexer.ASSIGN) {
 		p.nextToken() // saute '='
+		assignPos := p.curToken.Pos
+		if p.peekToken.Pos.Line != assignPos.Line || p.peekTokenIs(lexer.EOF) || p.peekTokenIs(lexer.RBRACE) {
+			p.addError(assignPos, "expected expression after '=' in declaration")
+			return stmt
+		}
 		p.nextToken()
 		stmt.Value = p.parseExpression()
+		if stmt.Value == nil {
+			p.addError(assignPos, "expected expression after '=' in declaration")
+			return stmt
+		}
 	}
 	return stmt
 }
@@ -218,10 +237,27 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 
 	if p.peekTokenIs(lexer.DOUBLE_COLON) {
 		p.nextToken() // saute '::'
-		if !p.expectPeek(lexer.IDENT) {
+		if p.peekTokenIs(lexer.LBRACE) || p.peekTokenIs(lexer.LPAREN) {
+			closing := lexer.RBRACE
+			if p.peekTokenIs(lexer.LPAREN) {
+				closing = lexer.RPAREN
+			}
+			p.nextToken() // saute '{' ou '('
+			p.nextToken()
+			for !p.curTokenIs(closing) && !p.curTokenIs(lexer.EOF) {
+				if p.curTokenIs(lexer.IDENT) {
+					stmt.Members = append(stmt.Members, p.curToken.Literal)
+				}
+				if p.peekTokenIs(lexer.COMMA) {
+					p.nextToken()
+				}
+				p.nextToken()
+			}
+		} else if p.expectPeek(lexer.IDENT) {
+			stmt.Member = p.curToken.Literal
+		} else {
 			return nil
 		}
-		stmt.Member = p.curToken.Literal
 	}
 
 	if p.peekTokenIs(lexer.AS) {

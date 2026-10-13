@@ -212,6 +212,9 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 	if s.IsGlobal && c.scope.parent != nil {
 		c.addError(s.Pos(), "ERR_GLOBAL_IN_BLOCK", "Cannot declare 'global/export' variable or constant inside a block, function, or loop. Global declarations are only permitted at the module root level.")
 	}
+	if s.Value == nil {
+		c.addError(s.Pos(), "ERR_MISSING_VALUE", fmt.Sprintf("Variable '%s' is declared without a value", s.Name))
+	}
 
 	kind := SymVar
 	if s.IsConst {

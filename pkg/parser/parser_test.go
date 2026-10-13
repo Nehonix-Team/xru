@@ -227,3 +227,60 @@ let status = if count > 10 -> "high" else if count > 0 -> "low" else "zero"
 	}
 }
 
+func TestVarStatementWithoutValue(t *testing.T) {
+	input := `const name = 
+let x = 1`
+	l := lexer.New("test.xru", input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	if len(p.Errors()) == 0 {
+		t.Fatalf("Expected parse error for 'const name = ', got 0 errors")
+	}
+	found := false
+	for _, err := range p.Errors() {
+		if strings.Contains(err, "expected expression after '=' in variable declaration") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected error to contain 'expected expression after '=' in variable declaration', got %v", p.Errors())
+	}
+
+	// Ensure the second statement 'let x = 1' was still parsed successfully
+	if len(prog.Statements) != 2 {
+		t.Errorf("Expected 2 statements in AST, got %d", len(prog.Statements))
+	}
+}
+
+func TestGroupedFromUseStatement(t *testing.T) {
+	input := `from "dll" use gArgs::{name, xems, author}`
+	l := lexer.New("test.xru", input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Unexpected parser errors: %v", p.Errors())
+	}
+	if len(prog.Statements) != 1 {
+		t.Fatalf("Expected 1 statement, got %d", len(prog.Statements))
+	}
+	fromUse, ok := prog.Statements[0].(*ast.FromUseStatement)
+	if !ok {
+		t.Fatalf("Expected FromUseStatement, got %T", prog.Statements[0])
+	}
+	if fromUse.Module != "gArgs" {
+		t.Errorf("Expected module 'gArgs', got '%s'", fromUse.Module)
+	}
+	if len(fromUse.Members) != 3 {
+		t.Fatalf("Expected 3 members, got %d", len(fromUse.Members))
+	}
+	expected := []string{"name", "xems", "author"}
+	for i, exp := range expected {
+		if fromUse.Members[i] != exp {
+			t.Errorf("Expected member %d to be '%s', got '%s'", i, exp, fromUse.Members[i])
+		}
+	}
+}
+

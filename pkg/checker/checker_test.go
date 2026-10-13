@@ -785,3 +785,29 @@ let part = "hello".slice(1, 3)
 		t.Errorf("Expected 0 errors for valid native calls, got: %v", c3.Errors())
 	}
 }
+
+func TestFromUseUnusedImports(t *testing.T) {
+	code := `
+from "dll" use XpackD::downloadRelease
+from "dll" use gArgs::name
+let myName = name
+`
+	l := lexer.New("test_unused.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	c := checker.New()
+	c.Check(prog)
+
+	unused := c.UnusedImports()
+	if len(unused) != 1 {
+		t.Fatalf("Expected 1 unused import (downloadRelease), got %d: %v", len(unused), unused)
+	}
+	if unused[0].Name != "downloadRelease" {
+		t.Errorf("Expected unused import 'downloadRelease', got '%s'", unused[0].Name)
+	}
+}
+

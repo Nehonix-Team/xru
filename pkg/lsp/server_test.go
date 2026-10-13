@@ -728,3 +728,35 @@ file "package.json", (content, error) -> {
 		t.Errorf("Expected 'Document' in hover, got: %s", outStr)
 	}
 }
+
+func TestLSPUnusedFromUseImportDiagnostic(t *testing.T) {
+	uri := "file:///home/idevo/Documents/projects/XTemplates/test_from_unused.xru"
+	code := `from "dll" use XpackD::downloadRelease
+from "dll" use gArgs::name
+let myName = name
+myName
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	if !strings.Contains(outStr, `"tags":[1]`) {
+		t.Errorf("Expected DiagnosticTagUnnecessary (tags:[1]) in publishDiagnostics, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, "downloadRelease") {
+		t.Errorf("Expected diagnostic message mentioning 'downloadRelease', got: %s", outStr)
+	}
+}
+

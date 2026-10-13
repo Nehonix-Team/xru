@@ -101,8 +101,17 @@ func (p *Parser) parseReassignStatement() *ast.ReassignStatement {
 	if !p.expectPeek(lexer.MUT_ASSIGN) {
 		return nil
 	}
+	assignPos := p.curToken.Pos
+	if p.peekToken.Pos.Line != assignPos.Line || p.peekTokenIs(lexer.EOF) || p.peekTokenIs(lexer.RBRACE) {
+		p.addError(assignPos, "expected expression after '=:' in reassignment")
+		return stmt
+	}
 	p.nextToken() // saute '=:'
 	stmt.Value = p.parseExpression()
+	if stmt.Value == nil {
+		p.addError(assignPos, "expected expression after '=:' in reassignment")
+		return stmt
+	}
 	return stmt
 }
 

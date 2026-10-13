@@ -532,6 +532,31 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			return nil, fmt.Errorf("member '%s' not found on module '%s'", n.Member, n.Module)
 		}
 
+		// Cas 2b: membres groupés (auth::{b, c})
+		if len(n.Members) > 0 {
+			unit, err := loadModuleInstance(n.Module)
+			if err != nil {
+				return nil, err
+			}
+			for _, memName := range n.Members {
+				if prop, ok := unit.Properties[memName]; ok {
+					if err := env.Set(memName, prop, false); err != nil {
+						return nil, err
+					}
+					continue
+				}
+				if method, ok := unit.Methods[memName]; ok {
+					fnVal := FunctionValue{Name: memName, Fn: method}
+					if err := env.Set(memName, fnVal, false); err != nil {
+						return nil, err
+					}
+					continue
+				}
+				return nil, fmt.Errorf("member '%s' not found on module '%s'", memName, n.Module)
+			}
+			return NilValue{}, nil
+		}
+
 		// Cas 3: module complet (auth as a ou auth)
 		alias := n.Alias
 		if alias == "" {

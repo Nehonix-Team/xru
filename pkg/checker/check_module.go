@@ -120,10 +120,13 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 				existing.Kind = SymUnit
 				existing.Methods = methods
 				existing.Pos = s.Pos()
+				c.importedSyms = append(c.importedSyms, existing)
 				continue
 			}
 			if err := c.scope.Define(modSym); err != nil {
 				c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+			} else {
+				c.importedSyms = append(c.importedSyms, modSym)
 			}
 		}
 		return
@@ -167,10 +170,60 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 			existing.Type = exp.Type
 			existing.Params = exp.Params
 			existing.Pos = s.Pos()
+			c.importedSyms = append(c.importedSyms, existing)
 			return
 		}
 		if err := c.scope.Define(memberSym); err != nil {
 			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+		} else {
+			c.importedSyms = append(c.importedSyms, memberSym)
+		}
+		return
+	}
+
+	// Cas 2b : membres groupés from "services" use auth::{b, c}
+	if len(s.Members) > 0 {
+		modDetails, err := modCfg.ResolveModule(s.Source, s.Module)
+		if err != nil {
+			c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
+			return
+		}
+		if c.hasCircularImport(modDetails.FilePath, c.currentFile, modCfg) {
+			c.addError(s.Pos(), "ERR_CIRCULAR_IMPORT", fmt.Sprintf("Circular module import detected between '%s' and '%s'", filepath.Base(c.currentFile), filepath.Base(modDetails.FilePath)))
+			return
+		}
+		for _, memName := range s.Members {
+			exp, ok := modDetails.Exports[memName]
+			if !ok {
+				c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", memName, s.Module))
+				continue
+			}
+			symKind := SymVar
+			if exp.Kind == "func" {
+				symKind = SymFunc
+			} else if exp.Kind == "const" {
+				symKind = SymConst
+			}
+			memberSym := &Symbol{
+				Name:   memName,
+				Kind:   symKind,
+				Type:   exp.Type,
+				Params: exp.Params,
+				Pos:    s.Pos(),
+			}
+			if existing, ok := c.scope.Resolve(memName); ok && existing.Pos.Line == 0 {
+				existing.Kind = symKind
+				existing.Type = exp.Type
+				existing.Params = exp.Params
+				existing.Pos = s.Pos()
+				c.importedSyms = append(c.importedSyms, existing)
+				continue
+			}
+			if err := c.scope.Define(memberSym); err != nil {
+				c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+			} else {
+				c.importedSyms = append(c.importedSyms, memberSym)
+			}
 		}
 		return
 	}
@@ -213,6 +266,8 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 	}
 	if err := c.scope.Define(modSym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+	} else {
+		c.importedSyms = append(c.importedSyms, modSym)
 	}
 }
 

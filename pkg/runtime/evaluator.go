@@ -58,7 +58,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			return nil, fmt.Errorf("cannot assign value of type '%s' to variable '%s' declared as '%s'", val.Type(), n.Name, n.Type)
 		}
 		if n.IsGlobal {
-			if env.parent != nil {
+			if env.IsBlockScope() {
 				return nil, fmt.Errorf("cannot declare global/export variable '%s' inside a block or function: global declarations are only permitted at module root level", n.Name)
 			}
 			if n.IsConst {
@@ -96,7 +96,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				_ = env.Set(targetVar, v, false)
 			}
 			if n.IsGlobal {
-				if env.parent != nil {
+				if env.IsBlockScope() {
 					return nil, fmt.Errorf("cannot declare global/export argument '%s' inside a block or function: global declarations are only permitted at module root level", n.Name)
 				}
 				env.SetGlobal(n.Name, v)
@@ -111,7 +111,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				return nil, fmt.Errorf("argument '%s' of type '%s' received invalid value of type '%s'", targetVar, n.Type, v.Type())
 			}
 			if n.IsGlobal {
-				if env.parent != nil {
+				if env.IsBlockScope() {
 					return nil, fmt.Errorf("cannot declare global/export argument '%s' inside a block or function: global declarations are only permitted at module root level", targetVar)
 				}
 				env.SetGlobal(targetVar, v)
@@ -128,7 +128,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				return nil, fmt.Errorf("argument '%s' of type '%s' has default value of type '%s'", targetVar, n.Type, val.Type())
 			}
 			if n.IsGlobal {
-				if env.parent != nil {
+				if env.IsBlockScope() {
 					return nil, fmt.Errorf("cannot declare global/export argument '%s' inside a block or function: global declarations are only permitted at module root level", targetVar)
 				}
 				env.SetGlobal(targetVar, val)

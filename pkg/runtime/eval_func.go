@@ -163,7 +163,7 @@ func (ev *Evaluator) evalGlobalCall(call *ast.GlobalCallExpression, env *Environ
 func (ev *Evaluator) evalFunc(fn *ast.FuncStatement, env *Environment) (Value, error) {
 	userFn := UserFunction{Stmt: fn, Env: env}
 	if fn.IsGlobal {
-		if env.parent != nil {
+		if env.IsBlockScope() {
 			return nil, fmt.Errorf("cannot declare global/export function '%s' inside a block or function: global declarations are only permitted at module root level", fn.Name)
 		}
 		env.SetGlobal(fn.Name, userFn)
@@ -182,7 +182,7 @@ func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *
 		return NilValue{}, fmt.Errorf("function '%s' expects %d arguments, but got %d", fn.Stmt.Name, expectedCount, actualCount)
 	}
 
-	fnEnv := NewEnvironment(fn.Env)
+	fnEnv := NewBlockEnvironment(fn.Env)
 	if fn.Env != nil && fn.Env.unitRef != nil {
 		fnEnv.unitRef = fn.Env.unitRef
 	} else if callerEnv != nil && callerEnv.unitRef != nil {
@@ -256,7 +256,7 @@ func (ev *Evaluator) CallLambda(l LambdaValue, args []Value) (Value, error) {
 	if l.Body == nil {
 		return NilValue{}, nil
 	}
-	lambdaEnv := NewEnvironment(l.Env)
+	lambdaEnv := NewBlockEnvironment(l.Env)
 	for i, param := range l.Params {
 		if i < len(args) {
 			_ = lambdaEnv.Set(param.Name, args[i], false)

@@ -11,9 +11,10 @@ import (
 )
 
 func (ev *Evaluator) evalBlockStatement(block *ast.BlockStatement, env *Environment) (Value, error) {
+	blockEnv := NewBlockEnvironment(env)
 	var result Value = NilValue{}
 	for _, stmt := range block.Statements {
-		res, err := ev.Eval(stmt, env)
+		res, err := ev.Eval(stmt, blockEnv)
 		if err != nil {
 			return nil, err
 		}
@@ -31,8 +32,9 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 		return nil, err
 	}
 	if isTruthy(condVal) {
+		ifEnv := NewBlockEnvironment(env)
 		for _, s := range ifStmt.Consequence {
-			res, err := ev.Eval(s, env)
+			res, err := ev.Eval(s, ifEnv)
 			if err != nil {
 				return nil, err
 			}
@@ -49,8 +51,9 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 			return nil, err
 		}
 		if isTruthy(eVal) {
+			elifEnv := NewBlockEnvironment(env)
 			for _, s := range elif.Body {
-				res, err := ev.Eval(s, env)
+				res, err := ev.Eval(s, elifEnv)
 				if err != nil {
 					return nil, err
 				}
@@ -62,13 +65,16 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 		}
 	}
 
-	for _, s := range ifStmt.Alternative {
-		res, err := ev.Eval(s, env)
-		if err != nil {
-			return nil, err
-		}
-		if ret, ok := res.(ReturnValue); ok {
-			return ret, nil
+	if len(ifStmt.Alternative) > 0 {
+		elseEnv := NewBlockEnvironment(env)
+		for _, s := range ifStmt.Alternative {
+			res, err := ev.Eval(s, elseEnv)
+			if err != nil {
+				return nil, err
+			}
+			if ret, ok := res.(ReturnValue); ok {
+				return ret, nil
+			}
 		}
 	}
 	return NilValue{}, nil
@@ -397,7 +403,7 @@ func (ev *Evaluator) evalRange(r *ast.RangeExpression, env *Environment) (Value,
 }
 
 func (ev *Evaluator) evalWhile(w *ast.WhileStatement, env *Environment) (Value, error) {
-	loopEnv := NewEnvironment(env)
+	loopEnv := NewBlockEnvironment(env)
 	for {
 		condVal, err := ev.Eval(w.Condition, loopEnv)
 		if err != nil {
@@ -426,7 +432,7 @@ func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, erro
 		return nil, err
 	}
 
-	loopEnv := NewEnvironment(env)
+	loopEnv := NewBlockEnvironment(env)
 
 	switch it := iterVal.(type) {
 	case RangeValue:

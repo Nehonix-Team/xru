@@ -13,6 +13,7 @@ type Environment struct {
 	globalConstants map[string]bool
 	unitRef         *UnitInstance // Pointeur vers l'unité courante si dans #UNIT
 	currentDir      string
+	isBlockScope    bool // Vrai si dans une fonction, un bloc { }, une boucle, etc.
 }
 
 func NewEnvironment(parent *Environment) *Environment {
@@ -34,7 +35,24 @@ func NewEnvironment(parent *Environment) *Environment {
 		constants:       make(map[string]bool),
 		globalConstants: gc,
 		unitRef:         uRef,
+		isBlockScope:    false,
 	}
+}
+
+func NewBlockEnvironment(parent *Environment) *Environment {
+	env := NewEnvironment(parent)
+	env.isBlockScope = true
+	return env
+}
+
+func (e *Environment) IsBlockScope() bool {
+	if e.isBlockScope {
+		return true
+	}
+	if e.parent != nil {
+		return e.parent.IsBlockScope()
+	}
+	return false
 }
 
 func (e *Environment) SetGlobal(name string, val Value) {

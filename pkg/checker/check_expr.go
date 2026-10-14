@@ -221,9 +221,11 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		if sym, ok := c.scope.Resolve(e.Scope); ok {
 			sym.Used = true
 			if sym.Kind == SymUnit && len(sym.Methods) > 0 {
-				if _, memberOk := sym.Methods[e.Member]; !memberOk {
+				if methodSym, memberOk := sym.Methods[e.Member]; !memberOk {
 					c.addError(e.Pos(), "ERR_UNKNOWN_MEMBER",
 						fmt.Sprintf("Member '%s' not found on module '%s'", e.Member, e.Scope))
+				} else {
+					methodSym.Used = true
 				}
 			}
 		} else {
@@ -235,6 +237,11 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		c.checkExpression(e.Object)
 		if ident, ok := e.Object.(*ast.Identifier); ok {
 			if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Kind == SymUnit {
+				if !IsBuiltinUnit(sym.Name) && !IsBuiltinUnit(sym.Type) {
+					c.addError(e.Pos(), "ERR_INVALID_MODULE_ACCESS",
+						fmt.Sprintf("Cannot access member '%s' on module '%s' with '.': use '::' syntax instead (e.g. %s::%s)", e.Property, sym.Name, sym.Name, e.Property))
+					return
+				}
 				if sym.Methods != nil {
 					if _, methodOk := sym.Methods[e.Property]; !methodOk {
 						if _, dirOk := sym.Directives[e.Property]; !dirOk {

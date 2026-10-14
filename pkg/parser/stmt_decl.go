@@ -237,27 +237,10 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 
 	if p.peekTokenIs(lexer.DOUBLE_COLON) {
 		p.nextToken() // saute '::'
-		if p.peekTokenIs(lexer.LBRACE) || p.peekTokenIs(lexer.LPAREN) {
-			closing := lexer.RBRACE
-			if p.peekTokenIs(lexer.LPAREN) {
-				closing = lexer.RPAREN
-			}
-			p.nextToken() // saute '{' ou '('
-			p.nextToken()
-			for !p.curTokenIs(closing) && !p.curTokenIs(lexer.EOF) {
-				if p.curTokenIs(lexer.IDENT) {
-					stmt.Members = append(stmt.Members, p.curToken.Literal)
-				}
-				if p.peekTokenIs(lexer.COMMA) {
-					p.nextToken()
-				}
-				p.nextToken()
-			}
-		} else if p.expectPeek(lexer.IDENT) {
-			stmt.Member = p.curToken.Literal
-		} else {
+		if !p.expectPeek(lexer.IDENT) {
 			return nil
 		}
+		stmt.Member = p.curToken.Literal
 	}
 
 	if p.peekTokenIs(lexer.AS) {

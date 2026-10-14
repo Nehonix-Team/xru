@@ -152,6 +152,10 @@ func (cfg *ModConfig) GetNamespaceModules(namespace string) (map[string]*ModuleD
 			continue
 		}
 		modules[modDetails.Name] = modDetails
+		fileBase := strings.TrimSuffix(entry.Name(), ".xru")
+		if fileBase != modDetails.Name {
+			modules[fileBase] = modDetails
+		}
 	}
 
 	return modules, nil

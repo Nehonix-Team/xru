@@ -10,32 +10,168 @@ import (
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
+	"github.com/Nehonix-Team/xru/pkg/modules"
 	"github.com/Nehonix-Team/xru/pkg/parser"
 )
 
-// BundleAndMinify bundles main.xru with all subdescriptors inlined into in "..." { ... }
+// BundleAndMinify bundles main.xru with all imported modules and subdescriptors inlined
 // and minifies / mangles variable and function names.
 func (p *Packager) BundleAndMinify() (string, error) {
+	prog, err := p.BuildBundledProgram()
+	if err != nil {
+		return "", err
+	}
+	if prog == nil {
+		return "", nil
+	}
+	mangler := NewMangler(prog)
+	return mangler.Minify(prog), nil
+}
+
+// BuildBundledProgram compiles main.xru by recursively inlining all local module dependencies
+// declared in _mod.xru and all subdescriptors from dispatch statements into a single unified AST.
+func (p *Packager) BuildBundledProgram() (*ast.Program, error) {
 	mainPath := filepath.Join(p.rootDir, "main.xru")
 	content, err := os.ReadFile(mainPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil
+			return nil, nil
 		}
-		return "", err
+		return nil, err
 	}
 
 	l := lexer.New("main.xru", string(content))
 	pr := parser.New(l)
-	prog := pr.ParseProgram()
+	mainProg := pr.ParseProgram()
 	if len(pr.Errors()) > 0 {
-		return "", fmt.Errorf("syntax error in main.xru: %s", pr.Errors()[0])
+		return nil, fmt.Errorf("syntax error in main.xru: %s", pr.Errors()[0])
 	}
 
-	// 1. Bundle: inlining dispatch statements with in "<relDir>" { ... }
-	var bundledStmts []ast.Statement
-	for _, stmt := range prog.Statements {
+	modFilePath := modules.FindModConfigFile(p.rootDir)
+	var modCfg *modules.ModConfig
+	if modFilePath != "" {
+		if cfg, errs := modules.LoadModConfig(modFilePath); len(errs) == 0 {
+			modCfg = cfg
+		}
+	}
+
+	var useStmts []ast.Statement
+	var argStmts []ast.Statement
+	var varStmts []ast.Statement
+	var funcStmts []ast.Statement
+	var unitStmts []ast.Statement
+	var mainStmts []ast.Statement
+
+	seenUses := make(map[string]bool)
+	seenArgs := make(map[string]bool)
+	seenFuncs := make(map[string]bool)
+	visitedFiles := make(map[string]bool)
+
+	var inlineModule func(source, modName string) error
+	inlineModule = func(source, modName string) error {
+		if modCfg == nil || source == "root" {
+			return nil
+		}
+		modDetails, err := modCfg.ResolveModule(source, modName)
+		if err != nil {
+			return fmt.Errorf("cannot resolve module '%s' in namespace '%s': %w", modName, source, err)
+		}
+		absPath, _ := filepath.Abs(modDetails.FilePath)
+		if visitedFiles[absPath] {
+			return nil
+		}
+		visitedFiles[absPath] = true
+
+		subContent, err := os.ReadFile(modDetails.FilePath)
+		if err != nil {
+			return fmt.Errorf("cannot read module file '%s': %w", modDetails.FilePath, err)
+		}
+		subLex := lexer.New(modDetails.FilePath, string(subContent))
+		subParser := parser.New(subLex)
+		subProg := subParser.ParseProgram()
+		if len(subParser.Errors()) > 0 {
+			return fmt.Errorf("syntax error in module '%s': %s", modDetails.FilePath, subParser.Errors()[0])
+		}
+
+		// First, resolve dependencies recursively
+		for _, st := range subProg.Statements {
+			if fus, ok := st.(*ast.FromUseStatement); ok {
+				if len(fus.Modules) > 0 {
+					for _, m := range fus.Modules {
+						if err := inlineModule(fus.Source, m); err != nil {
+							return err
+						}
+					}
+				} else if fus.Module != "" {
+					if err := inlineModule(fus.Source, fus.Module); err != nil {
+						return err
+					}
+				}
+			}
+		}
+
+		// Extract declarations
+		for _, st := range subProg.Statements {
+			switch s := st.(type) {
+			case *ast.UseStatement:
+				key := s.Module + "::" + s.Alias
+				if !seenUses[key] {
+					seenUses[key] = true
+					useStmts = append(useStmts, s)
+				}
+			case *ast.ArgStatement:
+				if !seenArgs[s.Name] {
+					seenArgs[s.Name] = true
+					argStmts = append(argStmts, s)
+				}
+			case *ast.FuncStatement:
+				if !seenFuncs[s.Name] {
+					seenFuncs[s.Name] = true
+					funcStmts = append(funcStmts, s)
+				}
+			case *ast.VarStatement:
+				if s.IsGlobal {
+					varStmts = append(varStmts, s)
+				}
+			case *ast.UnitStatement:
+				unitStmts = append(unitStmts, s)
+			}
+		}
+		return nil
+	}
+
+	for _, stmt := range mainProg.Statements {
 		switch s := stmt.(type) {
+		case *ast.FromUseStatement:
+			if len(s.Modules) > 0 {
+				for _, m := range s.Modules {
+					if err := inlineModule(s.Source, m); err != nil {
+						return nil, err
+					}
+				}
+			} else if s.Module != "" {
+				if err := inlineModule(s.Source, s.Module); err != nil {
+					return nil, err
+				}
+			}
+		case *ast.UseStatement:
+			key := s.Module + "::" + s.Alias
+			if !seenUses[key] {
+				seenUses[key] = true
+				useStmts = append(useStmts, s)
+			}
+		case *ast.ArgStatement:
+			if !seenArgs[s.Name] {
+				seenArgs[s.Name] = true
+				argStmts = append(argStmts, s)
+			}
+		case *ast.FuncStatement:
+			if !seenFuncs[s.Name] {
+				seenFuncs[s.Name] = true
+				funcStmts = append(funcStmts, s)
+			}
+		case *ast.UnitStatement:
+			unitStmts = append(unitStmts, s)
 		case *ast.DispatchTreeStatement:
 			targetDir := s.Path
 			if targetDir == "" && s.PathExpr != nil {
@@ -50,22 +186,28 @@ func (p *Packager) BundleAndMinify() (string, error) {
 			if pattern == "" {
 				pattern = ".rules.xru"
 			}
-
 			inlinedBlocks, err := p.inlineSubdescriptors(targetDir, pattern)
 			if err != nil {
-				return "", err
+				return nil, err
 			}
-			bundledStmts = append(bundledStmts, inlinedBlocks...)
+			mainStmts = append(mainStmts, inlinedBlocks...)
+		case *ast.ModStatement:
+			// ignore
 		default:
-			bundledStmts = append(bundledStmts, stmt)
+			mainStmts = append(mainStmts, s)
 		}
 	}
-	prog.Statements = bundledStmts
 
-	// 2. Mangling & Minification
-	mangler := NewMangler(prog)
-	minified := mangler.Minify(prog)
-	return minified, nil
+	var finalStmts []ast.Statement
+	finalStmts = append(finalStmts, useStmts...)
+	finalStmts = append(finalStmts, argStmts...)
+	finalStmts = append(finalStmts, varStmts...)
+	finalStmts = append(finalStmts, funcStmts...)
+	finalStmts = append(finalStmts, unitStmts...)
+	finalStmts = append(finalStmts, mainStmts...)
+
+	mainProg.Statements = finalStmts
+	return mainProg, nil
 }
 
 func (p *Packager) inlineSubdescriptors(targetDir, pattern string) ([]ast.Statement, error) {
@@ -356,9 +498,6 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		}
 		m.popScope()
 		prefix := "func"
-		if s.IsGlobal {
-			prefix = "global func"
-		}
 		return fmt.Sprintf("%s %s(%s){\n%s\n}", prefix, fnName, strings.Join(params, ","), strings.Join(bodyParts, "\n"))
 
 	case *ast.InStatement:
@@ -574,6 +713,24 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 			member = m.getMangledName(member)
 		}
 		return member
+
+	case *ast.GlobalCallExpression:
+		fnName := e.Function
+		if !m.reserved[fnName] {
+			fnName = m.getMangledName(fnName)
+		}
+		var args []string
+		for _, a := range e.Arguments {
+			args = append(args, m.minifyExpression(a))
+		}
+		return fmt.Sprintf("%s(%s)", fnName, strings.Join(args, ","))
+
+	case *ast.GlobalAccessExpression:
+		fnName := e.Name
+		if !m.reserved[fnName] {
+			fnName = m.getMangledName(fnName)
+		}
+		return fnName
 
 	default:
 		return e.String()

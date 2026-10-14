@@ -281,3 +281,34 @@ func TestMultiModuleFromUseStatement(t *testing.T) {
 	}
 }
 
+func TestGroupedMemberFromUseStatement(t *testing.T) {
+	input := `from "dll" use gArgs::(author, description, version, name, plugin)`
+	l := lexer.New("test.xru", input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Unexpected parser errors: %v", p.Errors())
+	}
+	if len(prog.Statements) != 1 {
+		t.Fatalf("Expected 1 statement, got %d", len(prog.Statements))
+	}
+	fromUse, ok := prog.Statements[0].(*ast.FromUseStatement)
+	if !ok {
+		t.Fatalf("Expected FromUseStatement, got %T", prog.Statements[0])
+	}
+	if fromUse.Module != "gArgs" {
+		t.Errorf("Expected module 'gArgs', got '%s'", fromUse.Module)
+	}
+	if len(fromUse.Members) != 5 {
+		t.Fatalf("Expected 5 members, got %d", len(fromUse.Members))
+	}
+	expected := []string{"author", "description", "version", "name", "plugin"}
+	for i, exp := range expected {
+		if fromUse.Members[i] != exp {
+			t.Errorf("Expected member %d to be '%s', got '%s'", i, exp, fromUse.Members[i])
+		}
+	}
+}
+
+

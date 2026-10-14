@@ -139,7 +139,7 @@ func (s *FromUseStatement) String() string {
 		return fmt.Sprintf("from %q use (%s)", s.Source, strings.Join(s.Modules, ", "))
 	}
 	if len(s.Members) > 0 {
-		return fmt.Sprintf("from %q use %s::{%s}", s.Source, s.Module, strings.Join(s.Members, ", "))
+		return fmt.Sprintf("from %q use %s::(%s)", s.Source, s.Module, strings.Join(s.Members, ", "))
 	}
 	if s.Member != "" {
 		return fmt.Sprintf("from %q use %s::%s", s.Source, s.Module, s.Member)

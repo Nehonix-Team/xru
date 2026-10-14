@@ -284,10 +284,16 @@ type WithStatement struct {
 func (s *WithStatement) statementNode()      {}
 func (s *WithStatement) Pos() lexer.Position { return s.Position }
 func (s *WithStatement) String() string {
-	if s.Target != nil {
-		return fmt.Sprintf("with %s (%d stmts)", s.Target.String(), len(s.Body))
+	var body []string
+	for _, st := range s.Body {
+		if st != nil {
+			body = append(body, st.String())
+		}
 	}
-	return fmt.Sprintf("with (%d stmts)", len(s.Body))
+	if s.Target != nil {
+		return fmt.Sprintf("with %s {\n%s\n}", s.Target.String(), strings.Join(body, "\n"))
+	}
+	return fmt.Sprintf("with {\n%s\n}", strings.Join(body, "\n"))
 }
 
 // WithExpression : with TargetExpr (lance TargetExpr en tâche asynchrone concurrente)
@@ -317,10 +323,16 @@ type ForStatement struct {
 func (s *ForStatement) statementNode()      {}
 func (s *ForStatement) Pos() lexer.Position { return s.Position }
 func (s *ForStatement) String() string {
-	if s.Index != "" {
-		return fmt.Sprintf("for %s, %s in %s (%d stmts)", s.Item, s.Index, s.Iterable.String(), len(s.Body))
+	var body []string
+	for _, st := range s.Body {
+		if st != nil {
+			body = append(body, st.String())
+		}
 	}
-	return fmt.Sprintf("for %s in %s (%d stmts)", s.Item, s.Iterable.String(), len(s.Body))
+	if s.Index != "" {
+		return fmt.Sprintf("for %s, %s in %s {\n%s\n}", s.Item, s.Index, s.Iterable.String(), strings.Join(body, "\n"))
+	}
+	return fmt.Sprintf("for %s in %s {\n%s\n}", s.Item, s.Iterable.String(), strings.Join(body, "\n"))
 }
 
 // WhileStatement : while condition { ... }
@@ -333,7 +345,13 @@ type WhileStatement struct {
 func (s *WhileStatement) statementNode()      {}
 func (s *WhileStatement) Pos() lexer.Position { return s.Position }
 func (s *WhileStatement) String() string {
-	return fmt.Sprintf("while %s (%d stmts)", s.Condition.String(), len(s.Body))
+	var body []string
+	for _, st := range s.Body {
+		if st != nil {
+			body = append(body, st.String())
+		}
+	}
+	return fmt.Sprintf("while %s {\n%s\n}", s.Condition.String(), strings.Join(body, "\n"))
 }
 
 // RangeExpression : start..end
@@ -450,10 +468,16 @@ type InStatement struct {
 func (s *InStatement) statementNode()      {}
 func (s *InStatement) Pos() lexer.Position { return s.Position }
 func (s *InStatement) String() string {
-	if s.Path != nil {
-		return fmt.Sprintf("in %s (%d stmts)", s.Path.String(), len(s.Body))
+	var body []string
+	for _, st := range s.Body {
+		if st != nil {
+			body = append(body, st.String())
+		}
 	}
-	return fmt.Sprintf("in (%d stmts)", len(s.Body))
+	if s.Path != nil {
+		return fmt.Sprintf("in %s {\n%s\n}", s.Path.String(), strings.Join(body, "\n"))
+	}
+	return fmt.Sprintf("in {\n%s\n}", strings.Join(body, "\n"))
 }
 
 type FileStatement struct {
@@ -564,7 +588,13 @@ type CallExpression struct {
 func (e *CallExpression) expressionNode()      {}
 func (e *CallExpression) Pos() lexer.Position { return e.Position }
 func (e *CallExpression) String() string {
-	return fmt.Sprintf("%s(%d args)", e.Caller.String(), len(e.Arguments))
+	var args []string
+	for _, a := range e.Arguments {
+		if a != nil {
+			args = append(args, a.String())
+		}
+	}
+	return fmt.Sprintf("%s(%s)", e.Caller.String(), strings.Join(args, ", "))
 }
 
 type MemberExpression struct {
@@ -587,7 +617,15 @@ type ListLiteral struct {
 
 func (e *ListLiteral) expressionNode()      {}
 func (e *ListLiteral) Pos() lexer.Position { return e.Position }
-func (e *ListLiteral) String() string      { return fmt.Sprintf("[%d elements]", len(e.Elements)) }
+func (e *ListLiteral) String() string {
+	var elems []string
+	for _, el := range e.Elements {
+		if el != nil {
+			elems = append(elems, el.String())
+		}
+	}
+	return fmt.Sprintf("[%s]", strings.Join(elems, ", "))
+}
 
 // MapLiteral : ["key" -> "value"]
 type MapLiteral struct {

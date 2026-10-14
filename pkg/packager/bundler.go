@@ -614,6 +614,34 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		}
 		return fmt.Sprintf("{%s}", strings.Join(parts, ";"))
 
+	case *ast.WhileStatement:
+		condStr := m.minifyExpression(s.Condition)
+		var bodyParts []string
+		for _, st := range s.Body {
+			ms := m.minifyStatement(st)
+			if ms != "" {
+				bodyParts = append(bodyParts, ms)
+			}
+		}
+		return fmt.Sprintf("while %s{\n%s\n}", condStr, strings.Join(bodyParts, "\n"))
+
+	case *ast.WithStatement:
+		targetStr := ""
+		if s.Target != nil {
+			targetStr = m.minifyExpression(s.Target)
+		}
+		var bodyParts []string
+		for _, st := range s.Body {
+			ms := m.minifyStatement(st)
+			if ms != "" {
+				bodyParts = append(bodyParts, ms)
+			}
+		}
+		if targetStr != "" {
+			return fmt.Sprintf("with %s{\n%s\n}", targetStr, strings.Join(bodyParts, "\n"))
+		}
+		return fmt.Sprintf("with{\n%s\n}", strings.Join(bodyParts, "\n"))
+
 	default:
 		return s.String()
 	}
@@ -731,6 +759,42 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 			fnName = m.getMangledName(fnName)
 		}
 		return fnName
+
+	case *ast.WithExpression:
+		if e.Target != nil {
+			return fmt.Sprintf("with %s", m.minifyExpression(e.Target))
+		}
+		return "with"
+
+	case *ast.CatchExpression:
+		targetStr := m.minifyExpression(e.Target)
+		res := targetStr + " catch"
+		if e.ErrVar != "" {
+			errVar := e.ErrVar
+			if !m.reserved[errVar] {
+				errVar = m.getMangledName(errVar)
+			}
+			res += " " + errVar
+		}
+		if e.Fallback != nil {
+			if fbExpr, ok := e.Fallback.(ast.Expression); ok {
+				res += fmt.Sprintf(" or %s", m.minifyExpression(fbExpr))
+			} else if fbStmt, ok := e.Fallback.(ast.Statement); ok {
+				res += fmt.Sprintf(" or %s", m.minifyStatement(fbStmt))
+			} else {
+				res += fmt.Sprintf(" or %s", e.Fallback.String())
+			}
+		}
+		return res
+
+	case *ast.IfExpression:
+		return fmt.Sprintf("if %s -> %s else %s", m.minifyExpression(e.Condition), m.minifyExpression(e.Consequence), m.minifyExpression(e.Alternative))
+
+	case *ast.RangeExpression:
+		return fmt.Sprintf("%s..%s", m.minifyExpression(e.Start), m.minifyExpression(e.End))
+
+	case *ast.InstantiationExpression:
+		return fmt.Sprintf("@%s()", e.UnitName)
 
 	default:
 		return e.String()

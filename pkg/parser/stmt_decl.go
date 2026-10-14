@@ -22,6 +22,9 @@ func (p *Parser) parseUseStatement() *ast.UseStatement {
 		}
 		stmt.Alias = p.curToken.Literal
 	}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
 	return stmt
 }
 
@@ -55,6 +58,9 @@ func (p *Parser) parseArgStatement() *ast.ArgStatement {
 		p.nextToken() // mange 'or' ou '='
 		p.nextToken() // début de l'expression par défaut
 		stmt.DefaultValue = p.parseExpression()
+	}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
 	}
 	return stmt
 }
@@ -100,7 +106,7 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 	}
 
 	assignPos := p.curToken.Pos
-	if p.peekToken.Pos.Line != assignPos.Line || p.peekTokenIs(lexer.EOF) || p.peekTokenIs(lexer.RBRACE) {
+	if p.peekToken.Pos.Line != assignPos.Line || p.peekTokenIs(lexer.EOF) || p.peekTokenIs(lexer.RBRACE) || p.peekTokenIs(lexer.SEMICOLON) {
 		p.addError(assignPos, "expected expression after '=' in variable declaration")
 		return stmt
 	}
@@ -111,7 +117,9 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 		p.addError(assignPos, "expected expression after '=' in variable declaration")
 		return stmt
 	}
-	if p.peekToken.Pos.Line == p.curToken.Pos.Line && !p.peekTokenIs(lexer.EOF) && !p.peekTokenIs(lexer.RBRACE) && !p.peekTokenIs(lexer.COMMENT) {
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	} else if p.peekToken.Pos.Line == p.curToken.Pos.Line && !p.peekTokenIs(lexer.EOF) && !p.peekTokenIs(lexer.RBRACE) && !p.peekTokenIs(lexer.COMMENT) {
 		p.addError(p.peekToken.Pos, fmt.Sprintf("unexpected token '%s' on same line after variable declaration", p.peekToken.Literal))
 	}
 	return stmt

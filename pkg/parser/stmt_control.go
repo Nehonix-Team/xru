@@ -99,9 +99,16 @@ func (p *Parser) parseIfStatement() ast.Statement {
 
 	p.nextToken()
 	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		if p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
 		bodyStmt := p.parseStatement()
 		if bodyStmt != nil {
 			stmt.Consequence = append(stmt.Consequence, bodyStmt)
+		}
+		if p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
 		}
 		p.nextToken()
 	}
@@ -120,9 +127,16 @@ func (p *Parser) parseIfStatement() ast.Statement {
 		}
 		p.nextToken()
 		for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+			if p.curTokenIs(lexer.SEMICOLON) {
+				p.nextToken()
+				continue
+			}
 			bodyStmt := p.parseStatement()
 			if bodyStmt != nil {
 				elif.Body = append(elif.Body, bodyStmt)
+			}
+			if p.peekTokenIs(lexer.SEMICOLON) {
+				p.nextToken()
 			}
 			p.nextToken()
 		}
@@ -140,9 +154,16 @@ func (p *Parser) parseIfStatement() ast.Statement {
 		}
 		p.nextToken()
 		for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+			if p.curTokenIs(lexer.SEMICOLON) {
+				p.nextToken()
+				continue
+			}
 			bodyStmt := p.parseStatement()
 			if bodyStmt != nil {
 				stmt.Alternative = append(stmt.Alternative, bodyStmt)
+			}
+			if p.peekTokenIs(lexer.SEMICOLON) {
+				p.nextToken()
 			}
 			p.nextToken()
 		}
@@ -235,9 +256,16 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 	}
 
 	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		if p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
 		bodyStmt := p.parseStatement()
 		if bodyStmt != nil {
 			stmt.Body = append(stmt.Body, bodyStmt)
+		}
+		if p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
 		}
 		p.nextToken()
 	}

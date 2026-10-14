@@ -30,9 +30,16 @@ func (p *Parser) parseFuncStatement() *ast.FuncStatement {
 
 	p.nextToken()
 	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		if p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
 		bodyStmt := p.parseStatement()
 		if bodyStmt != nil {
 			stmt.Body = append(stmt.Body, bodyStmt)
+		}
+		if p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
 		}
 		p.nextToken()
 	}
@@ -81,9 +88,12 @@ func (p *Parser) parseParameterList() []*ast.Parameter {
 
 func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
 	stmt := &ast.ReturnStatement{Position: p.curToken.Pos}
-	if !p.peekTokenIs(lexer.RBRACE) && !p.peekTokenIs(lexer.EOF) {
+	if !p.peekTokenIs(lexer.RBRACE) && !p.peekTokenIs(lexer.EOF) && !p.peekTokenIs(lexer.SEMICOLON) {
 		p.nextToken()
 		stmt.Value = p.parseExpression()
+	}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
 	}
 	return stmt
 }

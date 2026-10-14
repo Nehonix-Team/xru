@@ -50,6 +50,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseWhileStatement()
 	case lexer.IN:
 		return p.parseInStatement()
+	case lexer.SEMICOLON:
+		return nil
 	case lexer.ILLEGAL:
 		p.addError(p.curToken.Pos, fmt.Sprintf("illegal character '%s'", p.curToken.Literal))
 		return nil
@@ -62,6 +64,9 @@ func (p *Parser) parseStatement() ast.Statement {
 				p.nextToken() // saute l'identifiant, curToken est '=:'
 				p.nextToken() // saute '=:', curToken est l'expression
 				val := p.parseExpression()
+				if p.peekTokenIs(lexer.SEMICOLON) {
+					p.nextToken()
+				}
 				return &ast.ReassignStatement{
 					Position: pos,
 					Name:     "&" + propName,
@@ -112,6 +117,9 @@ func (p *Parser) parseReassignStatement() *ast.ReassignStatement {
 		p.addError(assignPos, "expected expression after '=:' in reassignment")
 		return stmt
 	}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
 	return stmt
 }
 
@@ -120,9 +128,16 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 	block := &ast.BlockStatement{Position: p.curToken.Pos}
 	p.nextToken() // saute '{'
 	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		if p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
 		stmt := p.parseStatement()
 		if stmt != nil {
 			block.Statements = append(block.Statements, stmt)
+		}
+		if p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
 		}
 		p.nextToken()
 	}
@@ -136,6 +151,9 @@ func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 	stmt := &ast.ExpressionStatement{
 		Position:   p.curToken.Pos,
 		Expression: p.parseExpression(),
+	}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
 	}
 	return stmt
 }
@@ -181,9 +199,16 @@ func (p *Parser) parseForStatement() *ast.ForStatement {
 
 	p.nextToken() // saute '{'
 	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		if p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
 		bodyStmt := p.parseStatement()
 		if bodyStmt != nil {
 			stmt.Body = append(stmt.Body, bodyStmt)
+		}
+		if p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
 		}
 		p.nextToken()
 	}
@@ -220,9 +245,16 @@ func (p *Parser) parseInStatement() *ast.InStatement {
 
 	p.nextToken() // saute '{'
 	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		if p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
 		bodyStmt := p.parseStatement()
 		if bodyStmt != nil {
 			stmt.Body = append(stmt.Body, bodyStmt)
+		}
+		if p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
 		}
 		p.nextToken()
 	}

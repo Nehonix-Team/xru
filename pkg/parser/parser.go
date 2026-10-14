@@ -58,9 +58,16 @@ func (p *Parser) ParseProgram() *ast.Program {
 	}
 
 	for !p.curTokenIs(lexer.EOF) {
+		if p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
 		stmt := p.parseStatement()
 		if stmt != nil {
 			program.Statements = append(program.Statements, stmt)
+		}
+		if p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
 		}
 		p.nextToken()
 	}

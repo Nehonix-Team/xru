@@ -66,14 +66,24 @@ func (p *Parser) parseFileStatement() *ast.FileStatement {
 		p.nextToken() // '{'
 		p.nextToken() // premier token du bloc
 		for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+			if p.curTokenIs(lexer.SEMICOLON) {
+				p.nextToken()
+				continue
+			}
 			bodyStmt := p.parseStatement()
 			if bodyStmt != nil {
 				stmt.Body = append(stmt.Body, bodyStmt)
+			}
+			if p.peekTokenIs(lexer.SEMICOLON) {
+				p.nextToken()
 			}
 			p.nextToken()
 		}
 		if p.curTokenIs(lexer.EOF) {
 			p.addError(stmt.Position, "unclosed file block (missing '}')")
+		}
+		if p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
 		}
 		return stmt
 	}

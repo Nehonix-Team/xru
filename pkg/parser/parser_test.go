@@ -311,4 +311,18 @@ func TestGroupedMemberFromUseStatement(t *testing.T) {
 	}
 }
 
+func TestSemicolonSeparatedStatements(t *testing.T) {
+	input := `let a = 1; const b = 2; func add(x, y) { return x + y }; let c = add(a, b);`
+	l := lexer.New("test_semi.xru", input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Unexpected parser errors: %v", p.Errors())
+	}
+	if len(prog.Statements) != 4 {
+		t.Fatalf("Expected 4 statements, got %d", len(prog.Statements))
+	}
+}
+
 

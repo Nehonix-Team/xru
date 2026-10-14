@@ -52,7 +52,7 @@ func main() {
 
 	if len(filteredArgs) == 0 {
 		if verbose {
-			fmt.Printf("XRU v2.0.0 (%s)\n", utils.BinVersion)
+			fmt.Printf("XRU %s\n", utils.BinVersion)
 			os.Exit(0)
 		}
 		printUsage()
@@ -64,7 +64,7 @@ func main() {
 
 	switch cmd {
 	case "version", "--version":
-		fmt.Printf("XRU v2.0.0 (%s)\n", utils.BinVersion)
+		fmt.Printf("XRU %s \n", utils.BinVersion)
 
 	case "help", "--help", "-h":
 		printUsage()

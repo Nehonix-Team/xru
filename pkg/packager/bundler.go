@@ -414,8 +414,6 @@ func (m *Mangler) getMangledName(orig string) string {
 }
 
 func (m *Mangler) Minify(prog *ast.Program) string {
-	var sb strings.Builder
-
 	// Pass 1: register all top-level user function names so calls can resolve
 	for _, stmt := range prog.Statements {
 		if fn, ok := stmt.(*ast.FuncStatement); ok {
@@ -425,15 +423,15 @@ func (m *Mangler) Minify(prog *ast.Program) string {
 		}
 	}
 
+	var topStmts []string
 	for _, stmt := range prog.Statements {
 		str := m.minifyStatement(stmt)
 		if str != "" {
-			sb.WriteString(str)
-			sb.WriteString("\n")
+			topStmts = append(topStmts, str)
 		}
 	}
 
-	return strings.TrimSpace(sb.String())
+	return strings.Join(topStmts, ";\n") + ";\n"
 }
 
 func (m *Mangler) minifyStatement(stmt ast.Statement) string {
@@ -498,7 +496,7 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		}
 		m.popScope()
 		prefix := "func"
-		return fmt.Sprintf("%s %s(%s){\n%s\n}", prefix, fnName, strings.Join(params, ","), strings.Join(bodyParts, "\n"))
+		return fmt.Sprintf("%s %s(%s){%s}", prefix, fnName, strings.Join(params, ","), strings.Join(bodyParts, ";"))
 
 	case *ast.InStatement:
 		pathStr := m.minifyExpression(s.Path)
@@ -509,7 +507,7 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 				bodyParts = append(bodyParts, ms)
 			}
 		}
-		return fmt.Sprintf("in %s{\n%s\n}", pathStr, strings.Join(bodyParts, "\n"))
+		return fmt.Sprintf("in %s{%s}", pathStr, strings.Join(bodyParts, ";"))
 
 	case *ast.FileStatement:
 		pathStr := s.Path
@@ -530,7 +528,7 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 				bodyParts = append(bodyParts, ms)
 			}
 		}
-		return fmt.Sprintf("file %s{\n%s\n}", pathStr, strings.Join(bodyParts, "\n"))
+		return fmt.Sprintf("file %s{%s}", pathStr, strings.Join(bodyParts, ";"))
 
 	case *ast.IfStatement:
 		condStr := m.minifyExpression(s.Condition)
@@ -541,7 +539,7 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 				consParts = append(consParts, ms)
 			}
 		}
-		res := fmt.Sprintf("if %s{\n%s\n}", condStr, strings.Join(consParts, "\n"))
+		res := fmt.Sprintf("if %s{%s}", condStr, strings.Join(consParts, ";"))
 
 		for _, elif := range s.ElifBlocks {
 			elifCond := m.minifyExpression(elif.Condition)
@@ -552,7 +550,7 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 					elifParts = append(elifParts, ms)
 				}
 			}
-			res += fmt.Sprintf(" elif %s{\n%s\n}", elifCond, strings.Join(elifParts, "\n"))
+			res += fmt.Sprintf(" elif %s{%s}", elifCond, strings.Join(elifParts, ";"))
 		}
 
 		if len(s.Alternative) > 0 {
@@ -563,7 +561,7 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 					altParts = append(altParts, ms)
 				}
 			}
-			res += fmt.Sprintf(" else{\n%s\n}", strings.Join(altParts, "\n"))
+			res += fmt.Sprintf(" else{%s}", strings.Join(altParts, ";"))
 		}
 		return res
 
@@ -584,9 +582,9 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		}
 		m.popScope()
 		if idxName != "" {
-			return fmt.Sprintf("for %s,%s in %s{\n%s\n}", itemName, idxName, iterStr, strings.Join(bodyParts, "\n"))
+			return fmt.Sprintf("for %s,%s in %s{%s}", itemName, idxName, iterStr, strings.Join(bodyParts, ";"))
 		}
-		return fmt.Sprintf("for %s in %s{\n%s\n}", itemName, iterStr, strings.Join(bodyParts, "\n"))
+		return fmt.Sprintf("for %s in %s{%s}", itemName, iterStr, strings.Join(bodyParts, ";"))
 
 	case *ast.ReassignStatement:
 		target := s.Name
@@ -623,7 +621,7 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 				bodyParts = append(bodyParts, ms)
 			}
 		}
-		return fmt.Sprintf("while %s{\n%s\n}", condStr, strings.Join(bodyParts, "\n"))
+		return fmt.Sprintf("while %s{%s}", condStr, strings.Join(bodyParts, ";"))
 
 	case *ast.WithStatement:
 		targetStr := ""
@@ -638,9 +636,9 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 			}
 		}
 		if targetStr != "" {
-			return fmt.Sprintf("with %s{\n%s\n}", targetStr, strings.Join(bodyParts, "\n"))
+			return fmt.Sprintf("with %s{%s}", targetStr, strings.Join(bodyParts, ";"))
 		}
-		return fmt.Sprintf("with{\n%s\n}", strings.Join(bodyParts, "\n"))
+		return fmt.Sprintf("with{%s}", strings.Join(bodyParts, ";"))
 
 	default:
 		return s.String()

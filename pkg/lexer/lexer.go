@@ -221,6 +221,9 @@ func (l *Lexer) NextToken() Token {
 		}
 		l.readChar()
 		return Token{Type: DOT, Literal: ".", Pos: startPos}
+	case ';':
+		l.readChar()
+		return Token{Type: SEMICOLON, Literal: ";", Pos: startPos}
 	}
 
 	// 4. Nombres et Durées (ex: 3000, 30s, 500ms)

@@ -91,6 +91,7 @@ const (
 	COLON        TokenType = ":"
 	DOUBLE_COLON TokenType = "::"
 	DOT          TokenType = "."
+	SEMICOLON    TokenType = ";"
 )
 
 type Position struct {

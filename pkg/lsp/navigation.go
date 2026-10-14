@@ -112,6 +112,155 @@ func getFullExpressionAt(text string, line, char int) (string, string) {
 	return targetWord, targetWord
 }
 
+type FileImport struct {
+	Source  string   // Namespace e.g. "dll"
+	Module  string   // Module e.g. "gArgs"
+	Member  string   // Member e.g. "author"
+	Members []string // Grouped members e.g. ["author", "version", ...]
+	Alias   string   // Alias e.g. "Fs"
+	Line    int      // 0-indexed line where import statement is written
+}
+
+func parseFileImports(text string) []FileImport {
+	var imports []FileImport
+	lines := strings.Split(text, "\n")
+
+	reFromGroup := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)::\(([^)]+)\)`)
+	reFromMember := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)::([a-zA-Z0-9_]+)`)
+	reFromMods := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+\(([^)]+)\)`)
+	reFromAs := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)\s+as\s+([a-zA-Z0-9_]+)`)
+	reFromMod := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)`)
+	reUseAs := regexp.MustCompile(`^\s*use\s+([a-zA-Z0-9_]+)\s+as\s+([a-zA-Z0-9_]+)`)
+	reUse := regexp.MustCompile(`^\s*use\s+([a-zA-Z0-9_]+)`)
+
+	for idx, line := range lines {
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "//") {
+			continue
+		}
+		if m := reFromGroup.FindStringSubmatch(trim); len(m) == 4 {
+			rawMembers := strings.Split(m[3], ",")
+			var members []string
+			for _, rm := range rawMembers {
+				mem := strings.TrimSpace(rm)
+				if mem != "" {
+					members = append(members, mem)
+				}
+			}
+			imports = append(imports, FileImport{
+				Source:  m[1],
+				Module:  m[2],
+				Members: members,
+				Line:    idx,
+			})
+		} else if m := reFromMember.FindStringSubmatch(trim); len(m) == 4 {
+			imports = append(imports, FileImport{
+				Source: m[1],
+				Module: m[2],
+				Member: m[3],
+				Line:   idx,
+			})
+		} else if m := reFromMods.FindStringSubmatch(trim); len(m) == 3 {
+			rawMods := strings.Split(m[2], ",")
+			for _, rm := range rawMods {
+				mod := strings.TrimSpace(rm)
+				if mod != "" {
+					imports = append(imports, FileImport{
+						Source: m[1],
+						Module: mod,
+						Line:   idx,
+					})
+				}
+			}
+		} else if m := reFromAs.FindStringSubmatch(trim); len(m) == 4 {
+			imports = append(imports, FileImport{
+				Source: m[1],
+				Module: m[2],
+				Alias:  m[3],
+				Line:   idx,
+			})
+		} else if m := reFromMod.FindStringSubmatch(trim); len(m) == 3 {
+			imports = append(imports, FileImport{
+				Source: m[1],
+				Module: m[2],
+				Line:   idx,
+			})
+		} else if m := reUseAs.FindStringSubmatch(trim); len(m) == 3 {
+			imports = append(imports, FileImport{
+				Module: m[1],
+				Alias:  m[2],
+				Line:   idx,
+			})
+		} else if m := reUse.FindStringSubmatch(trim); len(m) == 2 {
+			imports = append(imports, FileImport{
+				Module: m[1],
+				Line:   idx,
+			})
+		}
+	}
+	return imports
+}
+
+func findDeclarationInFile(filePath, word string) (line, char int, found bool) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, 0, false
+	}
+	lines := strings.Split(string(content), "\n")
+	reDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare)\s+(%s)\b`, regexp.QuoteMeta(word)))
+	for lIdx, l := range lines {
+		lTrim := strings.TrimSpace(l)
+		if strings.HasPrefix(lTrim, "//") {
+			continue
+		}
+		if loc := reDecl.FindStringSubmatchIndex(l); loc != nil && len(loc) >= 4 {
+			return lIdx, loc[2], true
+		}
+	}
+	reMod := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*mod\s+(%s)\b`, regexp.QuoteMeta(word)))
+	for lIdx, l := range lines {
+		lTrim := strings.TrimSpace(l)
+		if strings.HasPrefix(lTrim, "//") {
+			continue
+		}
+		if loc := reMod.FindStringSubmatchIndex(l); loc != nil && len(loc) >= 4 {
+			return lIdx, loc[2], true
+		}
+	}
+	reWord := regexp.MustCompile(fmt.Sprintf(`\b(%s)\b`, regexp.QuoteMeta(word)))
+	for lIdx, l := range lines {
+		lTrim := strings.TrimSpace(l)
+		if strings.HasPrefix(lTrim, "//") {
+			continue
+		}
+		if loc := reWord.FindStringIndex(l); loc != nil {
+			return lIdx, loc[0], true
+		}
+	}
+	return 0, 0, false
+}
+
+func (s *Server) resolveModuleFilePath(modCfg *modules.ModConfig, sourceNs, modName, curFileDir string) string {
+	if modCfg != nil {
+		if sourceNs != "" {
+			if modDetails, err := modCfg.ResolveModule(sourceNs, modName); err == nil && modDetails != nil {
+				return modDetails.FilePath
+			}
+		} else {
+			for ns := range modCfg.Mappings {
+				if modDetails, err := modCfg.ResolveModule(ns, modName); err == nil && modDetails != nil {
+					return modDetails.FilePath
+				}
+			}
+		}
+	}
+	localPath := filepath.Join(curFileDir, modName+".xru")
+	if info, err := os.Stat(localPath); err == nil && !info.IsDir() {
+		return localPath
+	}
+	return ""
+}
+
 func (s *Server) handleDefinition(uri string, pos Position) *Location {
 	text, ok := s.docs[uri]
 	if !ok {
@@ -123,166 +272,319 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		return nil
 	}
 
-	fileDir := filepath.Dir(uriToPath(uri))
+	curFilePath := uriToPath(uri)
+	fileDir := filepath.Dir(curFilePath)
 	modFilePath := modules.FindModConfigFile(fileDir)
+	var modCfg *modules.ModConfig
 	if modFilePath != "" {
-		if modCfg, errs := modules.LoadModConfig(modFilePath); len(errs) == 0 && modCfg != nil {
-			// 1. Check if word is a mapped namespace in _mod.xru (e.g. "services")
-			if _, ok := modCfg.Mappings[word]; ok {
-				if modContent, err := os.ReadFile(modFilePath); err == nil {
-					mLines := strings.Split(string(modContent), "\n")
-					for lIdx, mLine := range mLines {
-						if strings.Contains(mLine, word) {
-							re := regexp.MustCompile(fmt.Sprintf(`\b(%s)\b`, regexp.QuoteMeta(word)))
-							if loc := re.FindStringIndex(mLine); loc != nil {
-								return &Location{
-									URI: pathToURI(modFilePath),
-									Range: Range{
-										Start: Position{Line: lIdx, Character: loc[0]},
-										End:   Position{Line: lIdx, Character: loc[1]},
-									},
-								}
+		if cfg, errs := modules.LoadModConfig(modFilePath); len(errs) == 0 && cfg != nil {
+			modCfg = cfg
+		}
+	}
+
+	lines := strings.Split(text, "\n")
+	var curLine string
+	if pos.Line >= 0 && pos.Line < len(lines) {
+		curLine = lines[pos.Line]
+	}
+	trimmedCurLine := strings.TrimSpace(curLine)
+	isCurLineImport := strings.HasPrefix(trimmedCurLine, "from ") || strings.HasPrefix(trimmedCurLine, "use ")
+
+	fileImports := parseFileImports(text)
+
+	// 1. Explicit qualified expression: module::member (e.g. gArgs::author)
+	if strings.Contains(fullExpr, "::") {
+		parts := strings.Split(fullExpr, "::")
+		if len(parts) == 2 {
+			targetMod := parts[0]
+			targetWord := parts[1]
+
+			var targetNs string
+			for _, imp := range fileImports {
+				if imp.Module == targetMod || imp.Alias == targetMod {
+					targetNs = imp.Source
+					if imp.Module != "" {
+						targetMod = imp.Module
+					}
+					break
+				}
+			}
+
+			modFile := s.resolveModuleFilePath(modCfg, targetNs, targetMod, fileDir)
+			if modFile != "" {
+				lIdx, charPos, found := findDeclarationInFile(modFile, targetWord)
+				if found {
+					return &Location{
+						URI: pathToURI(modFile),
+						Range: Range{
+							Start: Position{Line: lIdx, Character: charPos},
+							End:   Position{Line: lIdx, Character: charPos + len(targetWord)},
+						},
+					}
+				}
+			}
+			return nil
+		}
+	}
+
+	// 2. Clicked on a namespace name in _mod.xru
+	if modCfg != nil && modFilePath != "" {
+		if _, ok := modCfg.Mappings[word]; ok {
+			if modContent, err := os.ReadFile(modFilePath); err == nil {
+				mLines := strings.Split(string(modContent), "\n")
+				for lIdx, mLine := range mLines {
+					if strings.Contains(mLine, word) {
+						re := regexp.MustCompile(fmt.Sprintf(`\b(%s)\b`, regexp.QuoteMeta(word)))
+						if loc := re.FindStringIndex(mLine); loc != nil {
+							return &Location{
+								URI: pathToURI(modFilePath),
+								Range: Range{
+									Start: Position{Line: lIdx, Character: loc[0]},
+									End:   Position{Line: lIdx, Character: loc[1]},
+								},
 							}
 						}
 					}
 				}
+			}
+			return &Location{
+				URI: pathToURI(modFilePath),
+				Range: Range{
+					Start: Position{Line: 0, Character: 0},
+					End:   Position{Line: 0, Character: 0},
+				},
+			}
+		}
+	}
+
+	// 3. Cursor is directly ON the import line
+	if isCurLineImport {
+		for _, imp := range fileImports {
+			if imp.Line == pos.Line {
+				isMember := false
+				if imp.Member == word {
+					isMember = true
+				} else {
+					for _, m := range imp.Members {
+						if m == word {
+							isMember = true
+							break
+						}
+					}
+				}
+				if isMember {
+					modFile := s.resolveModuleFilePath(modCfg, imp.Source, imp.Module, fileDir)
+					if modFile != "" {
+						lIdx, charPos, found := findDeclarationInFile(modFile, word)
+						if found {
+							return &Location{
+								URI: pathToURI(modFile),
+								Range: Range{
+									Start: Position{Line: lIdx, Character: charPos},
+									End:   Position{Line: lIdx, Character: charPos + len(word)},
+								},
+							}
+						}
+						return &Location{
+							URI: pathToURI(modFile),
+							Range: Range{
+								Start: Position{Line: 0, Character: 0},
+								End:   Position{Line: 0, Character: 0},
+							},
+						}
+					}
+				}
+
+				if imp.Module == word {
+					modFile := s.resolveModuleFilePath(modCfg, imp.Source, imp.Module, fileDir)
+					if modFile != "" {
+						lIdx, charPos, _ := findDeclarationInFile(modFile, imp.Module)
+						return &Location{
+							URI: pathToURI(modFile),
+							Range: Range{
+								Start: Position{Line: lIdx, Character: charPos},
+								End:   Position{Line: lIdx, Character: charPos + len(imp.Module)},
+							},
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 4. Search Local Definitions in active file (variables, lambdas, funcs)
+	reLocalDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare)\s+(%s)\b`, regexp.QuoteMeta(word)))
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if loc := reLocalDecl.FindStringSubmatchIndex(line); loc != nil && len(loc) >= 4 {
+			return &Location{
+				URI: uri,
+				Range: Range{
+					Start: Position{Line: idx, Character: loc[2]},
+					End:   Position{Line: idx, Character: loc[3]},
+				},
+			}
+		}
+	}
+
+	reLambda := regexp.MustCompile(`\(([^)]*)\)\s*(?:->|=>)`)
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if locs := reLambda.FindStringSubmatchIndex(line); locs != nil && len(locs) >= 4 {
+			paramSub := line[locs[2]:locs[3]]
+			paramRe := regexp.MustCompile(fmt.Sprintf(`\b(%s)\b`, regexp.QuoteMeta(word)))
+			if pLoc := paramRe.FindStringIndex(paramSub); pLoc != nil {
+				startCol := locs[2] + pLoc[0]
 				return &Location{
-					URI: pathToURI(modFilePath),
+					URI: uri,
+					Range: Range{
+						Start: Position{Line: idx, Character: startCol},
+						End:   Position{Line: idx, Character: startCol + len(word)},
+					},
+				}
+			}
+		}
+	}
+
+	reFuncParams := regexp.MustCompile(`func\s+[a-zA-Z0-9_]+\s*\(([^)]*)\)`)
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if locs := reFuncParams.FindStringSubmatchIndex(line); locs != nil && len(locs) >= 4 {
+			paramSub := line[locs[2]:locs[3]]
+			paramRe := regexp.MustCompile(fmt.Sprintf(`\b(%s)\b`, regexp.QuoteMeta(word)))
+			if pLoc := paramRe.FindStringIndex(paramSub); pLoc != nil {
+				startCol := locs[2] + pLoc[0]
+				return &Location{
+					URI: uri,
+					Range: Range{
+						Start: Position{Line: idx, Character: startCol},
+						End:   Position{Line: idx, Character: startCol + len(word)},
+					},
+				}
+			}
+		}
+	}
+
+	reForLoop := regexp.MustCompile(`^\s*for\s+([a-zA-Z0-9_,\s]+)\s+in\b`)
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if locs := reForLoop.FindStringSubmatchIndex(line); locs != nil && len(locs) >= 4 {
+			varSub := line[locs[2]:locs[3]]
+			varRe := regexp.MustCompile(fmt.Sprintf(`\b(%s)\b`, regexp.QuoteMeta(word)))
+			if vLoc := varRe.FindStringIndex(varSub); vLoc != nil {
+				startCol := locs[2] + vLoc[0]
+				return &Location{
+					URI: uri,
+					Range: Range{
+						Start: Position{Line: idx, Character: startCol},
+						End:   Position{Line: idx, Character: startCol + len(word)},
+					},
+				}
+			}
+		}
+	}
+
+	reMod := regexp.MustCompile(fmt.Sprintf(`^\s*mod\s+(%s)\b`, regexp.QuoteMeta(word)))
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if loc := reMod.FindStringSubmatchIndex(line); loc != nil && len(loc) >= 4 {
+			return &Location{
+				URI: uri,
+				Range: Range{
+					Start: Position{Line: idx, Character: loc[2]},
+					End:   Position{Line: idx, Character: loc[3]},
+				},
+			}
+		}
+	}
+
+	// 5. Check if word is imported into the active file
+	for _, imp := range fileImports {
+		isMember := false
+		if imp.Member == word {
+			isMember = true
+		} else {
+			for _, m := range imp.Members {
+				if m == word {
+					isMember = true
+					break
+				}
+			}
+		}
+
+		if isMember {
+			modFile := s.resolveModuleFilePath(modCfg, imp.Source, imp.Module, fileDir)
+			if modFile != "" {
+				lIdx, charPos, found := findDeclarationInFile(modFile, word)
+				if found {
+					return &Location{
+						URI: pathToURI(modFile),
+						Range: Range{
+							Start: Position{Line: lIdx, Character: charPos},
+							End:   Position{Line: lIdx, Character: charPos + len(word)},
+						},
+					}
+				}
+				return &Location{
+					URI: pathToURI(modFile),
 					Range: Range{
 						Start: Position{Line: 0, Character: 0},
 						End:   Position{Line: 0, Character: 0},
 					},
 				}
 			}
-
-			// 2. Check if word is a module in any mapped namespace (e.g. "auth", "cdn", "db")
-			targetWord := word
-			targetModule := ""
-			if strings.Contains(fullExpr, "::") {
-				parts := strings.Split(fullExpr, "::")
-				if len(parts) == 2 {
-					targetModule = parts[0]
-					targetWord = parts[1]
-				}
-			}
-
-			// 2.A If targetWord is a module name, jump to the module file itself!
-			for ns := range modCfg.Mappings {
-				mods, err := modCfg.GetNamespaceModules(ns)
-				if err != nil {
-					continue
-				}
-				if m, ok := mods[targetWord]; ok {
-					line := 0
-					char := 0
-					if content, err := os.ReadFile(m.FilePath); err == nil {
-						cLines := strings.Split(string(content), "\n")
-						for lIdx, cLine := range cLines {
-							if strings.HasPrefix(strings.TrimSpace(cLine), "mod ") && strings.Contains(cLine, targetWord) {
-								line = lIdx
-								break
-							}
-						}
-					}
-					return &Location{
-						URI: pathToURI(m.FilePath),
-						Range: Range{
-							Start: Position{Line: line, Character: char},
-							End:   Position{Line: line, Character: char + len(targetWord)},
-						},
-					}
-				}
-			}
-
-			// 2.B If targetWord is an exported member of a module (e.g. auth::login)
-			for _, cand := range modCfg.GetAllExportedCandidates() {
-				if cand.Kind == "module" {
-					continue
-				}
-				if (targetModule == "" || cand.ModuleName == targetModule) && cand.Name == targetWord {
-					if content, err := os.ReadFile(cand.FilePath); err == nil {
-						cLines := strings.Split(string(content), "\n")
-						for lIdx, cLine := range cLines {
-							cTrim := strings.TrimSpace(cLine)
-							if strings.HasPrefix(cTrim, "//") {
-								continue
-							}
-							if strings.Contains(cLine, targetWord) {
-								cRe := regexp.MustCompile(fmt.Sprintf(`\b(%s)\b`, regexp.QuoteMeta(targetWord)))
-								if loc := cRe.FindStringIndex(cLine); loc != nil {
-									return &Location{
-										URI: pathToURI(cand.FilePath),
-										Range: Range{
-											Start: Position{Line: lIdx, Character: loc[0]},
-											End:   Position{Line: lIdx, Character: loc[1]},
-										},
-									}
-								}
-							}
-						}
-					}
-					return &Location{
-						URI: pathToURI(cand.FilePath),
-						Range: Range{
-							Start: Position{Line: 0, Character: 0},
-							End:   Position{Line: 0, Character: 0},
-						},
-					}
-				}
-			}
-		}
-	}
-
-	// 3. Search definition in current file (let, const, arg, func, unit, lambda)
-	lines := strings.Split(text, "\n")
-	for idx, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "//") {
-			continue
 		}
 
-		// 3.A. let / const / arg / func / unit definition
-		re := regexp.MustCompile(fmt.Sprintf(`\b(?:let|const|arg|func|unit|declare)\s+(%s)\b`, regexp.QuoteMeta(word)))
-		if loc := re.FindStringSubmatchIndex(line); loc != nil && len(loc) >= 4 {
+		if imp.Alias != "" && imp.Alias == word {
 			return &Location{
 				URI: uri,
 				Range: Range{
-					Start: Position{Line: idx, Character: loc[2]},
-					End:   Position{Line: idx, Character: loc[3]},
+					Start: Position{Line: imp.Line, Character: 0},
+					End:   Position{Line: imp.Line, Character: len(lines[imp.Line])},
 				},
 			}
 		}
 
-		// 3.B. from "<ns>" use mod as <alias>
-		reFromAs := regexp.MustCompile(fmt.Sprintf(`\buse\s+[a-zA-Z0-9_.]+\s+as\s+(%s)\b`, regexp.QuoteMeta(word)))
-		if loc := reFromAs.FindStringSubmatchIndex(line); loc != nil && len(loc) >= 4 {
-			return &Location{
-				URI: uri,
-				Range: Range{
-					Start: Position{Line: idx, Character: loc[2]},
-					End:   Position{Line: idx, Character: loc[3]},
-				},
-			}
-		}
-
-		// 3.C. lambda parameter e.g. (data, err) =>
-		if strings.Contains(line, "=>") {
-			parts := strings.Split(line, "=>")
-			paramPart := parts[0]
-			paramRe := regexp.MustCompile(fmt.Sprintf(`\b(%s)\b`, regexp.QuoteMeta(word)))
-			if loc := paramRe.FindStringIndex(paramPart); loc != nil {
+		if imp.Module == word {
+			if imp.Module == "std" || imp.Module == "fs" || imp.Module == "net" || imp.Module == "crypto" || imp.Module == "cmd" {
 				return &Location{
 					URI: uri,
 					Range: Range{
-						Start: Position{Line: idx, Character: loc[0]},
-						End:   Position{Line: idx, Character: loc[1]},
+						Start: Position{Line: imp.Line, Character: 0},
+						End:   Position{Line: imp.Line, Character: len(lines[imp.Line])},
+					},
+				}
+			}
+			modFile := s.resolveModuleFilePath(modCfg, imp.Source, imp.Module, fileDir)
+			if modFile != "" {
+				lIdx, charPos, _ := findDeclarationInFile(modFile, imp.Module)
+				return &Location{
+					URI: pathToURI(modFile),
+					Range: Range{
+						Start: Position{Line: lIdx, Character: charPos},
+						End:   Position{Line: lIdx, Character: charPos + len(imp.Module)},
 					},
 				}
 			}
 		}
 	}
 
-	// 4. Fallback for 'std'
+	// 6. Builtin 'std' fallback
 	if word == "std" {
 		return &Location{
 			URI: uri,
@@ -295,6 +597,7 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 
 	return nil
 }
+
 
 func (s *Server) handleReferences(uri string, pos Position) []Location {
 	text, ok := s.docs[uri]

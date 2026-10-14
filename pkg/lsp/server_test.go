@@ -760,3 +760,96 @@ myName
 	}
 }
 
+func TestLSPGoToDefinitionPriority(t *testing.T) {
+	uri := "file:///home/idevo/Documents/projects/XTemplates/test_def_priority.xru"
+	code := `mod TDP
+
+use std
+from "dll" use gArgs::(author, version)
+
+file "package.json", (doc, err) -> {
+    let localAuthor = "local"
+    doc.setJson("author", author)
+    doc.setJson("local", localAuthor)
+    if err != nil {
+        unknownSymbol
+    }
+}
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
+
+	formatReqWithID := func(id int, method string, params any) string {
+		payloadMap := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      id,
+			"method":  method,
+			"params":  params,
+		}
+		data, _ := json.Marshal(payloadMap)
+		return fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(data), string(data))
+	}
+
+	// 1. Definition of imported member `author` on line 7 col 27 (doc.setJson("author", author))
+	defAuthorReq := formatReqWithID(1, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 7, "character": 27},
+	})
+
+	// 2. Definition of local variable `localAuthor` on line 8 col 27 (doc.setJson("local", localAuthor))
+	defLocalReq := formatReqWithID(2, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 8, "character": 27},
+	})
+
+	// 3. Definition of lambda parameter `err` on line 9 col 8 (if err != nil)
+	defErrReq := formatReqWithID(3, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 9, "character": 8},
+	})
+
+	// 4. Definition of unknown / unimported symbol `unknownSymbol` on line 10 col 9
+	defUnknownReq := formatReqWithID(4, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 10, "character": 9},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + defAuthorReq + defLocalReq + defErrReq + defUnknownReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Verify author points to args.xru
+	if !strings.Contains(outStr, "args.xru") {
+		t.Errorf("Expected author definition to point to args.xru, got: %s", outStr)
+	}
+
+	// Verify localAuthor points to test_def_priority.xru line 6
+	if !strings.Contains(outStr, "test_def_priority.xru") {
+		t.Errorf("Expected localAuthor definition to point to test_def_priority.xru, got: %s", outStr)
+	}
+
+	// Verify unknownSymbol returns null
+	responses := strings.Split(outStr, "Content-Length:")
+	var unknownResp string
+	for _, r := range responses {
+		if strings.Contains(r, `"id":4`) {
+			unknownResp = r
+			break
+		}
+	}
+	if !strings.Contains(unknownResp, `"result":null`) {
+		t.Errorf("Expected unknownSymbol definition result to be null, got: %s", unknownResp)
+	}
+}
+
+

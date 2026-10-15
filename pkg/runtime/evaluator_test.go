@@ -1569,3 +1569,143 @@ let checkMember = m.name
 		t.Errorf("Expected checkMember to be 'cool-app', got: %v", checkMember)
 	}
 }
+
+func TestStrictRuntimeTypeValidationAndOptional(t *testing.T) {
+	// 1. Missing required field in map passed to function
+	codeMissingField := `
+type TExample = @map{
+    a: string,
+    c: number,
+}
+func run(params: TExample) {
+    let x = params.a
+}
+run(@map{ a: "only_a" })
+`
+	p1 := parser.New(lexer.New("t1.xru", codeMissingField))
+	prog1 := p1.ParseProgram()
+	ev1 := runtime.NewEvaluator()
+	env1 := runtime.NewEnvironment(nil)
+	_, err1 := ev1.Eval(prog1, env1)
+	if err1 == nil {
+		t.Fatal("Expected runtime error for missing field 'c' in TExample map argument, got nil")
+	}
+
+	// 2. Non-existent property access on typed parameter
+	codeNonExistentProp := `
+type TExample = @map{
+    a: string,
+    c: number,
+}
+func run(params: TExample) {
+    let x = params.notExist
+}
+run(@map{ a: "hello", c: 42 })
+`
+	p2 := parser.New(lexer.New("t2.xru", codeNonExistentProp))
+	prog2 := p2.ParseProgram()
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	_, err2 := ev2.Eval(prog2, env2)
+	if err2 == nil {
+		t.Fatal("Expected runtime error accessing 'params.notExist' on TExample, got nil")
+	}
+	if !strings.Contains(err2.Error(), "does not exist on type") {
+		t.Errorf("Expected 'does not exist on type' error message, got: %v", err2)
+	}
+
+	// 3. Return type validation
+	codeBadReturn := `
+type TExample = @map{
+    c: number,
+}
+func getC(): TExample["c"] {
+    return "string instead of number"
+}
+getC()
+`
+	p3 := parser.New(lexer.New("t3.xru", codeBadReturn))
+	prog3 := p3.ParseProgram()
+	ev3 := runtime.NewEvaluator()
+	env3 := runtime.NewEnvironment(nil)
+	_, err3 := ev3.Eval(prog3, env3)
+	if err3 == nil {
+		t.Fatal("Expected runtime error for invalid return type, got nil")
+	}
+
+	// 4. Optional parameters
+	codeOpt := `
+let res1 = ""
+let res2 = ""
+let res3 = ""
+func greet(name: string, other: string?, opt2?: number) {
+    res1 =: name
+    if other != nil {
+        res2 =: other
+    }
+}
+greet("Alice")
+greet("Bob", "info")
+`
+	p4 := parser.New(lexer.New("t4.xru", codeOpt))
+	prog4 := p4.ParseProgram()
+	if len(p4.Errors()) > 0 {
+		t.Fatalf("Parser errors in t4: %v", p4.Errors())
+	}
+	ev4 := runtime.NewEvaluator()
+	env4 := runtime.NewEnvironment(nil)
+	_, err4 := ev4.Eval(prog4, env4)
+	if err4 != nil {
+		t.Fatalf("Unexpected runtime error for optional params: %v", err4)
+	}
+	v1, _ := env4.Get("res1")
+	v2, _ := env4.Get("res2")
+	if v1.String() != "Bob" {
+		t.Errorf("Expected res1 to be 'Bob', got: %v", v1)
+	}
+	if v2.String() != "info" {
+		t.Errorf("Expected res2 to be 'info', got: %v", v2)
+	}
+}
+
+func TestDateBuiltinRuntime(t *testing.T) {
+	code := `
+use date
+let now = date.now()
+let year = now.year
+let isoStr = date.iso(now)
+let formatted = date.format(now, "YYYY-MM-DD")
+let parsed = date.parse("2026-10-15", "YYYY-MM-DD")
+let parsedYear = parsed.year
+let added = date.add(parsed, 10, "days")
+let addedDay = added.day
+let diffDays = date.diff(added, parsed, "days")
+`
+	p := parser.New(lexer.New("date_rt.xru", code))
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	_, err := ev.Eval(prog, env)
+	if err != nil {
+		t.Fatalf("Runtime error evaluating date: %v", err)
+	}
+
+	py, _ := env.Get("parsedYear")
+	if py.String() != "2026" {
+		t.Errorf("Expected parsedYear to be 2026, got: %v", py)
+	}
+
+	ad, _ := env.Get("addedDay")
+	if ad.String() != "25" {
+		t.Errorf("Expected addedDay to be 25, got: %v", ad)
+	}
+
+	diff, _ := env.Get("diffDays")
+	if diff.String() != "10" {
+		t.Errorf("Expected diffDays to be 10, got: %v", diff)
+	}
+}
+

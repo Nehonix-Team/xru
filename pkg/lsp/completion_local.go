@@ -49,14 +49,16 @@ func findCurrentFunctionParams(lines []string, currentLine int) []paramInfo {
 					if m := reFunc.FindStringSubmatch(lines[i]); len(m) > 1 {
 						paramStr := strings.TrimSpace(m[1])
 						if paramStr != "" {
-							for _, p := range strings.Split(paramStr, ",") {
+							for _, p := range splitParamsRespectingBraces(paramStr) {
 								p = strings.TrimSpace(p)
-								parts := strings.Split(p, ":")
-								pName := strings.TrimSpace(parts[0])
+								colonIdx := strings.Index(p, ":")
+								pName := p
 								pType := "any"
-								if len(parts) > 1 {
-									pType = strings.TrimSpace(parts[1])
+								if colonIdx != -1 {
+									pName = strings.TrimSpace(p[:colonIdx])
+									pType = strings.TrimSpace(p[colonIdx+1:])
 								}
+								pName = strings.TrimSuffix(pName, "?")
 								if pName != "" {
 									params = append(params, paramInfo{name: pName, paramType: pType})
 								}
@@ -69,14 +71,16 @@ func findCurrentFunctionParams(lines []string, currentLine int) []paramInfo {
 					if m := reLambda.FindStringSubmatch(lines[i]); len(m) > 1 {
 						paramStr := strings.TrimSpace(m[1])
 						if paramStr != "" {
-							for _, p := range strings.Split(paramStr, ",") {
+							for _, p := range splitParamsRespectingBraces(paramStr) {
 								p = strings.TrimSpace(p)
-								parts := strings.Split(p, ":")
-								pName := strings.TrimSpace(parts[0])
+								colonIdx := strings.Index(p, ":")
+								pName := p
 								pType := "any"
-								if len(parts) > 1 {
-									pType = strings.TrimSpace(parts[1])
+								if colonIdx != -1 {
+									pName = strings.TrimSpace(p[:colonIdx])
+									pType = strings.TrimSpace(p[colonIdx+1:])
 								}
+								pName = strings.TrimSuffix(pName, "?")
 								if pName != "" {
 									params = append(params, paramInfo{name: pName, paramType: pType})
 								}

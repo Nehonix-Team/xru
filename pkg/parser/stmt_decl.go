@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
@@ -46,12 +47,7 @@ func (p *Parser) parseArgStatement() *ast.ArgStatement {
 
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // mange ':'
-		if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.MAP) {
-			p.nextToken()
-			stmt.Type = p.curToken.Literal
-		} else {
-			return nil
-		}
+		stmt.Type = p.parseTypeAnnotation()
 	}
 
 	if p.peekTokenIs(lexer.OR) || p.peekTokenIs(lexer.ASSIGN) {
@@ -80,25 +76,7 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // mange ':'
-		if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.MAP) {
-			p.nextToken()
-		} else {
-			return nil
-		}
-		typeStr := p.curToken.Literal
-		if p.peekTokenIs(lexer.LBRACKET) {
-			typeStr += "["
-			p.nextToken() // saute '['
-			for !p.curTokenIs(lexer.RBRACKET) && !p.curTokenIs(lexer.EOF) {
-				p.nextToken()
-				if p.curTokenIs(lexer.RBRACKET) {
-					break
-				}
-				typeStr += p.curToken.Literal
-			}
-			typeStr += "]"
-		}
-		stmt.Type = typeStr
+		stmt.Type = p.parseTypeAnnotation()
 	}
 
 	if !p.expectPeek(lexer.ASSIGN) {
@@ -245,17 +223,26 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 
 	if p.peekTokenIs(lexer.DOUBLE_COLON) {
 		p.nextToken() // saute '::'
-		if p.peekTokenIs(lexer.LPAREN) {
-			p.nextToken() // saute '('
-			p.nextToken() // premier token dans '('
-			for !p.curTokenIs(lexer.RPAREN) && !p.curTokenIs(lexer.EOF) {
-				if p.curTokenIs(lexer.IDENT) {
-					stmt.Members = append(stmt.Members, p.curToken.Literal)
-				}
-				if p.peekTokenIs(lexer.COMMA) {
+		if p.peekTokenIs(lexer.AT) {
+			p.nextToken() // saute '@'
+			if !p.peekTokenIs(lexer.MAP) && !(p.peekTokenIs(lexer.IDENT) && strings.ToLower(p.peekToken.Literal) == "map") {
+				p.addError(p.curToken.Pos, "expected 'map' after '@'")
+				return nil
+			}
+			p.nextToken() // saute 'map'
+			stmt.AsMap = true
+			if p.peekTokenIs(lexer.LBRACE) {
+				p.nextToken() // saute '{'
+				p.nextToken()
+				for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+					if p.curTokenIs(lexer.IDENT) {
+						stmt.Members = append(stmt.Members, p.curToken.Literal)
+					}
+					if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
+						p.nextToken()
+					}
 					p.nextToken()
 				}
-				p.nextToken()
 			}
 		} else if p.expectPeek(lexer.IDENT) {
 			stmt.Member = p.curToken.Literal
@@ -272,5 +259,75 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 		stmt.Alias = p.curToken.Literal
 	}
 	return stmt
+}
+
+// interface Name @map { field: type, ... } ou type Name = @map { ... }
+func (p *Parser) parseInterfaceStatement() *ast.InterfaceStatement {
+	stmt := &ast.InterfaceStatement{Position: p.curToken.Pos}
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	stmt.Name = p.curToken.Literal
+
+	// 'type Name = ...' : saute '='
+	if p.peekTokenIs(lexer.ASSIGN) {
+		p.nextToken()
+	}
+
+	// Support de '@map' (ex: type Name = @map { ... } ou interface Name @map { ... })
+	if p.peekTokenIs(lexer.AT) {
+		p.nextToken() // curToken devient '@'
+		if !p.expectPeek(lexer.MAP) && !(p.curTokenIs(lexer.IDENT) && strings.ToLower(p.curToken.Literal) == "map") {
+			p.addError(p.curToken.Pos, "type definition must specify '@map'")
+			return nil
+		}
+	}
+
+	if !p.expectPeek(lexer.LBRACE) {
+		return nil
+	}
+
+	stmt.Fields = p.parseInterfaceFields()
+	return stmt
+}
+
+func (p *Parser) parseInterfaceFields() []*ast.InterfaceField {
+	var fields []*ast.InterfaceField
+	p.nextToken() // saute '{'
+
+	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		if p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
+		if p.curTokenIs(lexer.IDENT) {
+			field := &ast.InterfaceField{
+				Position: p.curToken.Pos,
+				Name:     p.curToken.Literal,
+			}
+			if p.peekTokenIs(lexer.QUESTION) {
+				field.Optional = true
+				p.nextToken() // saute '?'
+			}
+
+			// ':' optionnel
+			if p.peekTokenIs(lexer.COLON) {
+				p.nextToken() // saute ':'
+			}
+
+			// Type du champ
+			field.Type = p.parseTypeAnnotation()
+			if strings.HasSuffix(field.Type, "?") {
+				field.Optional = true
+				field.Type = strings.TrimSuffix(field.Type, "?")
+			}
+			fields = append(fields, field)
+		}
+		if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+		}
+		p.nextToken()
+	}
+	return fields
 }
 

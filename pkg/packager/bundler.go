@@ -465,6 +465,9 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 	case *ast.FromUseStatement:
 		return "" // Strip from...use statements in bundled package
 
+	case *ast.InterfaceStatement:
+		return "" // Strip interface definitions in bundled package
+
 	case *ast.VarStatement:
 		kw := "let"
 		if s.IsConst {
@@ -793,6 +796,15 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 
 	case *ast.InstantiationExpression:
 		return fmt.Sprintf("@%s()", e.UnitName)
+
+	case *ast.MapLiteral:
+		var pairs []string
+		for _, p := range e.Pairs {
+			kStr := m.minifyExpression(p.Key)
+			vStr := m.minifyExpression(p.Value)
+			pairs = append(pairs, fmt.Sprintf("%s:%s", kStr, vStr))
+		}
+		return fmt.Sprintf("{%s}", strings.Join(pairs, ","))
 
 	default:
 		return e.String()

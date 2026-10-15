@@ -35,31 +35,84 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 		c.Check(prog)
 	}
 
-	// 1. Si l'expression est qualifiée avec un point (ex: Crypto.GetRandomBytes ou content.getJson)
-	if strings.Contains(fullExpr, ".") {
-		parts := strings.Split(fullExpr, ".")
-		objectName := parts[0]
-		if objectName != "" && objectName != "string" && objectName != "list" && !strings.HasPrefix(objectName, "\"") && !strings.HasPrefix(objectName, "'") {
-			if c != nil {
-				inScope := false
-				if _, ok := c.GetScope().Resolve(objectName); ok {
-					inScope = true
-				} else {
-					for _, d := range c.AllDeclaredVars() {
-						if d.Name == objectName {
-							inScope = true
-							break
+	lines := strings.Split(text, "\n")
+	var curLine string
+	if pos.Line >= 0 && pos.Line < len(lines) {
+		curLine = lines[pos.Line]
+	}
+
+	// 0. Hover on property key inside a typed map literal: e.g. `a: 6` in `const data: TExample = { a: 6 }`
+	if curLine != "" && !strings.Contains(fullExpr, ".") {
+		reKey := regexp.MustCompile(fmt.Sprintf(`^\s*(%s)\s*(?::|->)`, regexp.QuoteMeta(word)))
+		if matchLoc := reKey.FindStringSubmatchIndex(curLine); matchLoc != nil && len(matchLoc) >= 4 {
+			if pos.Character >= matchLoc[2] && pos.Character <= matchLoc[3] {
+				mapStartLine := -1
+				depth := 0
+				for l := pos.Line; l >= 0; l-- {
+					line := lines[l]
+					for _, r := range line {
+						if r == '{' {
+							depth++
+						} else if r == '}' {
+							depth--
+						}
+					}
+					if depth > 0 && (strings.Contains(line, "@map") || strings.Contains(line, "=")) {
+						mapStartLine = l
+						break
+					}
+				}
+				if mapStartLine != -1 {
+					expectedType := resolveExpectedMapType(lines, mapStartLine, filename)
+					if expectedType != "" {
+						if propInfo := findPropertyDeclaration(lines, expectedType, word, uri); propInfo != nil {
+							return formatPropertyHover(propInfo)
 						}
 					}
 				}
-				if !inScope {
-					lines := strings.Split(text, "\n")
-					if vInfo := findVariableTargetInfo(lines, objectName); vInfo != nil {
-						inScope = true
+			}
+		}
+	}
+
+	// 1. Hover on property or method via dot access (e.g. data.a, validExample.c, opts.silent, $f{params.a})
+	if strings.Contains(fullExpr, ".") {
+		dotIdx := strings.LastIndex(fullExpr, ".")
+		rawObj := strings.TrimSpace(fullExpr[:dotIdx])
+		memberName := strings.TrimSpace(fullExpr[dotIdx+1:])
+		rawObj = strings.TrimPrefix(rawObj, "$f{")
+		rawObj = strings.TrimPrefix(rawObj, "${")
+		rawObj = strings.TrimPrefix(rawObj, "{")
+
+		if rawObj != "" && memberName != "" {
+			if vInfo := findVariableTargetInfo(lines, rawObj); vInfo != nil {
+				targetType := vInfo.interfaceName
+				if targetType == "" {
+					targetType = vInfo.unitType
+				}
+				if targetType != "" {
+					if propInfo := findPropertyDeclaration(lines, targetType, memberName, uri); propInfo != nil {
+						return formatPropertyHover(propInfo)
 					}
 				}
-				if !inScope {
-					return nil
+				if vInfo.isString {
+					if doc, ok := StringMethodsDocs[memberName]; ok {
+						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
+					}
+				}
+				if vInfo.isNumber {
+					if doc, ok := NumberMethodsDocs[memberName]; ok {
+						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
+					}
+				}
+				if vInfo.isList {
+					if doc, ok := ListMethodsDocs[memberName]; ok {
+						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
+					}
+				}
+				if vInfo.isMap {
+					if doc, ok := MapMethodsDocs[memberName]; ok {
+						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
+					}
 				}
 			}
 		}
@@ -76,7 +129,6 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 		parts := strings.Split(fullExpr, ".")
 		objectName := parts[0]
 		methodName := parts[1]
-		lines := strings.Split(text, "\n")
 		if vInfo := findVariableTargetInfo(lines, objectName); vInfo != nil && vInfo.unitType != "" {
 			lookupExpr = vInfo.unitType + "." + methodName
 		} else if c != nil {
@@ -366,7 +418,11 @@ func extractDocComment(fileContent string, targetLine int) string {
 		return ""
 	}
 	lines := strings.Split(fileContent, "\n")
-	idx := targetLine - 2 // 0-indexed line immediately before declaration
+	return extractDocCommentForLine(lines, targetLine-1)
+}
+
+func extractDocCommentForLine(lines []string, declLine0Idx int) string {
+	idx := declLine0Idx - 1
 	if idx < 0 || idx >= len(lines) {
 		return ""
 	}
@@ -427,3 +483,28 @@ func extractDocComment(fileContent string, targetLine int) string {
 
 	return strings.Join(commentLines, "\n\n")
 }
+
+func formatPropertyHover(propInfo *PropertyInfo) *Hover {
+	var md strings.Builder
+	if propInfo.IsMethod {
+		sig := strings.TrimPrefix(propInfo.PropType, "func")
+		sig = strings.TrimSpace(sig)
+		md.WriteString(fmt.Sprintf("```xru\n(method) %s.%s%s\n```\n", propInfo.TypeName, propInfo.PropName, sig))
+	} else {
+		opt := ""
+		if propInfo.IsOptional {
+			opt = "?"
+		}
+		md.WriteString(fmt.Sprintf("```xru\n(property) %s.%s%s: %s\n```\n", propInfo.TypeName, propInfo.PropName, opt, propInfo.PropType))
+	}
+	if propInfo.Doc != "" {
+		md.WriteString("\n" + propInfo.Doc + "\n")
+	}
+	return &Hover{
+		Contents: MarkupContent{
+			Kind:  "markdown",
+			Value: md.String(),
+		},
+	}
+}
+

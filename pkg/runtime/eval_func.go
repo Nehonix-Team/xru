@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 
@@ -30,8 +31,14 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		if strVal, ok := objVal.(StringValue); ok {
 			return ev.evalStringMethod(c, strVal, call.Arguments, env)
 		}
+		if numVal, ok := objVal.(NumberValue); ok {
+			return ev.evalNumberMethod(c, numVal, call.Arguments, env)
+		}
 		if listVal, ok := objVal.(ListValue); ok {
 			return ev.evalListMethod(c, listVal, call.Arguments, env)
+		}
+		if mapVal, ok := objVal.(MapValue); ok {
+			return ev.evalMapMethod(c, mapVal, call.Arguments, env)
 		}
 		unit, ok := objVal.(*UnitInstance)
 		if !ok {
@@ -176,10 +183,20 @@ func (ev *Evaluator) evalFunc(fn *ast.FuncStatement, env *Environment) (Value, e
 }
 
 func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *Environment) (Value, error) {
-	expectedCount := len(fn.Stmt.Parameters)
+	minArgs := 0
+	maxArgs := len(fn.Stmt.Parameters)
+	for _, p := range fn.Stmt.Parameters {
+		if !p.Optional && !strings.HasSuffix(p.Type, "?") {
+			minArgs++
+		}
+	}
+
 	actualCount := len(args)
-	if actualCount != expectedCount {
-		return NilValue{}, fmt.Errorf("function '%s' expects %d arguments, but got %d", fn.Stmt.Name, expectedCount, actualCount)
+	if actualCount < minArgs || actualCount > maxArgs {
+		if minArgs == maxArgs {
+			return NilValue{}, fmt.Errorf("function '%s' expects %d arguments, but got %d", fn.Stmt.Name, minArgs, actualCount)
+		}
+		return NilValue{}, fmt.Errorf("function '%s' expects between %d and %d arguments, but got %d", fn.Stmt.Name, minArgs, maxArgs, actualCount)
 	}
 
 	fnEnv := NewBlockEnvironment(fn.Env)
@@ -210,13 +227,32 @@ func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *
 		}
 	}
 	for i, param := range fn.Stmt.Parameters {
-		argVal := args[i]
-		if param.Type != "" && param.Type != "any" {
-			if !valMatchesType(argVal, param.Type) {
+		var argVal Value = NilValue{}
+		if i < len(args) {
+			argVal = args[i]
+		}
+		isOpt := param.Optional || strings.HasSuffix(param.Type, "?")
+		if i >= len(args) || argVal == (NilValue{}) {
+			if !isOpt {
+				return NilValue{}, fmt.Errorf("missing required argument %d ('%s') of function '%s'", i+1, param.Name, fn.Stmt.Name)
+			}
+		} else if param.Type != "" && param.Type != "any" {
+			cleanType := strings.TrimSuffix(param.Type, "?")
+			if !ev.valMatchesType(argVal, cleanType) {
 				return NilValue{}, fmt.Errorf("argument %d ('%s') of function '%s' expects type '%s', got '%s'", i+1, param.Name, fn.Stmt.Name, param.Type, argVal.Type())
 			}
 		}
+		if mp, ok := argVal.(MapValue); ok {
+			cleanType := strings.TrimSuffix(param.Type, "?")
+			if mp.InterfaceName == "" {
+				mp.InterfaceName = cleanType
+			}
+			argVal = mp
+		}
 		_ = fnEnv.Set(param.Name, argVal, false)
+		if param.Type != "" {
+			fnEnv.SetVariableType(param.Name, param.Type)
+		}
 	}
 
 	var retVal Value = NilValue{}
@@ -235,10 +271,11 @@ func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *
 
 	expectedRet := fn.Stmt.ReturnType
 	if expectedRet != "" && expectedRet != "void" {
+		expectedRet = ev.resolveType(expectedRet)
 		if !hasReturn {
 			return NilValue{}, fmt.Errorf("function '%s' declared return type '%s' but did not return a value", fn.Stmt.Name, expectedRet)
 		}
-		if !valMatchesType(retVal, expectedRet) {
+		if !ev.valMatchesType(retVal, expectedRet) {
 			return NilValue{}, fmt.Errorf("function '%s' returned value of type '%s', expected '%s'", fn.Stmt.Name, retVal.Type(), expectedRet)
 		}
 		return retVal, nil
@@ -508,3 +545,98 @@ func resolveFsPathArgs(methodName string, args []Value, currentDir string) {
 		}
 	}
 }
+
+func (ev *Evaluator) evalNumberMethod(c *ast.MemberExpression, numVal NumberValue, rawArgs []ast.Expression, env *Environment) (Value, error) {
+	var args []Value
+	for _, arg := range rawArgs {
+		a, err := ev.Eval(arg, env)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, a)
+	}
+	switch strings.ToLower(c.Property) {
+	case "abs":
+		return NumberValue{Val: math.Abs(numVal.Val)}, nil
+	case "floor":
+		return NumberValue{Val: math.Floor(numVal.Val)}, nil
+	case "ceil":
+		return NumberValue{Val: math.Ceil(numVal.Val)}, nil
+	case "round":
+		return NumberValue{Val: math.Round(numVal.Val)}, nil
+	case "int":
+		return NumberValue{Val: float64(int64(numVal.Val))}, nil
+	case "tostring", "to_string":
+		return StringValue{Val: fmt.Sprintf("%v", numVal.Val)}, nil
+	case "fixed":
+		digits := 2
+		if len(args) > 0 {
+			if d, ok := args[0].(NumberValue); ok {
+				digits = int(d.Val)
+			}
+		}
+		return StringValue{Val: fmt.Sprintf("%.*f", digits, numVal.Val)}, nil
+	default:
+		return nil, fmt.Errorf("method '%s' not found on number", c.Property)
+	}
+}
+
+func (ev *Evaluator) evalMapMethod(c *ast.MemberExpression, mapVal MapValue, rawArgs []ast.Expression, env *Environment) (Value, error) {
+	var args []Value
+	for _, arg := range rawArgs {
+		a, err := ev.Eval(arg, env)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, a)
+	}
+	switch strings.ToLower(c.Property) {
+	case "keys":
+		var keys []Value
+		for k := range mapVal.Pairs {
+			keys = append(keys, StringValue{Val: k})
+		}
+		return ListValue{Elements: keys}, nil
+	case "values":
+		var vals []Value
+		for _, v := range mapVal.Pairs {
+			vals = append(vals, v)
+		}
+		return ListValue{Elements: vals}, nil
+	case "entries":
+		var entries []Value
+		for k, v := range mapVal.Pairs {
+			entries = append(entries, MapValue{
+				Pairs: map[string]Value{
+					"key":   StringValue{Val: k},
+					"value": v,
+				},
+			})
+		}
+		return ListValue{Elements: entries}, nil
+	case "has":
+		if len(args) < 1 {
+			return nil, fmt.Errorf("method 'has' requires 1 argument (key: string)")
+		}
+		key := args[0].String()
+		_, exists := mapVal.Pairs[key]
+		return BoolValue{Val: exists}, nil
+	case "len", "size":
+		return NumberValue{Val: float64(len(mapVal.Pairs))}, nil
+	case "delete":
+		if len(args) < 1 {
+			return nil, fmt.Errorf("method 'delete' requires 1 argument (key: string)")
+		}
+		key := args[0].String()
+		delete(mapVal.Pairs, key)
+		return NilValue{}, nil
+	case "clear":
+		for k := range mapVal.Pairs {
+			delete(mapVal.Pairs, k)
+		}
+		return NilValue{}, nil
+	default:
+		return nil, fmt.Errorf("method '%s' not found on map", c.Property)
+	}
+}
+

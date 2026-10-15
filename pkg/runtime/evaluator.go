@@ -23,11 +23,12 @@ type Evaluator struct {
 	treeDispatcher TreeDispatcherFunc
 	loadedModules  map[string]*UnitInstance
 	loadingModules map[string]bool
+	interfaces     map[string]*ast.InterfaceStatement
 }
 
 func isBuiltinUnit(name string) bool {
 	switch strings.ToLower(name) {
-	case "std", "net", "fs", "crypto", "sys", "cmd", "path", "local", "json", "math":
+	case "std", "net", "fs", "crypto", "sys", "cmd", "path", "local", "json", "math", "date":
 		return true
 	}
 	return false
@@ -38,6 +39,7 @@ func NewEvaluator() *Evaluator {
 		builtins:       NewBuiltinUnits(),
 		loadedModules:  make(map[string]*UnitInstance),
 		loadingModules: make(map[string]bool),
+		interfaces:     make(map[string]*ast.InterfaceStatement),
 	}
 }
 
@@ -54,8 +56,17 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		if err != nil {
 			return nil, err
 		}
-		if n.Type != "" && !valMatchesType(val, n.Type) {
+		if n.Type != "" && !ev.valMatchesType(val, n.Type) {
 			return nil, fmt.Errorf("cannot assign value of type '%s' to variable '%s' declared as '%s'", val.Type(), n.Name, n.Type)
+		}
+		if mp, ok := val.(MapValue); ok && n.Type != "" {
+			if mp.InterfaceName == "" {
+				mp.InterfaceName = n.Type
+			}
+			val = mp
+		}
+		if n.Type != "" {
+			env.SetVariableType(n.Name, n.Type)
 		}
 		if n.IsGlobal {
 			if env.IsBlockScope() {
@@ -87,9 +98,15 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return val, nil
 	case *ast.ArgStatement:
 		targetVar := n.VarName()
+		if n.Type != "" {
+			env.SetVariableType(targetVar, n.Type)
+			if targetVar != n.Name {
+				env.SetVariableType(n.Name, n.Type)
+			}
+		}
 		// S'il existe déjà dans l'environnement (fourni par les CLI args via Name ou Alias), on le valide
 		if v, exists := env.Get(n.Name); exists {
-			if n.Type != "" && !valMatchesType(v, n.Type) {
+			if n.Type != "" && !ev.valMatchesType(v, n.Type) {
 				return nil, fmt.Errorf("argument '%s' of type '%s' received invalid value of type '%s'", n.Name, n.Type, v.Type())
 			}
 			if targetVar != n.Name {
@@ -107,7 +124,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			return v, nil
 		}
 		if v, exists := env.Get(targetVar); exists {
-			if n.Type != "" && !valMatchesType(v, n.Type) {
+			if n.Type != "" && !ev.valMatchesType(v, n.Type) {
 				return nil, fmt.Errorf("argument '%s' of type '%s' received invalid value of type '%s'", targetVar, n.Type, v.Type())
 			}
 			if n.IsGlobal {
@@ -124,7 +141,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			if err != nil {
 				return nil, err
 			}
-			if n.Type != "" && !valMatchesType(val, n.Type) {
+			if n.Type != "" && !ev.valMatchesType(val, n.Type) {
 				return nil, fmt.Errorf("argument '%s' of type '%s' has default value of type '%s'", targetVar, n.Type, val.Type())
 			}
 			if n.IsGlobal {
@@ -167,6 +184,12 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		if !found {
 			return nil, fmt.Errorf("module '%s' does not exist", unitName)
 		}
+		return NilValue{}, nil
+	case *ast.InterfaceStatement:
+		if ev.interfaces == nil {
+			ev.interfaces = make(map[string]*ast.InterfaceStatement)
+		}
+		ev.interfaces[n.Name] = n
 		return NilValue{}, nil
 	case *ast.UnitStatement:
 		// Enregistre la définition de l'unité
@@ -557,6 +580,30 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			return NilValue{}, nil
 		}
 
+		// Cas 2c: module complet sous forme de MapValue (gArgs::@map as args)
+		if n.AsMap && len(n.Members) == 0 {
+			unit, err := loadModuleInstance(n.Module)
+			if err != nil {
+				return nil, err
+			}
+			mapPairs := make(map[string]Value)
+			for k, v := range unit.Properties {
+				mapPairs[k] = v
+			}
+			for k, method := range unit.Methods {
+				mapPairs[k] = FunctionValue{Name: k, Fn: method}
+			}
+			mapVal := MapValue{Pairs: mapPairs}
+			targetName := n.Module
+			if n.Alias != "" {
+				targetName = n.Alias
+			}
+			if err := env.Set(targetName, mapVal, false); err != nil {
+				return nil, err
+			}
+			return mapVal, nil
+		}
+
 		// Cas 3: module complet (auth as a ou auth)
 		alias := n.Alias
 		if alias == "" {
@@ -587,6 +634,35 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		if mp, ok := obj.(MapValue); ok {
 			if val, exists := mp.Pairs[n.Property]; exists {
 				return val, nil
+			}
+			ifaceName := mp.InterfaceName
+			if ifaceName == "" {
+				if ident, ok := n.Object.(*ast.Identifier); ok {
+					ifaceName, _ = env.GetVariableType(ident.Value)
+				}
+			}
+			if ifaceName != "" {
+				cleanIface := strings.TrimSuffix(ifaceName, "?")
+				cleanIface = ev.resolveType(cleanIface)
+				if ev.interfaces != nil {
+					if iface, ok := ev.interfaces[cleanIface]; ok {
+						for _, f := range iface.Fields {
+							if f.Name == n.Property {
+								return NilValue{}, nil
+							}
+						}
+						return nil, fmt.Errorf("property '%s' does not exist on type '%s'", n.Property, cleanIface)
+					}
+				}
+				if strings.HasPrefix(cleanIface, "@map") && strings.Contains(cleanIface, "{") {
+					fields := parseInlineMapFieldDefsRuntime(cleanIface)
+					for _, f := range fields {
+						if f.Name == n.Property {
+							return NilValue{}, nil
+						}
+					}
+					return nil, fmt.Errorf("property '%s' does not exist on type '%s'", n.Property, cleanIface)
+				}
 			}
 			return NilValue{}, nil
 		}
@@ -622,13 +698,177 @@ func (ev *Evaluator) evalProgram(prog *ast.Program, env *Environment) (Value, er
 	return result, nil
 }
 
-func valMatchesType(val Value, expected string) bool {
+func (ev *Evaluator) resolveType(typeName string) string {
+	typeName = strings.TrimSpace(typeName)
+	if typeName == "" {
+		return "any"
+	}
+	if idx := strings.Index(typeName, "["); idx != -1 && strings.HasSuffix(typeName, "]") {
+		baseName := strings.TrimSpace(typeName[:idx])
+		key := strings.TrimSuffix(typeName[idx+1:], "]")
+		key = strings.Trim(strings.TrimSpace(key), "\"'")
+
+		if ev.interfaces != nil {
+			if iface, ok := ev.interfaces[baseName]; ok {
+				for _, f := range iface.Fields {
+					if f.Name == key {
+						return f.Type
+					}
+				}
+			}
+		}
+	}
+	return typeName
+}
+
+type runtimeInlineField struct {
+	Name     string
+	Type     string
+	Optional bool
+}
+
+func parseInlineMapFieldDefsRuntime(typeStr string) []runtimeInlineField {
+	var fields []runtimeInlineField
+	braceIdx := strings.Index(typeStr, "{")
+	closeIdx := strings.LastIndex(typeStr, "}")
+	if braceIdx == -1 || closeIdx == -1 || closeIdx <= braceIdx {
+		return fields
+	}
+	body := strings.TrimSpace(typeStr[braceIdx+1 : closeIdx])
+	parts := strings.Split(body, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		colonIdx := strings.Index(p, ":")
+		if colonIdx == -1 {
+			continue
+		}
+		namePart := strings.TrimSpace(p[:colonIdx])
+		typePart := strings.TrimSpace(p[colonIdx+1:])
+		optional := false
+		if strings.HasSuffix(namePart, "?") {
+			optional = true
+			namePart = strings.TrimSpace(strings.TrimSuffix(namePart, "?"))
+		}
+		if strings.HasSuffix(typePart, "?") {
+			optional = true
+			typePart = strings.TrimSpace(strings.TrimSuffix(typePart, "?"))
+		}
+		fields = append(fields, runtimeInlineField{
+			Name:     namePart,
+			Type:     typePart,
+			Optional: optional,
+		})
+	}
+	return fields
+}
+
+func (ev *Evaluator) valMatchesType(val Value, expected string) bool {
 	if expected == "" || expected == "any" {
 		return true
 	}
 	if val == nil {
 		return false
 	}
+	expected = strings.TrimSpace(expected)
+
+	if strings.HasSuffix(expected, "?") {
+		if val == (NilValue{}) {
+			return true
+		}
+		expected = strings.TrimSuffix(expected, "?")
+	} else if val == (NilValue{}) {
+		return false
+	}
+
+	expected = ev.resolveType(expected)
+
+	if strings.Contains(expected, " or ") {
+		parts := strings.Split(expected, " or ")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if ev.valMatchesType(val, part) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if strings.Contains(expected, "|") {
+		parts := strings.Split(expected, "|")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if ev.valMatchesType(val, part) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if (strings.HasPrefix(expected, "\"") && strings.HasSuffix(expected, "\"")) ||
+		(strings.HasPrefix(expected, "'") && strings.HasSuffix(expected, "'")) {
+		expectedLit := strings.Trim(expected, "\"'")
+		if sVal, ok := val.(StringValue); ok {
+			return sVal.Val == expectedLit
+		}
+		return false
+	}
+
+	if nVal, ok := val.(NumberValue); ok {
+		if expectedNum, err := strconv.ParseFloat(expected, 64); err == nil {
+			return nVal.Val == expectedNum
+		}
+	}
+
+	if ev.interfaces != nil {
+		if iface, ok := ev.interfaces[expected]; ok {
+			mp, isMap := val.(MapValue)
+			if !isMap {
+				return false
+			}
+			for _, field := range iface.Fields {
+				fieldVal, exists := mp.Pairs[field.Name]
+				isOpt := field.Optional || strings.HasSuffix(field.Type, "?")
+				if !exists || fieldVal == (NilValue{}) {
+					if !isOpt {
+						return false
+					}
+					continue
+				}
+				cleanFieldType := strings.TrimSuffix(field.Type, "?")
+				if !ev.valMatchesType(fieldVal, cleanFieldType) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+
+	if strings.HasPrefix(expected, "@map") && strings.Contains(expected, "{") {
+		mp, isMap := val.(MapValue)
+		if !isMap {
+			return false
+		}
+		fields := parseInlineMapFieldDefsRuntime(expected)
+		for _, field := range fields {
+			fieldVal, exists := mp.Pairs[field.Name]
+			isOpt := field.Optional || strings.HasSuffix(field.Type, "?")
+			if !exists || fieldVal == (NilValue{}) {
+				if !isOpt {
+					return false
+				}
+				continue
+			}
+			cleanFieldType := strings.TrimSuffix(field.Type, "?")
+			if !ev.valMatchesType(fieldVal, cleanFieldType) {
+				return false
+			}
+		}
+		return true
+	}
+
 	switch strings.ToLower(expected) {
 	case "string":
 		return val.Type() == ValString
@@ -644,8 +884,13 @@ func valMatchesType(val Value, expected string) bool {
 		return val.Type() == ValMap
 	case "function":
 		return val.Type() == "function"
+	case "void":
+		return val == (NilValue{})
 	default:
 		if strings.HasPrefix(expected, "list") && val.Type() == ValList {
+			return true
+		}
+		if strings.HasPrefix(expected, "func") && val.Type() == "function" {
 			return true
 		}
 		if strings.HasPrefix(expected, "task") && val.Type() == ValTask {
@@ -659,7 +904,7 @@ func valMatchesType(val Value, expected string) bool {
 				return strings.EqualFold(u.UnitName, expected)
 			}
 		}
-		return true
+		return false
 	}
 }
 

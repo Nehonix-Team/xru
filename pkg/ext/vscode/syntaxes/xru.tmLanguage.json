@@ -163,8 +163,16 @@
     "keywords_declaration": {
       "patterns": [
         {
+          "match": "\\b(interface)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(@map)?",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "entity.name.type.class.xru" },
+            "3": { "name": "storage.type.map.xru" }
+          }
+        },
+        {
           "name": "keyword.declaration.xru",
-          "match": "\\b(let|const|arg|declare|unit|func|directive|global)\\b"
+          "match": "\\b(let|const|arg|declare|unit|func|directive|global|interface)\\b"
         }
       ]
     },
@@ -205,7 +213,7 @@
       "patterns": [
         {
           "name": "entity.name.type.xru",
-          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task)\\b"
+          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task)\\b|@map"
         }
       ]
     },
@@ -213,7 +221,7 @@
       "patterns": [
         {
           "name": "support.class.builtin.xru",
-          "match": "\\b(std|Std|Fs|Net|Crypto|Local|Sys|Path|Json|Math)\\b"
+          "match": "\\b(std|Std|Fs|Net|Crypto|Local|Sys|Path|Json|Math|date|Date)\\b"
         },
         {
           "name": "support.function.builtin.xru",
@@ -288,6 +296,10 @@
         {
           "name": "keyword.operator.logical.xru",
           "match": "!|&&|\\|\\||\\bor\\b"
+        },
+        {
+          "name": "keyword.operator.optional.xru",
+          "match": "\\?"
         }
       ]
     },
@@ -315,6 +327,12 @@
     },
     "unit_instantiation": {
       "patterns": [
+        {
+          "match": "(@map)\\b",
+          "captures": {
+            "1": { "name": "storage.type.map.xru entity.name.type.xru" }
+          }
+        },
         {
           "match": "(@)([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {

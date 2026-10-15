@@ -127,9 +127,10 @@ type FromUseStatement struct {
 	Source   string   // e.g. "services"
 	Module   string   // e.g. "auth"
 	Member   string   // e.g. "b" (when from "services" use auth::b)
-	Members  []string // e.g. ["name", "xems"] (when from "services" use auth::{name, xems})
-	Alias    string   // e.g. "a" (when from "services" use auth as a)
+	Members  []string // e.g. ["name", "xems"] (when from "services" use auth::@map{name, xems})
+	Alias    string   // e.g. "a" (when from "services" use auth as a or auth::@map as a)
 	Modules  []string // e.g. ["auth", "cdn", "db"] (when from "services" use (auth, cdn, db))
+	AsMap    bool     // true when module::@map or module::@map{ ... }
 }
 
 func (s *FromUseStatement) statementNode()      {}
@@ -138,8 +139,17 @@ func (s *FromUseStatement) String() string {
 	if len(s.Modules) > 0 {
 		return fmt.Sprintf("from %q use (%s)", s.Source, strings.Join(s.Modules, ", "))
 	}
+	if s.AsMap {
+		if len(s.Members) > 0 {
+			return fmt.Sprintf("from %q use %s::@map{%s}", s.Source, s.Module, strings.Join(s.Members, ", "))
+		}
+		if s.Alias != "" {
+			return fmt.Sprintf("from %q use %s::@map as %s", s.Source, s.Module, s.Alias)
+		}
+		return fmt.Sprintf("from %q use %s::@map", s.Source, s.Module)
+	}
 	if len(s.Members) > 0 {
-		return fmt.Sprintf("from %q use %s::(%s)", s.Source, s.Module, strings.Join(s.Members, ", "))
+		return fmt.Sprintf("from %q use %s::@map{%s}", s.Source, s.Module, strings.Join(s.Members, ", "))
 	}
 	if s.Member != "" {
 		return fmt.Sprintf("from %q use %s::%s", s.Source, s.Module, s.Member)
@@ -149,6 +159,25 @@ func (s *FromUseStatement) String() string {
 	}
 	return fmt.Sprintf("from %q use %s", s.Source, s.Module)
 }
+
+// InterfaceStatement : interface Name @map { field: type, ... }
+type InterfaceStatement struct {
+	Position lexer.Position
+	Name     string
+	Fields   []*InterfaceField
+}
+
+type InterfaceField struct {
+	Position lexer.Position
+	Name     string
+	Type     string
+	Optional bool
+	Nested   *InterfaceStatement
+}
+
+func (s *InterfaceStatement) statementNode()      {}
+func (s *InterfaceStatement) Pos() lexer.Position { return s.Position }
+func (s *InterfaceStatement) String() string      { return fmt.Sprintf("interface %s @map { ... }", s.Name) }
 
 // VarStatement : let/const name: type = expr
 type VarStatement struct {
@@ -251,8 +280,9 @@ func (s *FuncStatement) String() string {
 }
 
 type Parameter struct {
-	Name string
-	Type string
+	Name     string
+	Type     string
+	Optional bool
 }
 
 // ReturnStatement : #RETURN expr

@@ -235,22 +235,37 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 
 	case *ast.MemberExpression:
 		c.checkExpression(e.Object)
+		var objType string
 		if ident, ok := e.Object.(*ast.Identifier); ok {
-			if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Kind == SymUnit {
-				if !IsBuiltinUnit(sym.Name) && !IsBuiltinUnit(sym.Type) {
-					c.addError(e.Pos(), "ERR_INVALID_MODULE_ACCESS",
-						fmt.Sprintf("Cannot access member '%s' on module '%s' with '.': use '::' syntax instead (e.g. %s::%s)", e.Property, sym.Name, sym.Name, e.Property))
-					return
-				}
-				if sym.Methods != nil {
-					if _, methodOk := sym.Methods[e.Property]; !methodOk {
-						if _, dirOk := sym.Directives[e.Property]; !dirOk {
-							c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
-								fmt.Sprintf("Method or property '%s' not found on unit '%s'", e.Property, sym.Name))
+			if sym, ok := c.scope.Resolve(ident.Value); ok {
+				sym.Used = true
+				if sym.Kind == SymUnit {
+					if !IsBuiltinUnit(sym.Name) && !IsBuiltinUnit(sym.Type) {
+						c.addError(e.Pos(), "ERR_INVALID_MODULE_ACCESS",
+							fmt.Sprintf("Cannot access member '%s' on module '%s' with '.': use '::' syntax instead (e.g. %s::%s)", e.Property, sym.Name, sym.Name, e.Property))
+						return
+					}
+					if sym.Methods != nil {
+						if _, methodOk := sym.Methods[e.Property]; !methodOk {
+							if _, dirOk := sym.Directives[e.Property]; !dirOk {
+								c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+									fmt.Sprintf("Method or property '%s' not found on unit '%s'", e.Property, sym.Name))
+							}
 						}
 					}
+					return
+				}
+				if sym.Type != "" && sym.Type != "any" {
+					objType = sym.Type
 				}
 			}
+		}
+		if objType == "" {
+			objType = c.inferType(e.Object)
+		}
+		objType = c.resolveType(objType)
+		if objType != "" && objType != "any" && objType != "map" && !strings.HasPrefix(objType, "list") && objType != "string" {
+			c.validatePropertyAccessOnType(e, objType)
 		}
 
 	case *ast.PrefixExpression:
@@ -259,6 +274,23 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	case *ast.InfixExpression:
 		c.checkExpression(e.Left)
 		c.checkExpression(e.Right)
+
+		if e.Operator == "==" || e.Operator == "!=" {
+			leftType := c.inferType(e.Left)
+			rightType := c.inferType(e.Right)
+
+			if leftType != "any" && rightType != "any" && leftType != "nil" && rightType != "null" && leftType != "null" && rightType != "nil" {
+				if !c.isTypeCompatible(leftType, rightType) && !c.isTypeCompatible(rightType, leftType) {
+					alwaysVal := "false"
+					if e.Operator == "!=" {
+						alwaysVal = "true"
+					}
+					c.addError(e.Pos(), "ERR_TYPE_MISMATCH",
+						fmt.Sprintf("Comparison condition will always be %s: types '%s' and '%s' have no overlap",
+							alwaysVal, leftType, rightType))
+				}
+			}
+		}
 
 	case *ast.Identifier:
 		if e.Value == "nil" || e.Value == "null" || e.Value == "true" || e.Value == "false" {
@@ -358,9 +390,26 @@ func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, sym *S
 	}
 	actualCount := len(call.Arguments)
 	expectedCount := len(sym.Params)
-	minArgs := expectedCount
-	if sym.MinArgs > 0 || (sym.MinArgs == 0 && sym.IsVariadic) {
-		minArgs = sym.MinArgs
+	minArgs := sym.MinArgs
+	hasOptional := sym.HasOptional
+
+	if !sym.IsVariadic && !hasOptional && expectedCount > 0 {
+		calcMin := 0
+		hasOpt := false
+		for _, p := range sym.Params {
+			if !p.Optional && !strings.HasSuffix(p.Type, "?") {
+				calcMin++
+			} else {
+				hasOpt = true
+			}
+		}
+		if hasOpt {
+			hasOptional = true
+			minArgs = calcMin
+		}
+	}
+	if !hasOptional && !sym.IsVariadic && sym.MinArgs == 0 {
+		minArgs = expectedCount
 	}
 
 	if sym.IsVariadic {
@@ -369,10 +418,10 @@ func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, sym *S
 				fmt.Sprintf("Function '%s' expects at least %d argument(s), but got %d", name, minArgs, actualCount))
 			return
 		}
-	} else if sym.HasOptional {
-		if actualCount < sym.MinArgs || actualCount > expectedCount {
+	} else if hasOptional {
+		if actualCount < minArgs || actualCount > expectedCount {
 			c.addError(call.Pos(), "ERR_ARG_COUNT",
-				fmt.Sprintf("Function '%s' expects %d to %d argument(s), but got %d", name, sym.MinArgs, expectedCount, actualCount))
+				fmt.Sprintf("Function '%s' expects %d to %d argument(s), but got %d", name, minArgs, expectedCount, actualCount))
 			return
 		}
 	} else {
@@ -384,13 +433,263 @@ func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, sym *S
 	}
 
 	for i, param := range sym.Params {
-		if i < actualCount && param.Type != "" && param.Type != "any" {
-			argType := c.inferType(call.Arguments[i])
-			if argType != "any" && !isTypeCompatible(param.Type, argType) {
-				c.addError(call.Arguments[i].Pos(), "ERR_TYPE_MISMATCH",
-					fmt.Sprintf("Argument %d ('%s') of function '%s' expects type '%s', got '%s'", i+1, param.Name, name, param.Type, argType))
+		if i < actualCount {
+			arg := call.Arguments[i]
+			paramType := param.Type
+			isOptional := param.Optional || strings.HasSuffix(paramType, "?")
+			if isOptional && !strings.HasSuffix(paramType, "?") {
+				paramType += "?"
+			}
+			resolvedParamType := c.resolveType(paramType)
+			cleanParamType := strings.TrimSuffix(resolvedParamType, "?")
+
+			// Si argument est nil/null et paramètre optionnel
+			if isOptional {
+				if ident, ok := arg.(*ast.Identifier); ok && (ident.Value == "nil" || ident.Value == "null") {
+					continue
+				}
+			}
+
+			// 1. Paramètre typé par une interface
+			if iface, ok := c.interfaces[cleanParamType]; ok {
+				c.validateArgAgainstInterface(arg, iface, param.Name, name, i+1, isOptional)
+				continue
+			}
+
+			// 2. Paramètre typé par une map inline @map{ ... }
+			if strings.HasPrefix(cleanParamType, "@map") && strings.Contains(cleanParamType, "{") {
+				c.validateArgAgainstInlineMap(arg, cleanParamType, param.Name, name, i+1, isOptional)
+				continue
+			}
+
+			// 3. Typage conventionnel
+			if resolvedParamType != "" && resolvedParamType != "any" {
+				argType := c.inferType(arg)
+				if !c.isTypeCompatible(resolvedParamType, argType) {
+					c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+						fmt.Sprintf("Argument %d ('%s') of function '%s' expects type '%s', got '%s'", i+1, param.Name, name, param.Type, argType))
+				}
 			}
 		}
+	}
+}
+
+func (c *Checker) validatePropertyAccessOnType(e *ast.MemberExpression, typeName string) {
+	typeName = strings.TrimSpace(typeName)
+	typeName = strings.TrimSuffix(typeName, "?")
+
+	// 1. Interface
+	if iface, ok := c.interfaces[typeName]; ok {
+		for _, f := range iface.Fields {
+			if f.Name == e.Property {
+				return
+			}
+		}
+		c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
+			fmt.Sprintf("Property '%s' does not exist on type '%s'", e.Property, typeName))
+		return
+	}
+
+	// 2. Inline map type: @map{ silent?: bool, retries: number }
+	if strings.HasPrefix(typeName, "@map") && strings.Contains(typeName, "{") {
+		fields := parseInlineMapFieldDefs(typeName)
+		for _, f := range fields {
+			if f.Name == e.Property {
+				return
+			}
+		}
+		c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
+			fmt.Sprintf("Property '%s' does not exist on inline map type '%s'", e.Property, typeName))
+		return
+	}
+}
+
+func (c *Checker) validateArgAgainstInterface(arg ast.Expression, iface *ast.InterfaceStatement, paramName, funcName string, argIdx int, isOptional bool) {
+	if isOptional {
+		if ident, ok := arg.(*ast.Identifier); ok && (ident.Value == "nil" || ident.Value == "null") {
+			return
+		}
+	}
+
+	mapLit, isLit := arg.(*ast.MapLiteral)
+	if isLit {
+		keys := make(map[string]ast.Expression)
+		for _, pair := range mapLit.Pairs {
+			if strLit, ok := pair.Key.(*ast.StringLiteral); ok {
+				keys[strLit.Value] = pair.Value
+			} else if ident, ok := pair.Key.(*ast.Identifier); ok {
+				keys[ident.Value] = pair.Value
+			}
+		}
+
+		for _, f := range iface.Fields {
+			valExpr, exists := keys[f.Name]
+			if !f.Optional && !strings.HasSuffix(f.Type, "?") {
+				if !exists {
+					c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+						fmt.Sprintf("Argument %d ('%s') of function '%s' expects interface '%s', but map is missing required property '%s'",
+							argIdx, paramName, funcName, iface.Name, f.Name))
+					continue
+				}
+			}
+			if exists {
+				expectedFieldType := c.resolveType(f.Type)
+
+				// 1. Si f.Type est une map inline ou interface et valExpr est un MapLiteral
+				if mapLit, isMap := valExpr.(*ast.MapLiteral); isMap {
+					if strings.HasPrefix(expectedFieldType, "@map") && strings.Contains(expectedFieldType, "{") {
+						c.validateArgAgainstInlineMap(mapLit, expectedFieldType, f.Name, funcName, argIdx, f.Optional)
+						continue
+					}
+					if c.interfaces != nil {
+						if subIface, ok := c.interfaces[expectedFieldType]; ok {
+							c.validateArgAgainstInterface(mapLit, subIface, f.Name, funcName, argIdx, f.Optional)
+							continue
+						}
+					}
+				}
+
+				// 2. Si f.Type est une signature de fonction: func(...) -> ReturnType
+				if lambda, isLambda := valExpr.(*ast.LambdaExpression); isLambda {
+					if arrowIdx := strings.Index(f.Type, "->"); arrowIdx != -1 {
+						expectedRet := strings.TrimSpace(f.Type[arrowIdx+2:])
+						actualRet := "void"
+						if lambda.Body != nil {
+							if block, isBlock := lambda.Body.(*ast.BlockStatement); isBlock {
+								for _, st := range block.Statements {
+									if retSt, ok := st.(*ast.ReturnStatement); ok && retSt.Value != nil {
+										actualRet = c.inferType(retSt.Value)
+										break
+									}
+								}
+							} else {
+								actualRet = c.inferType(lambda.Body)
+							}
+						}
+						if !c.isTypeCompatible(expectedRet, actualRet) {
+							c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+								fmt.Sprintf("Function in property '%s' returns type '%s', expected '%s'", f.Name, actualRet, expectedRet))
+							continue
+						}
+					}
+				}
+
+				valType := c.inferType(valExpr)
+				if !c.isTypeCompatible(expectedFieldType, valType) {
+					c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+						fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got '%s'",
+							f.Name, argIdx, paramName, f.Type, valType))
+				}
+			}
+		}
+		return
+	}
+
+	if ident, ok := arg.(*ast.Identifier); ok {
+		if sym, ok := c.scope.Resolve(ident.Value); ok {
+			sym.Used = true
+			if sym.Type != iface.Name {
+				c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+					fmt.Sprintf("Argument %d ('%s') of function '%s' expects interface '%s', got '%s' (type: '%s')",
+						argIdx, paramName, funcName, iface.Name, ident.Value, sym.Type))
+			}
+			return
+		}
+	}
+
+	argType := c.inferType(arg)
+	if !c.isTypeCompatible(iface.Name, argType) {
+		c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+			fmt.Sprintf("Argument %d ('%s') of function '%s' expects interface '%s', got '%s'",
+				argIdx, paramName, funcName, iface.Name, argType))
+	}
+}
+
+func (c *Checker) validateArgAgainstInlineMap(arg ast.Expression, typeStr, paramName, funcName string, argIdx int, isOptional bool) {
+	if isOptional {
+		if ident, ok := arg.(*ast.Identifier); ok && (ident.Value == "nil" || ident.Value == "null") {
+			return
+		}
+	}
+
+	fields := parseInlineMapFieldDefs(typeStr)
+	mapLit, isLit := arg.(*ast.MapLiteral)
+	if isLit {
+		keys := make(map[string]ast.Expression)
+		for _, pair := range mapLit.Pairs {
+			if strLit, ok := pair.Key.(*ast.StringLiteral); ok {
+				keys[strLit.Value] = pair.Value
+			} else if ident, ok := pair.Key.(*ast.Identifier); ok {
+				keys[ident.Value] = pair.Value
+			}
+		}
+
+		for _, f := range fields {
+			valExpr, exists := keys[f.Name]
+			if !f.Optional && !strings.HasSuffix(f.Type, "?") {
+				if !exists {
+					c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+						fmt.Sprintf("Argument %d ('%s') of function '%s' expects inline map, but map is missing required property '%s'",
+							argIdx, paramName, funcName, f.Name))
+					continue
+				}
+			}
+			if exists {
+				expectedFieldType := c.resolveType(f.Type)
+
+				if mapLit, isMap := valExpr.(*ast.MapLiteral); isMap {
+					if strings.HasPrefix(expectedFieldType, "@map") && strings.Contains(expectedFieldType, "{") {
+						c.validateArgAgainstInlineMap(mapLit, expectedFieldType, f.Name, funcName, argIdx, f.Optional)
+						continue
+					}
+					if c.interfaces != nil {
+						if subIface, ok := c.interfaces[expectedFieldType]; ok {
+							c.validateArgAgainstInterface(mapLit, subIface, f.Name, funcName, argIdx, f.Optional)
+							continue
+						}
+					}
+				}
+
+				if lambda, isLambda := valExpr.(*ast.LambdaExpression); isLambda {
+					if arrowIdx := strings.Index(f.Type, "->"); arrowIdx != -1 {
+						expectedRet := strings.TrimSpace(f.Type[arrowIdx+2:])
+						actualRet := "void"
+						if lambda.Body != nil {
+							if block, isBlock := lambda.Body.(*ast.BlockStatement); isBlock {
+								for _, st := range block.Statements {
+									if retSt, ok := st.(*ast.ReturnStatement); ok && retSt.Value != nil {
+										actualRet = c.inferType(retSt.Value)
+										break
+									}
+								}
+							} else {
+								actualRet = c.inferType(lambda.Body)
+							}
+						}
+						if !c.isTypeCompatible(expectedRet, actualRet) {
+							c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+								fmt.Sprintf("Function in property '%s' returns type '%s', expected '%s'", f.Name, actualRet, expectedRet))
+							continue
+						}
+					}
+				}
+
+				valType := c.inferType(valExpr)
+				if !c.isTypeCompatible(expectedFieldType, valType) {
+					c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+						fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got '%s'",
+							f.Name, argIdx, paramName, f.Type, valType))
+				}
+			}
+		}
+		return
+	}
+
+	argType := c.inferType(arg)
+	if !c.isTypeCompatible(typeStr, argType) {
+		c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+			fmt.Sprintf("Argument %d ('%s') of function '%s' expects inline map '%s', got '%s'",
+				argIdx, paramName, funcName, typeStr, argType))
 	}
 }
 
@@ -423,7 +722,7 @@ func (c *Checker) validateNativeMethodCall(call *ast.CallExpression, receiverTyp
 		param := spec.Params[i]
 		if param.Type != "" && param.Type != "any" {
 			argType := c.inferType(arg)
-			if argType != "any" && !isTypeCompatible(param.Type, argType) {
+			if argType != "any" && !c.isTypeCompatible(param.Type, argType) {
 				c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
 					fmt.Sprintf("Argument %d ('%s') of method '%s' expects type '%s', got '%s'", i+1, param.Name, methodName, param.Type, argType))
 			}

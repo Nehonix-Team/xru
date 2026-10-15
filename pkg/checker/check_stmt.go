@@ -8,36 +8,56 @@ import (
 )
 
 func (c *Checker) checkStatement(stmt ast.Statement) {
+	if stmt == nil {
+		return
+	}
 	switch s := stmt.(type) {
 	case *ast.UseStatement:
+		if s == nil { return }
 		c.checkUse(s)
 	case *ast.ArgStatement:
+		if s == nil { return }
 		c.checkArg(s)
 	case *ast.VarStatement:
+		if s == nil { return }
 		c.checkVar(s)
 	case *ast.UnitStatement:
+		if s == nil { return }
 		c.checkUnit(s)
+	case *ast.InterfaceStatement:
+		if s == nil { return }
+		c.checkInterface(s)
 	case *ast.WithStatement:
+		if s == nil { return }
 		c.checkWith(s)
 	case *ast.FuncStatement:
+		if s == nil { return }
 		c.checkFunc(s)
 	case *ast.IfStatement:
+		if s == nil { return }
 		c.checkIf(s)
 	case *ast.MapStatement:
+		if s == nil { return }
 		c.checkMap(s)
 	case *ast.ModStatement:
+		if s == nil { return }
 		c.checkMod(s)
 	case *ast.FromUseStatement:
+		if s == nil { return }
 		c.checkFromUse(s)
 	case *ast.ForStatement:
+		if s == nil { return }
 		c.checkFor(s)
 	case *ast.WhileStatement:
+		if s == nil { return }
 		c.checkWhile(s)
 	case *ast.BlockStatement:
+		if s == nil { return }
 		c.scope = NewScope(c.scope, false)
 		c.checkStatementList(s.Statements)
 		c.scope = c.scope.parent
 	case *ast.ExpressionStatement:
+		if s == nil || s.Expression == nil { return }
 		c.checkExpression(s.Expression)
 	case *ast.FileStatement:
 		if s.PathExpr != nil {
@@ -117,7 +137,7 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 				} else {
 					c.checkExpression(s.Value)
 					actualType := c.inferType(s.Value)
-					if !isTypeCompatible(expectedType, actualType) {
+					if !c.isTypeCompatible(expectedType, actualType) {
 						c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
 							fmt.Sprintf("Cannot return value of type '%s' from function '%s' expecting '%s'", actualType, c.currentFunc.Name, expectedType))
 					}
@@ -154,8 +174,20 @@ func (c *Checker) checkReassign(s *ast.ReassignStatement) {
 	c.checkExpression(s.Value)
 
 	if s.Value != nil && sym.Type != "" && sym.Type != "any" {
+		if mapLit, isMap := s.Value.(*ast.MapLiteral); isMap {
+			if c.interfaces != nil {
+				if iface, ok := c.interfaces[sym.Type]; ok {
+					c.validateArgAgainstInterface(mapLit, iface, s.Name, "assignment", 0, false)
+					return
+				}
+			}
+			if strings.HasPrefix(sym.Type, "@map") && strings.Contains(sym.Type, "{") {
+				c.validateArgAgainstInlineMap(mapLit, sym.Type, s.Name, "assignment", 0, false)
+				return
+			}
+		}
 		actualType := c.inferType(s.Value)
-		if !isTypeCompatible(sym.Type, actualType) {
+		if !c.isTypeCompatible(sym.Type, actualType) {
 			c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
 				fmt.Sprintf("Cannot assign expression of type '%s' to variable '%s' declared as '%s'", actualType, s.Name, sym.Type))
 		}
@@ -226,6 +258,9 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 		valStr = s.Value.String()
 	}
 	inferredType := s.Type
+	if s.Type != "" {
+		c.validateTypeAnnotation(s.Pos(), s.Type)
+	}
 	if inferredType == "" && s.Value != nil {
 		inferredType = c.inferType(s.Value)
 	}
@@ -251,8 +286,20 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 	c.checkExpression(s.Value)
 
 	if s.Value != nil && s.Type != "" {
+		if mapLit, isMap := s.Value.(*ast.MapLiteral); isMap {
+			if c.interfaces != nil {
+				if iface, ok := c.interfaces[s.Type]; ok {
+					c.validateArgAgainstInterface(mapLit, iface, s.Name, "assignment", 0, false)
+					return
+				}
+			}
+			if strings.HasPrefix(s.Type, "@map") && strings.Contains(s.Type, "{") {
+				c.validateArgAgainstInlineMap(mapLit, s.Type, s.Name, "assignment", 0, false)
+				return
+			}
+		}
 		actualType := c.inferType(s.Value)
-		if !isTypeCompatible(s.Type, actualType) {
+		if !c.isTypeCompatible(s.Type, actualType) {
 			c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
 				fmt.Sprintf("Cannot assign expression of type '%s' to variable '%s' declared as '%s'", actualType, s.Name, s.Type))
 		}
@@ -376,13 +423,31 @@ func (c *Checker) checkFunc(s *ast.FuncStatement) {
 		c.addError(s.Pos(), "ERR_GLOBAL_IN_BLOCK", "Cannot declare 'global/export func' inside a block, function, or loop. Global declarations are only permitted at the module root level.")
 	}
 
+	if s.ReturnType != "" {
+		c.validateTypeAnnotation(s.Pos(), s.ReturnType)
+	}
+	minArgs := 0
+	hasOptional := false
+	for _, p := range s.Parameters {
+		if p.Type != "" {
+			c.validateTypeAnnotation(s.Pos(), p.Type)
+		}
+		if !p.Optional && !strings.HasSuffix(p.Type, "?") {
+			minArgs++
+		} else {
+			hasOptional = true
+		}
+	}
+
 	fnSym := &Symbol{
-		Name:     s.Name,
-		Kind:     SymFunc,
-		Type:     s.ReturnType,
-		Pos:      s.Pos(),
-		Params:   s.Parameters,
-		IsGlobal: s.IsGlobal,
+		Name:        s.Name,
+		Kind:        SymFunc,
+		Type:        s.ReturnType,
+		Pos:         s.Pos(),
+		Params:      s.Parameters,
+		IsGlobal:    s.IsGlobal,
+		MinArgs:     minArgs,
+		HasOptional: hasOptional,
 	}
 	if err := c.scope.Define(fnSym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
@@ -397,7 +462,14 @@ func (c *Checker) checkFunc(s *ast.FuncStatement) {
 	defer func() { c.scope = c.scope.parent }()
 
 	for _, p := range s.Parameters {
-		paramSym := &Symbol{Name: p.Name, Kind: SymVar, Type: p.Type, Pos: s.Pos()}
+		paramType := p.Type
+		paramSym := &Symbol{
+			Name:     p.Name,
+			Kind:     SymVar,
+			Type:     paramType,
+			Pos:      s.Pos(),
+			Optional: p.Optional || strings.HasSuffix(paramType, "?"),
+		}
 		if err := c.scope.Define(paramSym); err != nil {
 			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 		}
@@ -405,6 +477,14 @@ func (c *Checker) checkFunc(s *ast.FuncStatement) {
 
 	for _, bodyStmt := range s.Body {
 		c.checkStatement(bodyStmt)
+	}
+
+	cleanRet := strings.TrimSpace(s.ReturnType)
+	if cleanRet != "" && !strings.EqualFold(cleanRet, "void") && cleanRet != "any" {
+		if !hasReturnStatement(s.Body) {
+			c.addError(s.Pos(), "ERR_MISSING_RETURN",
+				fmt.Sprintf("Function '%s' declares return type '%s' but has no return statement", s.Name, s.ReturnType))
+		}
 	}
 }
 
@@ -536,3 +616,63 @@ func (c *Checker) checkIn(stmt *ast.InStatement) {
 	}
 	c.scope = oldScope
 }
+
+func (c *Checker) checkInterface(s *ast.InterfaceStatement) {
+	if c.interfaces == nil {
+		c.interfaces = make(map[string]*ast.InterfaceStatement)
+	}
+	c.interfaces[s.Name] = s
+	fields := make(map[string]*Symbol)
+	for _, f := range s.Fields {
+		fields[f.Name] = &Symbol{
+			Name:     f.Name,
+			Kind:     SymVar,
+			Type:     f.Type,
+			Pos:      f.Position,
+			Optional: f.Optional,
+		}
+	}
+	sym := &Symbol{
+		Name:     s.Name,
+		Kind:     SymInterface,
+		Type:     s.Name,
+		Pos:      s.Pos(),
+		Methods:  fields,
+		IfaceDef: s,
+	}
+	if err := c.scope.Define(sym); err != nil {
+		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+	}
+}
+
+func hasReturnStatement(stmts []ast.Statement) bool {
+	for _, st := range stmts {
+		switch s := st.(type) {
+		case *ast.ReturnStatement:
+			return true
+		case *ast.BlockStatement:
+			if hasReturnStatement(s.Statements) {
+				return true
+			}
+		case *ast.IfStatement:
+			if hasReturnStatement(s.Consequence) || hasReturnStatement(s.Alternative) {
+				return true
+			}
+			for _, el := range s.ElifBlocks {
+				if hasReturnStatement(el.Body) {
+					return true
+				}
+			}
+		case *ast.ForStatement:
+			if hasReturnStatement(s.Body) {
+				return true
+			}
+		case *ast.WhileStatement:
+			if hasReturnStatement(s.Body) {
+				return true
+			}
+		}
+	}
+	return false
+}
+

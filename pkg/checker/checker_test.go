@@ -1,9 +1,12 @@
 package checker_test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/checker"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 	"github.com/Nehonix-Team/xru/pkg/parser"
@@ -57,15 +60,24 @@ let s = "$f{&baseDir}/target"
 	}
 
 	// 2. Test violation : Directive orpheline dans with Net
-	badCode2 := `
-use net as Net
-with Net.Fetch("https://example.com") {
-    unknown_dir "arg" -> "val"
-}
-`
-	l2 := lexer.New("bad2.xru", badCode2)
-	p2 := parser.New(l2)
-	prog2 := p2.ParseProgram()
+	prog2 := &ast.Program{
+		Statements: []ast.Statement{
+			&ast.UseStatement{Module: "net", Alias: "Net"},
+			&ast.WithStatement{
+				Target: &ast.CallExpression{
+					Caller: &ast.MemberExpression{
+						Object:   &ast.Identifier{Value: "Net"},
+						Property: "Fetch",
+					},
+				},
+				Body: []ast.Statement{
+					&ast.CustomDirectiveInvocation{
+						Directive: "unknown_dir",
+					},
+				},
+			},
+		},
+	}
 
 	c2 := checker.New()
 	c2.Check(prog2)
@@ -248,13 +260,21 @@ use Utils
 }
 
 func TestCheckerModulesAndStd(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "src", "services")
+	_ = os.MkdirAll(servicesDir, 0755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "_mod.xru"), []byte("map {\n    services -> \"./src/services/*\"\n}\n"), 0644)
+	_ = os.WriteFile(filepath.Join(servicesDir, "auth.xru"), []byte("global let b = 1\n"), 0644)
+	_ = os.WriteFile(filepath.Join(servicesDir, "cdn.xru"), []byte("global let c = 2\n"), 0644)
+	_ = os.WriteFile(filepath.Join(servicesDir, "db.xru"), []byte("global let d = 3\n"), 0644)
+
 	code := `
 use std
-std.println("Starting")
-
 from "services" use auth as a
 from "services" use auth::b
 from "services" use (cdn, db)
+
+std.println("Starting")
 `
 	l := lexer.New("test_mod.xru", code)
 	p := parser.New(l)
@@ -264,6 +284,7 @@ from "services" use (cdn, db)
 	}
 
 	c := checker.New()
+	c.SetCurrentFile(filepath.Join(tmpDir, "test_mod.xru"))
 	c.Check(prog)
 
 	if len(c.Errors()) > 0 {
@@ -322,6 +343,12 @@ mod _mod
 }
 
 func TestModuleResolutionErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "src", "services")
+	_ = os.MkdirAll(servicesDir, 0755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "_mod.xru"), []byte("map {\n    services -> \"./src/services/*\"\n}\n"), 0644)
+	_ = os.WriteFile(filepath.Join(servicesDir, "auth.xru"), []byte("global let validMember = 1\n"), 0644)
+
 	tests := []struct {
 		name        string
 		code        string
@@ -350,6 +377,7 @@ func TestModuleResolutionErrors(t *testing.T) {
 			p := parser.New(l)
 			prog := p.ParseProgram()
 			c := checker.New()
+			c.SetCurrentFile(filepath.Join(tmpDir, "test_err.xru"))
 			c.Check(prog)
 
 			found := false
@@ -490,11 +518,11 @@ std.println(usedVar)
 
 func TestIfExpressionChecker(t *testing.T) {
 	code := `
+use std
+
 let isProd = true
 let fallbackHost = "http://localhost:3000"
 let host: string = if isProd -> "https://api.xypriss.dev" else fallbackHost
-
-use std
 std.println(host)
 `
 	l := lexer.New("test_if_expr.xru", code)
@@ -520,8 +548,8 @@ std.println(host)
 
 func TestAsyncTaskChecker(t *testing.T) {
 	validCode := `
-use net as Net
 use std
+use net as Net
 let task = with Net.fetch("https://api.xypriss.dev/templates")
 let done = task.isDone()
 let res = task.wait()
@@ -810,4 +838,304 @@ let myName = name
 		t.Errorf("Expected unused import 'downloadRelease', got '%s'", unused[0].Name)
 	}
 }
+
+func TestStrictTypeValidationAndOptional(t *testing.T) {
+	// 1. Bare object syntax is rejected by parser
+	bareCode := `let obj = { a: 1 }`
+	pBare := parser.New(lexer.New("bare.xru", bareCode))
+	pBare.ParseProgram()
+	if len(pBare.Errors()) == 0 {
+		t.Fatal("Expected parser error for bare object syntax '{ ... }', got none")
+	}
+
+	// 2. Strict property access validation (ERR_NO_SUCH_PROPERTY)
+	codeProp := `
+type TExample = @map{
+    a: string,
+    c: number,
+}
+func test(params: TExample) {
+    let x = params.notExist
+}
+`
+	pProp := parser.New(lexer.New("prop.xru", codeProp))
+	cProp := checker.New()
+	cProp.Check(pProp.ParseProgram())
+	foundNoProp := false
+	for _, err := range cProp.Errors() {
+		if strings.Contains(err, "ERR_NO_SUCH_PROPERTY") && strings.Contains(err, "notExist") {
+			foundNoProp = true
+			break
+		}
+	}
+	if !foundNoProp {
+		t.Errorf("Expected ERR_NO_SUCH_PROPERTY for params.notExist, got errors: %v", cProp.Errors())
+	}
+
+	// 3. Strict call argument validation against interface (ERR_MISSING_REQUIRED_FIELD)
+	codeArg := `
+type TExample = @map{
+    a: string,
+    c: number,
+}
+func run(params: TExample) {}
+run(@map{ a: "hello" })
+`
+	pArg := parser.New(lexer.New("arg.xru", codeArg))
+	cArg := checker.New()
+	cArg.Check(pArg.ParseProgram())
+	foundMissing := false
+	for _, err := range cArg.Errors() {
+		if strings.Contains(err, "missing required property 'c'") {
+			foundMissing = true
+			break
+		}
+	}
+	if !foundMissing {
+		t.Errorf("Expected missing required property 'c', got errors: %v", cArg.Errors())
+	}
+
+	// 4. Return type indexed type resolution & validation
+	codeRetOk := `
+type TExample = @map{
+    c: number,
+}
+func getC(): TExample["c"] {
+    return 42
+}
+`
+	pRetOk := parser.New(lexer.New("ret_ok.xru", codeRetOk))
+	cRetOk := checker.New()
+	cRetOk.Check(pRetOk.ParseProgram())
+	if len(cRetOk.Errors()) > 0 {
+		t.Errorf("Expected 0 errors for indexed return type matching number, got: %v", cRetOk.Errors())
+	}
+
+	codeRetBad := `
+type TExample = @map{
+    c: number,
+}
+func getC(): TExample["c"] {
+    return "not a number"
+}
+`
+	pRetBad := parser.New(lexer.New("ret_bad.xru", codeRetBad))
+	cRetBad := checker.New()
+	cRetBad.Check(pRetBad.ParseProgram())
+	foundRetErr := false
+	for _, err := range cRetBad.Errors() {
+		if strings.Contains(err, "ERR_TYPE_MISMATCH") {
+			foundRetErr = true
+			break
+		}
+	}
+	if !foundRetErr {
+		t.Errorf("Expected ERR_TYPE_MISMATCH for invalid return type, got errors: %v", cRetBad.Errors())
+	}
+
+	// 5. Optional parameters support
+	codeOpt := `
+use std
+func greet(name: string, other: string?, opt2?: number) {
+    std.println(name)
+}
+greet("John")
+greet("John", "info")
+greet("John", "info", 123)
+`
+	pOpt := parser.New(lexer.New("opt.xru", codeOpt))
+	cOpt := checker.New()
+	cOpt.Check(pOpt.ParseProgram())
+	if len(cOpt.Errors()) > 0 {
+		t.Errorf("Expected 0 errors for optional parameters, got: %v", cOpt.Errors())
+	}
+}
+
+func TestIndexedTypePropertyNotFound(t *testing.T) {
+	code := `
+type TExample = @map{
+    a: string,
+    b: number,
+}
+func test() -> TExample["notFound"] {
+    return "ok"
+}
+`
+	p := parser.New(lexer.New("bad_idx.xru", code))
+	c := checker.New()
+	c.Check(p.ParseProgram())
+	found := false
+	for _, err := range c.Errors() {
+		if strings.Contains(err, "ERR_NO_SUCH_PROPERTY") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected ERR_NO_SUCH_PROPERTY for non-existent indexed property, got: %v", c.Errors())
+	}
+}
+
+func TestContradictoryComparison(t *testing.T) {
+	code := `
+type TOpts = @map{
+    silent?: "bool",
+}
+let opts: TOpts = @map{ silent: "bool" }
+if opts.silent == false {
+    let x = 1
+}
+`
+	p := parser.New(lexer.New("comp.xru", code))
+	c := checker.New()
+	c.Check(p.ParseProgram())
+	found := false
+	for _, err := range c.Errors() {
+		if strings.Contains(err, "ERR_TYPE_MISMATCH") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected ERR_TYPE_MISMATCH for contradictory comparison, got: %v", c.Errors())
+	}
+}
+
+func TestNestedMapAndLambdaReturnValidation(t *testing.T) {
+	code := `
+type TConfig = @map{
+    timeout: duration,
+    action: func() -> number,
+}
+let conf: TConfig = @map{
+    timeout: 12,
+    action: () -> "42",
+}
+`
+	p := parser.New(lexer.New("nested_map.xru", code))
+	c := checker.New()
+	c.Check(p.ParseProgram())
+	foundTimeoutErr := false
+	foundActionErr := false
+	for _, err := range c.Errors() {
+		if strings.Contains(err, "timeout") && strings.Contains(err, "expects type 'duration', got 'number'") {
+			foundTimeoutErr = true
+		}
+		if strings.Contains(err, "action") && (strings.Contains(err, "returns type 'string', expected 'number'") || strings.Contains(err, "ERR_TYPE_MISMATCH")) {
+			foundActionErr = true
+		}
+	}
+	if !foundTimeoutErr {
+		t.Errorf("Expected error for field timeout expects duration, got: %v", c.Errors())
+	}
+	if !foundActionErr {
+		t.Errorf("Expected error for field action lambda return type mismatch, got: %v", c.Errors())
+	}
+}
+
+func TestDateBuiltinChecker(t *testing.T) {
+	code := `
+use date
+let now = date.now()
+let iso = date.iso()
+let yr = date.year()
+let ts = date.timestamp()
+let added = date.add(now, 5, "days")
+let diffSec = date.diff(now, added, "seconds")
+`
+	p := parser.New(lexer.New("date_test.xru", code))
+	c := checker.New()
+	c.Check(p.ParseProgram())
+	if len(c.Errors()) > 0 {
+		t.Errorf("Expected 0 errors for valid date unit usage, got: %v", c.Errors())
+	}
+}
+
+func TestMissingReturnStatement(t *testing.T) {
+	code := `
+func compute() -> number {
+    let x = 10
+}
+`
+	p := parser.New(lexer.New("missing_ret.xru", code))
+	c := checker.New()
+	c.Check(p.ParseProgram())
+	found := false
+	for _, err := range c.Errors() {
+		if strings.Contains(err, "ERR_MISSING_RETURN") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected ERR_MISSING_RETURN for function with return type but no return, got: %v", c.Errors())
+	}
+}
+
+func TestImportAndModOrderStrictRules(t *testing.T) {
+	// 1. Mod after use -> ERR_MOD_ORDER
+	c1 := `
+use std
+mod myModule
+`
+	p1 := parser.New(lexer.New("t1.xru", c1))
+	chk1 := checker.New()
+	chk1.Check(p1.ParseProgram())
+	if !strings.Contains(strings.Join(chk1.Errors(), " "), "ERR_MOD_ORDER") {
+		t.Errorf("Expected ERR_MOD_ORDER when mod is placed after use, got: %v", chk1.Errors())
+	}
+
+	// 2. Native import after aliased import -> ERR_IMPORT_ORDER
+	c2 := `
+use net as Net
+use std
+`
+	p2 := parser.New(lexer.New("t2.xru", c2))
+	chk2 := checker.New()
+	chk2.Check(p2.ParseProgram())
+	if !strings.Contains(strings.Join(chk2.Errors(), " "), "ERR_IMPORT_ORDER") {
+		t.Errorf("Expected ERR_IMPORT_ORDER when native import is placed after aliased import, got: %v", chk2.Errors())
+	}
+
+	// 3. Import after code declaration -> ERR_IMPORT_ORDER
+	c3 := `
+let a = 1
+use std
+`
+	p3 := parser.New(lexer.New("t3.xru", c3))
+	chk3 := checker.New()
+	chk3.Check(p3.ParseProgram())
+	if !strings.Contains(strings.Join(chk3.Errors(), " "), "ERR_IMPORT_ORDER") {
+		t.Errorf("Expected ERR_IMPORT_ORDER when import is placed after code, got: %v", chk3.Errors())
+	}
+
+	// 4. Duplicate mod -> ERR_DUPLICATE_MOD
+	c4 := `
+mod first
+mod second
+`
+	p4 := parser.New(lexer.New("t4.xru", c4))
+	chk4 := checker.New()
+	chk4.Check(p4.ParseProgram())
+	if !strings.Contains(strings.Join(chk4.Errors(), " "), "ERR_DUPLICATE_MOD") {
+		t.Errorf("Expected ERR_DUPLICATE_MOD, got: %v", chk4.Errors())
+	}
+
+	// 5. Valid strict order: mod -> simple native imports -> aliased imports -> code -> 0 errors
+	c5 := `
+mod myModule
+use std
+use date
+use net as Net
+let x = 10
+`
+	p5 := parser.New(lexer.New("t5.xru", c5))
+	chk5 := checker.New()
+	chk5.Check(p5.ParseProgram())
+	if len(chk5.Errors()) > 0 {
+		t.Errorf("Expected 0 errors for valid import order, got: %v", chk5.Errors())
+	}
+}
+
+
 

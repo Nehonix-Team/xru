@@ -16,6 +16,7 @@ type Checker struct {
 	availableModules map[string]*Symbol
 	hasModStmt       bool
 	declaredVars     []*Symbol
+	interfaces       map[string]*ast.InterfaceStatement
 	importedSyms     []*Symbol        // Alias créés par 'use' (pour détecter les imports inutilisés)
 	unreachable      []lexer.Position // Instructions situées après un appel 'never' (std.fatal, Sys.exit)
 }
@@ -26,6 +27,7 @@ func New() *Checker {
 		scope:            NewScope(nil, false),
 		availableModules: make(map[string]*Symbol),
 		declaredVars:     []*Symbol{},
+		interfaces:       make(map[string]*ast.InterfaceStatement),
 	}
 	c.initBuiltinUnits()
 	return c
@@ -122,5 +124,62 @@ func (c *Checker) Check(prog *ast.Program) {
 		}
 	}
 
+	// 2. Règle d'ordre strict des déclarations 'mod' et 'use' / 'from...use'
+	c.checkTopLevelOrder(prog.Statements)
+
 	c.checkStatementList(prog.Statements)
 }
+
+func (c *Checker) checkTopLevelOrder(stmts []ast.Statement) {
+	if c.currentFile != "" && modules.IsModConfigFile(c.currentFile) {
+		return
+	}
+
+	hasSeenMod := false
+	hasSeenImports := false
+	hasSeenAliasedOrFromImport := false
+	hasSeenCode := false
+
+	for _, stmt := range stmts {
+		if stmt == nil {
+			continue
+		}
+
+		switch s := stmt.(type) {
+		case *ast.ModStatement:
+			if hasSeenMod {
+				c.addError(s.Pos(), "ERR_DUPLICATE_MOD", "Only one 'mod' declaration is allowed per file")
+			}
+			if hasSeenImports || hasSeenCode {
+				c.addError(s.Pos(), "ERR_MOD_ORDER", "The 'mod' declaration must appear at the very beginning of the file before any imports or code statements")
+			}
+			hasSeenMod = true
+
+		case *ast.UseStatement:
+			hasSeenImports = true
+			if hasSeenCode {
+				c.addError(s.Pos(), "ERR_IMPORT_ORDER", fmt.Sprintf("Import 'use %s' must be placed at the top of the file before any code or variable declarations", s.Module))
+			} else if s.Alias == "" {
+				// Simple native import: use <module>
+				if hasSeenAliasedOrFromImport {
+					c.addError(s.Pos(), "ERR_IMPORT_ORDER", fmt.Sprintf("Native import 'use %s' must be declared at the top before aliased ('use ... as ...') or 'from...use' imports", s.Module))
+				}
+			} else {
+				// Aliased import: use <module> as <alias>
+				hasSeenAliasedOrFromImport = true
+			}
+
+		case *ast.FromUseStatement:
+			hasSeenImports = true
+			if hasSeenCode {
+				c.addError(s.Pos(), "ERR_IMPORT_ORDER", "Import statement 'from ... use' must be placed at the top of the file before any code or variable declarations")
+			}
+			hasSeenAliasedOrFromImport = true
+
+		default:
+			// Any other statement is considered code / declaration
+			hasSeenCode = true
+		}
+	}
+}
+

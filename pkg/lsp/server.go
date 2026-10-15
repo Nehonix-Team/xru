@@ -135,7 +135,7 @@ func (s *Server) handleRequest(req *Request) error {
 				HoverProvider:             true,
 				DefinitionProvider:        true,
 				DocumentSymbolProvider:    true,
-				CompletionProvider:        &CompletionOptions{TriggerCharacters: []string{".", "@", ":", " ", "\""}},
+				CompletionProvider:        &CompletionOptions{TriggerCharacters: []string{".", "@", ":", " ", "\"", "["}},
 				DocumentHighlightProvider: true,
 				ReferencesProvider:        true,
 			},

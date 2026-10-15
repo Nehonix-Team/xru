@@ -264,6 +264,56 @@ var BuiltinUnitsDocs = map[string]struct {
 			},
 		},
 	},
+	"date": {
+		Detail: "unit date",
+		Doc:    "Comprehensive Date & Time manipulation unit (formatting, parsing, ISO-8601, arithmetic, diffs).",
+		Methods: map[string]DocItem{
+			"now": {
+				Detail: "date.now() -> @map{ iso: string, timestamp: number, year: number, month: number, day: number, hour: number, minute: number, second: number, weekday: string }",
+				Doc:    "Returns the current date and time as a structured Map with `iso`, `timestamp`, `year`, `month`, `day`, `hour`, `minute`, `second`, `weekday`.",
+			},
+			"iso": {
+				Detail: "date.iso(date?: any) -> string",
+				Doc:    "Returns an ISO-8601 formatted date string (e.g. `\"2026-10-15T09:50:36Z\"`).",
+			},
+			"today": {
+				Detail: "date.today() -> string",
+				Doc:    "Returns today's date in `\"YYYY-MM-DD\"` format.",
+			},
+			"timestamp": {
+				Detail: "date.timestamp(date?: any) -> number",
+				Doc:    "Returns current or given date timestamp in Unix milliseconds.",
+			},
+			"format": {
+				Detail: "date.format(dateOrFormat: any, format?: string) -> string",
+				Doc:    "Formats date using modern template tokens (e.g. `date.format(\"YYYY-MM-DD HH:mm:ss\")` or `date.format(d, \"DD/MM/YYYY\")`).",
+			},
+			"parse": {
+				Detail: "date.parse(dateStr: string, format?: string) -> @map{ iso: string, timestamp: number, year: number, month: number, day: number, hour: number, minute: number, second: number, weekday: string }",
+				Doc:    "Parses a date string (ISO-8601, common formats, or custom format) into a structured Date Map.",
+			},
+			"add": {
+				Detail: "date.add(date: any, amount: any, unit?: string) -> @map{ iso: string, timestamp: number, year: number, month: number, day: number, hour: number, minute: number, second: number, weekday: string }",
+				Doc:    "Adds time to date (e.g. `date.add(d, 2, \"days\")`, `date.add(d, 30, \"minutes\")`, `date.add(d, \"2h\")`).",
+			},
+			"diff": {
+				Detail: "date.diff(dateA: any, dateB: any, unit?: string) -> number",
+				Doc:    "Calculates difference between two dates in `\"seconds\"`, `\"minutes\"`, `\"hours\"`, or `\"days\"`.",
+			},
+			"year": {
+				Detail: "date.year(date?: any) -> number",
+				Doc:    "Returns full year (e.g. `2026`).",
+			},
+			"month": {
+				Detail: "date.month(date?: any) -> number",
+				Doc:    "Returns month (1 to 12).",
+			},
+			"day": {
+				Detail: "date.day(date?: any) -> number",
+				Doc:    "Returns day of month (1 to 31).",
+			},
+		},
+	},
 	"document": {
 		Detail: "unit Document",
 		Doc:    "Multi-view surgical file manipulation unit providing raw, linewise, JSON, and fuzzy editing capabilities.",
@@ -492,6 +542,74 @@ var ListMethodsDocs = map[string]DocItem{
 	},
 }
 
+// NumberMethodsDocs contient la documentation des méthodes natives sur les nombres
+var NumberMethodsDocs = map[string]DocItem{
+	"abs": {
+		Detail: "(number).abs() -> number",
+		Doc:    "Returns the absolute value of the number.",
+	},
+	"floor": {
+		Detail: "(number).floor() -> number",
+		Doc:    "Returns the largest integer less than or equal to the number.",
+	},
+	"ceil": {
+		Detail: "(number).ceil() -> number",
+		Doc:    "Returns the smallest integer greater than or equal to the number.",
+	},
+	"round": {
+		Detail: "(number).round() -> number",
+		Doc:    "Returns the nearest integer, rounding half away from zero.",
+	},
+	"fixed": {
+		Detail: "(number).fixed(digits: number) -> string",
+		Doc:    "Formats the number using fixed-point notation with specified decimal digits.",
+	},
+	"int": {
+		Detail: "(number).int() -> number",
+		Doc:    "Truncates the number to an integer.",
+	},
+	"tostring": {
+		Detail: "(number).toString() -> string",
+		Doc:    "Converts the number to its string representation.",
+	},
+	"to_string": {
+		Detail: "(number).to_string() -> string",
+		Doc:    "Converts the number to its string representation.",
+	},
+}
+
+// MapMethodsDocs contient la documentation des méthodes natives sur les maps
+var MapMethodsDocs = map[string]DocItem{
+	"keys": {
+		Detail: "(map).keys() -> list[string]",
+		Doc:    "Returns a list containing all the keys in the map.",
+	},
+	"values": {
+		Detail: "(map).values() -> list[any]",
+		Doc:    "Returns a list containing all the values in the map.",
+	},
+	"entries": {
+		Detail: "(map).entries() -> list[any]",
+		Doc:    "Returns a list of key-value pairs from the map.",
+	},
+	"has": {
+		Detail: "(map).has(key: string) -> bool",
+		Doc:    "Returns true if the map contains the specified key.",
+	},
+	"len": {
+		Detail: "(map).len() -> number",
+		Doc:    "Returns the number of entries in the map.",
+	},
+	"delete": {
+		Detail: "(map).delete(key: string) -> void",
+		Doc:    "Removes the entry with the specified key from the map.",
+	},
+	"clear": {
+		Detail: "(map).clear() -> void",
+		Doc:    "Removes all entries from the map.",
+	},
+}
+
 // KeywordsDocs documente les mots-clés de base du langage XRU 2.0
 var KeywordsDocs = map[string]DocItem{
 	"use": {
@@ -592,8 +710,14 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 			if strDoc, ok := StringMethodsDocs[methodKey]; ok {
 				return &strDoc
 			}
+			if numDoc, ok := NumberMethodsDocs[methodKey]; ok {
+				return &numDoc
+			}
 			if listDoc, ok := ListMethodsDocs[methodKey]; ok {
 				return &listDoc
+			}
+			if mapDoc, ok := MapMethodsDocs[methodKey]; ok {
+				return &mapDoc
 			}
 		}
 	}
@@ -615,12 +739,18 @@ func GetDocForWord(fullExpr, targetWord string) *DocItem {
 		}
 	}
 
-	// 4. Méthodes natives String et List
+	// 4. Méthodes natives String, Number, List, Map
 	if strDoc, ok := StringMethodsDocs[targetWord]; ok {
 		return &strDoc
 	}
+	if numDoc, ok := NumberMethodsDocs[targetWord]; ok {
+		return &numDoc
+	}
 	if listDoc, ok := ListMethodsDocs[targetWord]; ok {
 		return &listDoc
+	}
+	if mapDoc, ok := MapMethodsDocs[targetWord]; ok {
+		return &mapDoc
 	}
 
 	// 5. Méthodes chirurgicales legacy

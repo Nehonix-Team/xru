@@ -318,8 +318,22 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 			Target:   target,
 		}
 	case lexer.AT:
-		// Instanciation @Unit(...)
 		pos := p.curToken.Pos
+		if p.peekTokenIs(lexer.MAP) || (p.peekTokenIs(lexer.IDENT) && strings.ToLower(p.peekToken.Literal) == "map") {
+			p.nextToken() // saute 'map'
+			if p.peekTokenIs(lexer.LBRACE) {
+				p.nextToken() // se place sur '{'
+				return p.parseMapLiteralWithBraces()
+			}
+			if p.peekTokenIs(lexer.LBRACKET) {
+				p.nextToken() // se place sur '['
+				p.nextToken()
+				typeName := p.curToken.Literal
+				p.expectPeek(lexer.RBRACKET)
+				return &ast.StringLiteral{Position: pos, Value: "@map[" + typeName + "]"}
+			}
+		}
+		// Instanciation @Unit(...)
 		p.nextToken()
 		unitName := p.curToken.Literal
 		p.expectPeek(lexer.LPAREN)
@@ -342,7 +356,8 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 	case lexer.LPAREN:
 		return p.parseParenOrLambdaExpression()
 	case lexer.LBRACE:
-		return p.parseBlockStatement()
+		p.addError(p.curToken.Pos, "bare object syntax '{ ... }' is unsupported in XRU: use '@map{ ... }' for map literals")
+		return nil
 	case lexer.IF:
 		return p.parseIfExpression()
 	case lexer.ILLEGAL:
@@ -352,6 +367,47 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 		p.addError(p.curToken.Pos, fmt.Sprintf("unexpected token '%s'", p.curToken.Literal))
 		return nil
 	}
+}
+
+func (p *Parser) parseMapLiteralWithBraces() ast.Expression {
+	startPos := p.curToken.Pos
+	mapLit := &ast.MapLiteral{
+		Position: startPos,
+		Pairs:    make([]*ast.MapPair, 0),
+	}
+
+	p.nextToken() // saute '{'
+
+	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		if p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
+
+		var key ast.Expression
+		if p.curTokenIs(lexer.IDENT) {
+			key = &ast.StringLiteral{Position: p.curToken.Pos, Value: p.curToken.Literal}
+		} else {
+			key = p.parseExpression()
+		}
+
+		if p.peekTokenIs(lexer.COLON) || p.peekTokenIs(lexer.ARROW) || p.peekTokenIs(lexer.ASSIGN) {
+			p.nextToken() // saute ':', '->' ou '='
+			p.nextToken() // premier token de la valeur
+			val := p.parseExpression()
+			mapLit.Pairs = append(mapLit.Pairs, &ast.MapPair{Key: key, Value: val})
+		} else {
+			p.addError(p.curToken.Pos, "expected ':' or '->' after map key")
+			return nil
+		}
+
+		if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+		}
+		p.nextToken()
+	}
+
+	return mapLit
 }
 
 func (p *Parser) parseCollectionLiteral() ast.Expression {
@@ -450,10 +506,14 @@ func (p *Parser) isAheadLambda() bool {
 	}
 
 	for p.curTokenIs(lexer.IDENT) {
+		if p.peekTokenIs(lexer.QUESTION) {
+			p.nextToken()
+		}
 		if p.peekTokenIs(lexer.COLON) {
 			p.nextToken() // ':'
-			if !p.expectPeek(lexer.IDENT) {
-				return false
+			p.nextToken() // type
+			if p.peekTokenIs(lexer.QUESTION) {
+				p.nextToken()
 			}
 		}
 		if p.peekTokenIs(lexer.COMMA) {
@@ -484,11 +544,15 @@ func (p *Parser) parseParenOrLambdaExpression() ast.Expression {
 					break
 				}
 				param := &ast.Parameter{Name: p.curToken.Literal}
+				if p.peekTokenIs(lexer.QUESTION) {
+					p.nextToken()
+					param.Optional = true
+				}
 				if p.peekTokenIs(lexer.COLON) {
 					p.nextToken() // ':'
-					if p.peekTokenIs(lexer.IDENT) {
-						p.nextToken()
-						param.Type = p.curToken.Literal
+					param.Type = p.parseTypeAnnotation()
+					if strings.HasSuffix(param.Type, "?") {
+						param.Optional = true
 					}
 				}
 				params = append(params, param)

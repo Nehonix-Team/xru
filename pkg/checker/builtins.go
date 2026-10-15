@@ -8,7 +8,7 @@ import (
 
 func IsBuiltinUnit(name string) bool {
 	switch strings.ToLower(name) {
-	case "std", "net", "fs", "crypto", "sys", "cmd", "path", "local", "json", "math":
+	case "std", "net", "fs", "crypto", "sys", "cmd", "path", "local", "json", "math", "date":
 		return true
 	}
 	return false
@@ -84,16 +84,24 @@ func (c *Checker) initBuiltinUnits() {
 		Name: "Sys",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"GetEnv": {Name: "GetEnv", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "key", Type: "string"}}},
-			"getEnv": {Name: "getEnv", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "key", Type: "string"}}},
-			"Os":     {Name: "Os", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
-			"os":     {Name: "os", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
-			"Arch":   {Name: "Arch", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
-			"arch":   {Name: "arch", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
-			"Sleep":  {Name: "Sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
-			"sleep":  {Name: "sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
-			"Exit":   {Name: "Exit", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "code", Type: "number"}}, MinArgs: 0, HasOptional: true},
-			"exit":   {Name: "exit", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "code", Type: "number"}}, MinArgs: 0, HasOptional: true},
+			"GetEnv":  {Name: "GetEnv", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "key", Type: "string"}}},
+			"getEnv":  {Name: "getEnv", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "key", Type: "string"}}},
+			"Env":     {Name: "Env", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "key", Type: "string"}}},
+			"env":     {Name: "env", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "key", Type: "string"}}},
+			"Time":    {Name: "Time", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"time":    {Name: "time", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"Os":      {Name: "Os", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"os":      {Name: "os", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"Arch":    {Name: "Arch", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"arch":    {Name: "arch", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"Sleep":   {Name: "Sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
+			"sleep":   {Name: "sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
+			"Exit":    {Name: "Exit", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "code", Type: "number"}}, MinArgs: 0, HasOptional: true},
+			"exit":    {Name: "exit", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "code", Type: "number"}}, MinArgs: 0, HasOptional: true},
+			"require": {Name: "require", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "constraint", Type: "string"}, {Name: "options", Type: "any"}}, MinArgs: 1, HasOptional: true},
+			"Require": {Name: "Require", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "constraint", Type: "string"}, {Name: "options", Type: "any"}}, MinArgs: 1, HasOptional: true},
+			"version": {Name: "version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"Version": {Name: "Version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 		},
 	}
 	cmdUnit := &Symbol{
@@ -183,6 +191,7 @@ func (c *Checker) initBuiltinUnits() {
 	c.availableModules["std"] = stdUnit
 	c.availableModules["Std"] = stdUnit
 	c.availableModules["Sys"] = sysUnit
+	c.availableModules["sys"] = sysUnit
 	c.availableModules["Cmd"] = cmdUnit
 	c.availableModules["Crypto"] = cryptoUnit
 	c.availableModules["Local"] = localUnit
@@ -192,6 +201,38 @@ func (c *Checker) initBuiltinUnits() {
 	c.availableModules["json"] = jsonUnit
 	c.availableModules["Math"] = mathUnit
 	c.availableModules["math"] = mathUnit
+
+	dateMapType := "@map{ iso: string, timestamp: number, year: number, month: number, day: number, hour: number, minute: number, second: number, weekday: string }"
+	dateUnit := &Symbol{
+		Name: "date",
+		Kind: SymUnit,
+		Methods: map[string]*Symbol{
+			"now":       {Name: "now", Kind: SymFunc, Type: dateMapType},
+			"Now":       {Name: "Now", Kind: SymFunc, Type: dateMapType},
+			"iso":       {Name: "iso", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+			"Iso":       {Name: "Iso", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+			"today":     {Name: "today", Kind: SymFunc, Type: "string"},
+			"Today":     {Name: "Today", Kind: SymFunc, Type: "string"},
+			"timestamp": {Name: "timestamp", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+			"Timestamp": {Name: "Timestamp", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+			"format":    {Name: "format", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "dateOrFormat", Type: "any"}, {Name: "format", Type: "string", Optional: true}}, MinArgs: 1},
+			"Format":    {Name: "Format", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "dateOrFormat", Type: "any"}, {Name: "format", Type: "string", Optional: true}}, MinArgs: 1},
+			"parse":     {Name: "parse", Kind: SymFunc, Type: dateMapType, Params: []*ast.Parameter{{Name: "dateStr", Type: "string"}, {Name: "format", Type: "string", Optional: true}}, MinArgs: 1},
+			"Parse":     {Name: "Parse", Kind: SymFunc, Type: dateMapType, Params: []*ast.Parameter{{Name: "dateStr", Type: "string"}, {Name: "format", Type: "string", Optional: true}}, MinArgs: 1},
+			"add":       {Name: "add", Kind: SymFunc, Type: dateMapType, Params: []*ast.Parameter{{Name: "date", Type: "any"}, {Name: "amount", Type: "any"}, {Name: "unit", Type: "string", Optional: true}}, MinArgs: 2},
+			"Add":       {Name: "Add", Kind: SymFunc, Type: dateMapType, Params: []*ast.Parameter{{Name: "date", Type: "any"}, {Name: "amount", Type: "any"}, {Name: "unit", Type: "string", Optional: true}}, MinArgs: 2},
+			"diff":      {Name: "diff", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "dateA", Type: "any"}, {Name: "dateB", Type: "any"}, {Name: "unit", Type: "string", Optional: true}}, MinArgs: 2},
+			"Diff":      {Name: "Diff", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "dateA", Type: "any"}, {Name: "dateB", Type: "any"}, {Name: "unit", Type: "string", Optional: true}}, MinArgs: 2},
+			"year":      {Name: "year", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+			"Year":      {Name: "Year", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+			"month":     {Name: "month", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+			"Month":     {Name: "Month", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+			"day":       {Name: "day", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+			"Day":       {Name: "Day", Kind: SymFunc, Type: "number", Params: []*ast.Parameter{{Name: "date", Type: "any", Optional: true}}},
+		},
+	}
+	c.availableModules["Date"] = dateUnit
+	c.availableModules["date"] = dateUnit
 
 	topLevelFuncs := map[string]*Symbol{
 		"Drop":        {Name: "Drop", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "patterns", Type: "list"}}},

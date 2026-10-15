@@ -38,6 +38,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return nil
 	case lexer.RETURN:
 		return p.parseReturnStatement()
+	case lexer.INTERFACE, lexer.TYPE:
+		return p.parseInterfaceStatement()
 	case lexer.MAP:
 		return p.parseMapStatement()
 	case lexer.MOD:

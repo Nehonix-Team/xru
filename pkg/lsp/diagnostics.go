@@ -29,8 +29,8 @@ func (s *Server) validateAndPublish(uri, text string) {
 		diagnostics = append(diagnostics, diag)
 	}
 
-	// 2. Collect checker semantic errors only if syntax was valid
-	if len(p.Errors()) == 0 && prog != nil {
+	// 2. Collect checker semantic errors
+	if prog != nil {
 		c := checker.New()
 		c.SetCurrentFile(filename)
 		c.Check(prog)

@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
@@ -16,12 +17,9 @@ func (p *Parser) parseFuncStatement() *ast.FuncStatement {
 	stmt.Name = p.curToken.Literal
 	stmt.Parameters = p.parseParameterList()
 
-	if p.peekTokenIs(lexer.ARROW) {
-		p.nextToken() // saute '->'
-		if !p.expectPeek(lexer.IDENT) {
-			return nil
-		}
-		stmt.ReturnType = p.curToken.Literal
+	if p.peekTokenIs(lexer.ARROW) || p.peekTokenIs(lexer.COLON) {
+		p.nextToken() // saute '->' ou ':'
+		stmt.ReturnType = p.parseTypeAnnotation()
 	}
 
 	if !p.expectPeek(lexer.LBRACE) {
@@ -66,10 +64,15 @@ func (p *Parser) parseParameterList() []*ast.Parameter {
 			break
 		}
 		param := &ast.Parameter{Name: p.curToken.Literal}
+		if p.peekTokenIs(lexer.QUESTION) {
+			p.nextToken() // saute '?'
+			param.Optional = true
+		}
 		if p.peekTokenIs(lexer.COLON) {
 			p.nextToken() // saute ':'
-			if p.expectPeek(lexer.IDENT) {
-				param.Type = p.curToken.Literal
+			param.Type = p.parseTypeAnnotation()
+			if strings.HasSuffix(param.Type, "?") {
+				param.Optional = true
 			}
 		}
 		params = append(params, param)

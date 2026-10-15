@@ -207,7 +207,7 @@ func findDeclarationInFile(filePath, word string) (line, char int, found bool) {
 		return 0, 0, false
 	}
 	lines := strings.Split(string(content), "\n")
-	reDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare)\s+(%s)\b`, regexp.QuoteMeta(word)))
+	reDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare|interface|type)\s+(%s)\b`, regexp.QuoteMeta(word)))
 	for lIdx, l := range lines {
 		lTrim := strings.TrimSpace(l)
 		if strings.HasPrefix(lTrim, "//") {
@@ -327,6 +327,80 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		}
 	}
 
+	// 1.5 Member navigation: obj.member (e.g. validExample.c, opts.silent, params.a, $f{params.a})
+	if dotIdx := strings.LastIndex(fullExpr, "."); dotIdx != -1 {
+		rawObj := strings.TrimSpace(fullExpr[:dotIdx])
+		memberName := strings.TrimSpace(fullExpr[dotIdx+1:])
+		rawObj = strings.TrimPrefix(rawObj, "$f{")
+		rawObj = strings.TrimPrefix(rawObj, "${")
+		rawObj = strings.TrimPrefix(rawObj, "{")
+		objName := rawObj
+
+		if objName != "" && memberName != "" {
+			if word != objName {
+				if varInfo := findVariableTargetInfo(lines, objName); varInfo != nil {
+					targetIface := varInfo.interfaceName
+					if targetIface == "" {
+						targetIface = varInfo.unitType
+					}
+					if targetIface != "" {
+						if loc := findMemberInInterface(lines, targetIface, memberName, uri); loc != nil {
+							return loc
+						}
+					}
+					// Inline map in function or variable
+					reFieldDecl := regexp.MustCompile(fmt.Sprintf(`\b(%s)\s*\??\s*:`, regexp.QuoteMeta(memberName)))
+					for idx, l := range lines {
+						if strings.Contains(l, "@map") && strings.Contains(l, memberName) {
+							if matchLoc := reFieldDecl.FindStringSubmatchIndex(l); matchLoc != nil && len(matchLoc) >= 4 {
+								return &Location{
+									URI: uri,
+									Range: Range{
+										Start: Position{Line: idx, Character: matchLoc[2]},
+										End:   Position{Line: idx, Character: matchLoc[3]},
+									},
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 1.6 Clicked on a property key inside a typed map literal: e.g. `a: 6` in `const data: TExample = { a: 6 }`
+	if curLine != "" && !strings.Contains(fullExpr, ".") {
+		reKey := regexp.MustCompile(fmt.Sprintf(`^\s*(%s)\s*(?::|->)`, regexp.QuoteMeta(word)))
+		if matchLoc := reKey.FindStringSubmatchIndex(curLine); matchLoc != nil && len(matchLoc) >= 4 {
+			if pos.Character >= matchLoc[2] && pos.Character <= matchLoc[3] {
+				mapStartLine := -1
+				depth := 0
+				for l := pos.Line; l >= 0; l-- {
+					line := lines[l]
+					for _, r := range line {
+						if r == '{' {
+							depth++
+						} else if r == '}' {
+							depth--
+						}
+					}
+					if depth > 0 && (strings.Contains(line, "@map") || strings.Contains(line, "=")) {
+						mapStartLine = l
+						break
+					}
+				}
+				if mapStartLine != -1 {
+					expectedType := resolveExpectedMapType(lines, mapStartLine, curFilePath)
+					if expectedType != "" {
+						if loc := findMemberInInterface(lines, expectedType, word, uri); loc != nil {
+							return loc
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// 2. Clicked on a namespace name in _mod.xru
 	if modCfg != nil && modFilePath != "" {
 		if _, ok := modCfg.Mappings[word]; ok {
@@ -412,8 +486,8 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		}
 	}
 
-	// 4. Search Local Definitions in active file (variables, lambdas, funcs)
-	reLocalDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare)\s+(%s)\b`, regexp.QuoteMeta(word)))
+	// 4. Search Local Definitions in active file (variables, lambdas, funcs, interfaces, types)
+	reLocalDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare|interface|type)\s+(%s)\b`, regexp.QuoteMeta(word)))
 	for idx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") {
@@ -595,6 +669,144 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		}
 	}
 
+	return nil
+}
+
+type PropertyInfo struct {
+	TypeName   string
+	PropName   string
+	PropType   string
+	IsOptional bool
+	IsMethod   bool
+	Doc        string
+	Line       int
+	CharStart  int
+	CharEnd    int
+	URI        string
+}
+
+func findPropertyDeclaration(lines []string, targetType, propName string, uri string) *PropertyInfo {
+	if targetType == "" || propName == "" {
+		return nil
+	}
+	cleanType := strings.TrimSpace(strings.TrimSuffix(targetType, "?"))
+
+	// 1. If targetType is an inline map type: @map{ a: string, ... }
+	if strings.HasPrefix(cleanType, "@map") && strings.Contains(cleanType, "{") {
+		reField := regexp.MustCompile(fmt.Sprintf(`\b(%s)(\??)\s*:\s*([^,\n}]+)`, regexp.QuoteMeta(propName)))
+		if m := reField.FindStringSubmatch(cleanType); len(m) > 3 {
+			pType := strings.TrimSpace(m[3])
+			return &PropertyInfo{
+				TypeName:   "@map",
+				PropName:   propName,
+				PropType:   pType,
+				IsOptional: m[2] == "?",
+				IsMethod:   strings.HasPrefix(pType, "func(") || strings.HasPrefix(pType, "func "),
+				URI:        uri,
+			}
+		}
+	}
+
+	// 2. Interface declaration in active file
+	reIfaceStart := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:interface|type)\s+%s\b`, regexp.QuoteMeta(cleanType)))
+	reField := regexp.MustCompile(fmt.Sprintf(`\b(%s)(\??)\s*:\s*([^/\n\r]+?)(?:\s*//(.*))?$`, regexp.QuoteMeta(propName)))
+
+	inTargetIface := false
+	braceDepth := 0
+
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") && !inTargetIface {
+			continue
+		}
+
+		if !inTargetIface {
+			if reIfaceStart.MatchString(line) {
+				inTargetIface = true
+				braceDepth = strings.Count(line, "{") - strings.Count(line, "}")
+				if matchLoc := reField.FindStringSubmatchIndex(line); matchLoc != nil && len(matchLoc) >= 4 {
+					m := reField.FindStringSubmatch(line)
+					propType := strings.TrimSpace(m[3])
+					trailingDoc := ""
+					if len(m) > 4 {
+						trailingDoc = strings.TrimSpace(m[4])
+					}
+					aboveDoc := extractDocCommentForLine(lines, idx)
+					doc := aboveDoc
+					if trailingDoc != "" {
+						if doc != "" {
+							doc += "\n\n" + trailingDoc
+						} else {
+							doc = trailingDoc
+						}
+					}
+					return &PropertyInfo{
+						TypeName:   cleanType,
+						PropName:   propName,
+						PropType:   propType,
+						IsOptional: m[2] == "?",
+						IsMethod:   strings.HasPrefix(propType, "func(") || strings.HasPrefix(propType, "func "),
+						Doc:        doc,
+						Line:       idx,
+						CharStart:  matchLoc[2],
+						CharEnd:    matchLoc[3],
+						URI:        uri,
+					}
+				}
+				if braceDepth == 0 && strings.Contains(line, "{") {
+					inTargetIface = false
+				}
+			}
+		} else {
+			braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+			if matchLoc := reField.FindStringSubmatchIndex(line); matchLoc != nil && len(matchLoc) >= 4 {
+				m := reField.FindStringSubmatch(line)
+				propType := strings.TrimSpace(m[3])
+				trailingDoc := ""
+				if len(m) > 4 {
+					trailingDoc = strings.TrimSpace(m[4])
+				}
+				aboveDoc := extractDocCommentForLine(lines, idx)
+				doc := aboveDoc
+				if trailingDoc != "" {
+					if doc != "" {
+						doc += "\n\n" + trailingDoc
+					} else {
+						doc = trailingDoc
+					}
+				}
+				return &PropertyInfo{
+					TypeName:   cleanType,
+					PropName:   propName,
+					PropType:   propType,
+					IsOptional: m[2] == "?",
+					IsMethod:   strings.HasPrefix(propType, "func(") || strings.HasPrefix(propType, "func "),
+					Doc:        doc,
+					Line:       idx,
+					CharStart:  matchLoc[2],
+					CharEnd:    matchLoc[3],
+					URI:        uri,
+				}
+			}
+			if braceDepth <= 0 {
+				inTargetIface = false
+			}
+		}
+	}
+
+	return nil
+}
+
+func findMemberInInterface(lines []string, ifaceName, memberName string, uri string) *Location {
+	if info := findPropertyDeclaration(lines, ifaceName, memberName, uri); info != nil {
+		return &Location{
+			URI: info.URI,
+			Range: Range{
+				Start: Position{Line: info.Line, Character: info.CharStart},
+				End:   Position{Line: info.Line, Character: info.CharEnd},
+			},
+		}
+	}
 	return nil
 }
 

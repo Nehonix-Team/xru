@@ -228,6 +228,60 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		return
 	}
 
+	// Cas 2c : module complet sous forme de Map (gArgs::@map as args)
+	if s.AsMap && len(s.Members) == 0 {
+		alias := s.Alias
+		if alias == "" {
+			alias = s.Module
+		}
+		modDetails, err := modCfg.ResolveModule(s.Source, s.Module)
+		if err != nil {
+			c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
+			return
+		}
+		if c.hasCircularImport(modDetails.FilePath, c.currentFile, modCfg) {
+			c.addError(s.Pos(), "ERR_CIRCULAR_IMPORT", fmt.Sprintf("Circular module import detected between '%s' and '%s'", filepath.Base(c.currentFile), filepath.Base(modDetails.FilePath)))
+			return
+		}
+		methods := make(map[string]*Symbol)
+		for expName, exp := range modDetails.Exports {
+			symKind := SymVar
+			if exp.Kind == "func" {
+				symKind = SymFunc
+			} else if exp.Kind == "const" {
+				symKind = SymConst
+			}
+			methods[expName] = &Symbol{
+				Name:   expName,
+				Kind:   symKind,
+				Type:   exp.Type,
+				Params: exp.Params,
+				Pos:    exp.Position,
+			}
+		}
+		mapSym := &Symbol{
+			Name:    alias,
+			Kind:    SymVar,
+			Type:    "map",
+			Pos:     s.Pos(),
+			Methods: methods,
+		}
+		if existing, ok := c.scope.Resolve(alias); ok && existing.Pos.Line == 0 {
+			existing.Kind = SymVar
+			existing.Type = "map"
+			existing.Methods = methods
+			existing.Pos = s.Pos()
+			c.importedSyms = append(c.importedSyms, existing)
+			return
+		}
+		if err := c.scope.Define(mapSym); err != nil {
+			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+		} else {
+			c.importedSyms = append(c.importedSyms, mapSym)
+		}
+		return
+	}
+
 	// Cas 3 : module complet from "services" use auth as a (ou use auth)
 	alias := s.Alias
 	if alias == "" {

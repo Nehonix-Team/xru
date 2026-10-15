@@ -428,11 +428,14 @@ func (c *Checker) checkFunc(s *ast.FuncStatement) {
 	}
 	minArgs := 0
 	hasOptional := false
+	isVariadic := false
 	for _, p := range s.Parameters {
 		if p.Type != "" {
 			c.validateTypeAnnotation(s.Pos(), p.Type)
 		}
-		if !p.Optional && !strings.HasSuffix(p.Type, "?") {
+		if p.IsVariadic {
+			isVariadic = true
+		} else if !p.Optional && !strings.HasSuffix(p.Type, "?") {
 			minArgs++
 		} else {
 			hasOptional = true
@@ -448,6 +451,7 @@ func (c *Checker) checkFunc(s *ast.FuncStatement) {
 		IsGlobal:    s.IsGlobal,
 		MinArgs:     minArgs,
 		HasOptional: hasOptional,
+		IsVariadic:  isVariadic,
 	}
 	if err := c.scope.Define(fnSym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
@@ -463,12 +467,19 @@ func (c *Checker) checkFunc(s *ast.FuncStatement) {
 
 	for _, p := range s.Parameters {
 		paramType := p.Type
+		if p.IsVariadic {
+			if paramType != "" && paramType != "any" {
+				paramType = "list[" + paramType + "]"
+			} else {
+				paramType = "list"
+			}
+		}
 		paramSym := &Symbol{
 			Name:     p.Name,
 			Kind:     SymVar,
 			Type:     paramType,
 			Pos:      s.Pos(),
-			Optional: p.Optional || strings.HasSuffix(paramType, "?"),
+			Optional: p.Optional || strings.HasSuffix(paramType, "?") || p.IsVariadic,
 		}
 		if err := c.scope.Define(paramSym); err != nil {
 			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())

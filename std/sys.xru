@@ -1,0 +1,26 @@
+// Package sys provides operating system inspection and process control.
+unit sys {
+	/// Returns the host operating system name (e.g. "linux", "darwin", "windows").
+	@native("sys_os")
+	func os() -> string
+
+	/// Returns the machine processor architecture (e.g. "amd64", "arm64").
+	@native("sys_arch")
+	func arch() -> string
+
+	/// Retrieves the value of an OS environment variable with an optional fallback.
+	@native("sys_getenv")
+	func getEnv(name: string, fallback: string = "") -> string
+
+	/// Terminates the process immediately with the given exit code (0 by default).
+	@native("sys_exit")
+	func exit(code: number = 0) -> never
+
+	/// Pauses current execution for the given duration.
+	@native("sys_sleep")
+	func sleep(duration: any) -> void
+
+	/// Returns the current time formatted as an ISO-8601 string.
+	@native("sys_time")
+	func time() -> string
+}

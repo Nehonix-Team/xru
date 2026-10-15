@@ -1,0 +1,92 @@
+// Package path provides comprehensive file path manipulation and normalization utilities.
+unit path {
+	/// Cleans and canonicalizes a path by resolving '.' and '..' segments and eliminating multiple slashes.
+	func clean(p: string) -> string {
+		let trimmed = p.trim()
+		if trimmed == "" {
+			return "."
+		}
+		let isAbsolute = trimmed.startsWith("/")
+		let rawParts = trimmed.split("/")
+		let stack: list[string] = []
+
+		for seg in rawParts {
+			if seg == "" || seg == "." {
+				continue
+			}
+			if seg == ".." {
+				if stack.len() > 0 && stack[stack.len() - 1] != ".." {
+					stack.pop()
+				} elif !isAbsolute {
+					stack.push("..")
+				}
+			} else {
+				stack.push(seg)
+			}
+		}
+
+		let joined = stack.join("/")
+		if isAbsolute {
+			return "/" + joined
+		}
+		if joined == "" {
+			return "."
+		}
+		return joined
+	}
+
+	/// Returns true if the path is an absolute path starting with '/'.
+	func isAbs(p: string) -> bool {
+		return p.trim().startsWith("/")
+	}
+
+	/// Returns the last element of path. Trailing slashes are removed before extracting the element.
+	func base(p: string) -> string {
+		let cleaned = path.clean(p)
+		if cleaned == "/" || cleaned == "." {
+			return cleaned
+		}
+		let parts = cleaned.split("/")
+		return parts[parts.len() - 1]
+	}
+
+	/// Returns the file name extension used by path (e.g. ".xru", ".json").
+	func ext(p: string) -> string {
+		let b = path.base(p)
+		let parts = b.split(".")
+		if parts.len() <= 1 {
+			return ""
+		}
+		return "." + parts[parts.len() - 1]
+	}
+
+	/// Returns all but the last element of path, typically the path's directory.
+	func dir(p: string) -> string {
+		let cleaned = path.clean(p)
+		if cleaned == "/" || cleaned == "." {
+			return cleaned
+		}
+		let parts = cleaned.split("/")
+		if parts.len() <= 1 {
+			if path.isAbs(p) {
+				return "/"
+			}
+			return "."
+		}
+		let parentParts = parts.slice(0, parts.len() - 1)
+		let joined = parentParts.join("/")
+		if path.isAbs(p) && !joined.startsWith("/") {
+			return "/" + joined
+		}
+		return joined
+	}
+
+	/// Joins any number of path elements into a single path, separating them with slashes and canonicalizing the result.
+	func join(...parts: string) -> string {
+		if parts.len() == 0 {
+			return ""
+		}
+		let raw = parts.join("/")
+		return path.clean(raw)
+	}
+}

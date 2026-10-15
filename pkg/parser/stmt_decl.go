@@ -300,7 +300,35 @@ func (p *Parser) parseInterfaceFields() []*ast.InterfaceField {
 			p.nextToken()
 			continue
 		}
-		if p.curTokenIs(lexer.IDENT) {
+		if p.curTokenIs(lexer.FUNC) {
+			fnPos := p.curToken.Pos
+			if p.expectPeek(lexer.IDENT) {
+				methodName := p.curToken.Literal
+				params := p.parseParameterList()
+				retType := "void"
+				if p.peekTokenIs(lexer.ARROW) || p.peekTokenIs(lexer.COLON) {
+					p.nextToken() // saute '->' ou ':'
+					retType = p.parseTypeAnnotation()
+				}
+				var paramSigs []string
+				for _, param := range params {
+					sig := param.Name
+					if param.Optional {
+						sig += "?"
+					}
+					if param.Type != "" {
+						sig += ": " + param.Type
+					}
+					paramSigs = append(paramSigs, sig)
+				}
+				fnType := fmt.Sprintf("func(%s) -> %s", strings.Join(paramSigs, ", "), retType)
+				fields = append(fields, &ast.InterfaceField{
+					Position: fnPos,
+					Name:     methodName,
+					Type:     fnType,
+				})
+			}
+		} else if p.curTokenIs(lexer.IDENT) {
 			field := &ast.InterfaceField{
 				Position: p.curToken.Pos,
 				Name:     p.curToken.Literal,

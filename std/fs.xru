@@ -1,0 +1,44 @@
+// Package fs provides file system inspection and file manipulation operations.
+unit fs {
+	/// Checks whether the specified file or directory path exists.
+	@native("fs_exists")
+	func exists(path: string) -> bool
+
+	/// Returns true if the given path is an existing directory.
+	@native("fs_is_dir")
+	func isDir(path: string) -> bool
+
+	/// Returns true if the given path is an existing regular file.
+	@native("fs_is_file")
+	func isFile(path: string) -> bool
+
+	/// Reads the entire contents of a text file into a string.
+	@native("fs_read")
+	func read(path: string) -> string
+
+	/// Writes content to the destination file, creating parent directories if necessary.
+	@native("fs_write")
+	func write(path: string, content: string) -> bool
+
+	/// Deletes a file or directory recursively.
+	@native("fs_remove")
+	func remove(path: string) -> void
+
+	/// Moves or renames a file or folder to a new location.
+	@native("fs_move")
+	func move(source: string, destination: string) -> void
+
+	/// Ensures that a directory exists, creating all intermediate folders if needed.
+	@native("fs_ensure_dir")
+	func ensureDir(path: string) -> void
+
+	/// Returns the file size in bytes.
+	@native("fs_size")
+	func size(path: string) -> number
+
+	/// Copies a file by reading its content and writing it to the destination.
+	func copy(source: string, destination: string) -> void {
+		let content = fs.read(source)
+		fs.write(destination, content)
+	}
+}

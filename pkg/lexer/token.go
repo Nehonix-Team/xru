@@ -70,6 +70,7 @@ const (
 	SLASH     TokenType = "/"
 	PERCENT   TokenType = "%"
 	RANGE     TokenType = ".."
+	ELLIPSIS  TokenType = "..."
 
 	// Comparaisons
 	EQ         TokenType = "=="

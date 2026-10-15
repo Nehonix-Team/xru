@@ -215,6 +215,12 @@ func (l *Lexer) NextToken() Token {
 		return Token{Type: COLON, Literal: ":", Pos: startPos}
 	case '.':
 		if l.peekChar() == '.' {
+			if l.peekChar2() == '.' {
+				l.readChar()
+				l.readChar()
+				l.readChar()
+				return Token{Type: ELLIPSIS, Literal: "...", Pos: startPos}
+			}
 			l.readChar()
 			l.readChar()
 			return Token{Type: RANGE, Literal: "..", Pos: startPos}

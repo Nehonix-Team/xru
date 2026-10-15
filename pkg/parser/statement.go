@@ -57,6 +57,26 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.ILLEGAL:
 		p.addError(p.curToken.Pos, fmt.Sprintf("illegal character '%s'", p.curToken.Literal))
 		return nil
+	case lexer.AT:
+		if p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "native" {
+			hookName := p.parseNativeAnnotation()
+			isGlobal := false
+			if p.peekTokenIs(lexer.GLOBAL) {
+				isGlobal = true
+				p.nextToken()
+			}
+			if !p.expectPeek(lexer.FUNC) {
+				return nil
+			}
+			p.currentNativeHook = hookName
+			fn := p.parseFuncStatement()
+			if fn != nil {
+				fn.IsGlobal = isGlobal
+				return fn
+			}
+			return nil
+		}
+		return p.parseExpressionStatement()
 	case lexer.AMP:
 		if p.peekTokenIs(lexer.IDENT) {
 			pos := p.curToken.Pos

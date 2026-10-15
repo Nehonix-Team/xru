@@ -10,7 +10,8 @@ import (
 
 // func Name(params...) -> ReturnType { ... }
 func (p *Parser) parseFuncStatement() *ast.FuncStatement {
-	stmt := &ast.FuncStatement{Position: p.curToken.Pos}
+	stmt := &ast.FuncStatement{Position: p.curToken.Pos, NativeHook: p.currentNativeHook}
+	p.currentNativeHook = ""
 	if !p.expectPeek(lexer.IDENT) {
 		return nil
 	}
@@ -20,6 +21,13 @@ func (p *Parser) parseFuncStatement() *ast.FuncStatement {
 	if p.peekTokenIs(lexer.ARROW) || p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // saute '->' ou ':'
 		stmt.ReturnType = p.parseTypeAnnotation()
+	}
+
+	if stmt.NativeHook != "" && !p.peekTokenIs(lexer.LBRACE) {
+		if p.peekTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+		}
+		return stmt
 	}
 
 	if !p.expectPeek(lexer.LBRACE) {
@@ -60,17 +68,30 @@ func (p *Parser) parseParameterList() []*ast.Parameter {
 
 	p.nextToken()
 	for {
+		isVariadic := false
+		if p.curTokenIs(lexer.ELLIPSIS) {
+			isVariadic = true
+			p.nextToken()
+		}
 		if !p.curTokenIs(lexer.IDENT) {
 			break
 		}
-		param := &ast.Parameter{Name: p.curToken.Literal}
+		param := &ast.Parameter{Name: p.curToken.Literal, IsVariadic: isVariadic}
 		if p.peekTokenIs(lexer.QUESTION) {
 			p.nextToken() // saute '?'
 			param.Optional = true
 		}
 		if p.peekTokenIs(lexer.COLON) {
 			p.nextToken() // saute ':'
+			if p.peekTokenIs(lexer.ELLIPSIS) {
+				param.IsVariadic = true
+				p.nextToken()
+			}
 			param.Type = p.parseTypeAnnotation()
+			if strings.HasPrefix(param.Type, "...") {
+				param.IsVariadic = true
+				param.Type = strings.TrimPrefix(param.Type, "...")
+			}
 			if strings.HasSuffix(param.Type, "?") {
 				param.Optional = true
 			}
@@ -103,6 +124,21 @@ func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
 
 func (p *Parser) parseGlobalStatement() ast.Statement {
 	p.nextToken() // saute 'global'
+	if p.curTokenIs(lexer.AT) && p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "native" {
+		nativeHook := p.parseNativeAnnotation()
+		if nativeHook != "" {
+			if !p.expectPeek(lexer.FUNC) {
+				return nil
+			}
+			p.currentNativeHook = nativeHook
+			fnStmt := p.parseFuncStatement()
+			if fnStmt != nil {
+				fnStmt.IsGlobal = true
+				return fnStmt
+			}
+			return nil
+		}
+	}
 	if p.curTokenIs(lexer.FUNC) {
 		fnStmt := p.parseFuncStatement()
 		if fnStmt != nil {
@@ -129,4 +165,26 @@ func (p *Parser) parseGlobalStatement() ast.Statement {
 	}
 	stmt := p.parseStatement()
 	return stmt
+}
+
+// parseNativeAnnotation parses `@native("hook_name")` when curToken is '@'.
+// It returns the hook name and leaves curToken at ')'
+func (p *Parser) parseNativeAnnotation() string {
+	if !p.curTokenIs(lexer.AT) {
+		return ""
+	}
+	if !p.expectPeek(lexer.IDENT) || p.curToken.Literal != "native" {
+		return ""
+	}
+	if !p.expectPeek(lexer.LPAREN) {
+		return ""
+	}
+	if !p.expectPeek(lexer.STRING) {
+		return ""
+	}
+	hookName := p.curToken.Literal
+	if !p.expectPeek(lexer.RPAREN) {
+		return ""
+	}
+	return hookName
 }

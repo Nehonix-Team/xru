@@ -271,6 +271,7 @@ type FuncStatement struct {
 	ReturnType string
 	Body       []Statement
 	IsGlobal   bool
+	NativeHook string
 }
 
 func (s *FuncStatement) statementNode()      {}
@@ -280,9 +281,10 @@ func (s *FuncStatement) String() string {
 }
 
 type Parameter struct {
-	Name     string
-	Type     string
-	Optional bool
+	Name       string
+	Type       string
+	Optional   bool
+	IsVariadic bool
 }
 
 // ReturnStatement : #RETURN expr

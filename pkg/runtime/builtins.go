@@ -686,82 +686,6 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	units["path"] = pathUnit
 
 	// 10. #UNIT date (Date & Time manipulation utilities)
-	parseTimeToTime := func(v Value) (time.Time, error) {
-		if v == nil || v == (NilValue{}) {
-			return time.Now(), nil
-		}
-		switch val := v.(type) {
-		case NumberValue:
-			n := int64(val.Val)
-			if n > 100000000000 {
-				return time.UnixMilli(n), nil
-			}
-			return time.Unix(n, 0), nil
-		case StringValue:
-			str := strings.TrimSpace(val.Val)
-			if str == "" || strings.EqualFold(str, "now") {
-				return time.Now(), nil
-			}
-			formats := []string{
-				time.RFC3339Nano,
-				time.RFC3339,
-				"2006-01-02 15:04:05",
-				"2006-01-02T15:04:05",
-				"2006-01-02",
-				"02/01/2006",
-				"02/01/2006 15:04:05",
-				"15:04:05",
-			}
-			for _, f := range formats {
-				if t, err := time.Parse(f, str); err == nil {
-					return t, nil
-				}
-			}
-			return time.Time{}, fmt.Errorf("date: unable to parse date string '%s'", str)
-		case MapValue:
-			if isoVal, ok := val.Pairs["iso"]; ok {
-				return time.Parse(time.RFC3339, isoVal.String())
-			}
-			if tsVal, ok := val.Pairs["timestamp"]; ok {
-				if nVal, ok := tsVal.(NumberValue); ok {
-					return time.UnixMilli(int64(nVal.Val)), nil
-				}
-			}
-		}
-		return time.Time{}, fmt.Errorf("date: invalid date value of type %s", v.Type())
-	}
-
-	dateToMap := func(t time.Time) MapValue {
-		return MapValue{
-			Pairs: map[string]Value{
-				"iso":       StringValue{Val: t.Format(time.RFC3339)},
-				"year":      NumberValue{Val: float64(t.Year())},
-				"month":     NumberValue{Val: float64(t.Month())},
-				"day":       NumberValue{Val: float64(t.Day())},
-				"hour":      NumberValue{Val: float64(t.Hour())},
-				"minute":    NumberValue{Val: float64(t.Minute())},
-				"second":    NumberValue{Val: float64(t.Second())},
-				"timestamp": NumberValue{Val: float64(t.UnixMilli())},
-				"weekday":   StringValue{Val: t.Weekday().String()},
-			},
-		}
-	}
-
-	convertDateFormat := func(layout string) string {
-		r := layout
-		r = strings.ReplaceAll(r, "YYYY", "2006")
-		r = strings.ReplaceAll(r, "yyyy", "2006")
-		r = strings.ReplaceAll(r, "YY", "06")
-		r = strings.ReplaceAll(r, "MM", "01")
-		r = strings.ReplaceAll(r, "DD", "02")
-		r = strings.ReplaceAll(r, "dd", "02")
-		r = strings.ReplaceAll(r, "HH", "15")
-		r = strings.ReplaceAll(r, "hh", "03")
-		r = strings.ReplaceAll(r, "mm", "04")
-		r = strings.ReplaceAll(r, "ss", "05")
-		r = strings.ReplaceAll(r, "SSS", "000")
-		return r
-	}
 
 	var dateUnit *UnitInstance
 	dateUnit = &UnitInstance{
@@ -1219,4 +1143,81 @@ func xruValueToGoValue(v Value) any {
 	default:
 		return val.String()
 	}
+}
+
+func parseTimeToTime(v Value) (time.Time, error) {
+	if v == nil || v == (NilValue{}) {
+		return time.Now(), nil
+	}
+	switch val := v.(type) {
+	case NumberValue:
+		n := int64(val.Val)
+		if n > 100000000000 {
+			return time.UnixMilli(n), nil
+		}
+		return time.Unix(n, 0), nil
+	case StringValue:
+		str := strings.TrimSpace(val.Val)
+		if str == "" || strings.EqualFold(str, "now") {
+			return time.Now(), nil
+		}
+		formats := []string{
+			time.RFC3339Nano,
+			time.RFC3339,
+			"2006-01-02 15:04:05",
+			"2006-01-02T15:04:05",
+			"2006-01-02",
+			"02/01/2006",
+			"02/01/2006 15:04:05",
+			"15:04:05",
+		}
+		for _, f := range formats {
+			if t, err := time.Parse(f, str); err == nil {
+				return t, nil
+			}
+		}
+		return time.Time{}, fmt.Errorf("date: unable to parse date string '%s'", str)
+	case MapValue:
+		if isoVal, ok := val.Pairs["iso"]; ok {
+			return time.Parse(time.RFC3339, isoVal.String())
+		}
+		if tsVal, ok := val.Pairs["timestamp"]; ok {
+			if nVal, ok := tsVal.(NumberValue); ok {
+				return time.UnixMilli(int64(nVal.Val)), nil
+			}
+		}
+	}
+	return time.Time{}, fmt.Errorf("date: invalid date value of type %s", v.Type())
+}
+
+func dateToMap(t time.Time) MapValue {
+	return MapValue{
+		Pairs: map[string]Value{
+			"iso":       StringValue{Val: t.Format(time.RFC3339)},
+			"year":      NumberValue{Val: float64(t.Year())},
+			"month":     NumberValue{Val: float64(t.Month())},
+			"day":       NumberValue{Val: float64(t.Day())},
+			"hour":      NumberValue{Val: float64(t.Hour())},
+			"minute":    NumberValue{Val: float64(t.Minute())},
+			"second":    NumberValue{Val: float64(t.Second())},
+			"timestamp": NumberValue{Val: float64(t.UnixMilli())},
+			"weekday":   StringValue{Val: t.Weekday().String()},
+		},
+	}
+}
+
+func convertDateFormat(layout string) string {
+	r := layout
+	r = strings.ReplaceAll(r, "YYYY", "2006")
+	r = strings.ReplaceAll(r, "yyyy", "2006")
+	r = strings.ReplaceAll(r, "YY", "06")
+	r = strings.ReplaceAll(r, "MM", "01")
+	r = strings.ReplaceAll(r, "DD", "02")
+	r = strings.ReplaceAll(r, "dd", "02")
+	r = strings.ReplaceAll(r, "HH", "15")
+	r = strings.ReplaceAll(r, "hh", "03")
+	r = strings.ReplaceAll(r, "mm", "04")
+	r = strings.ReplaceAll(r, "ss", "05")
+	r = strings.ReplaceAll(r, "SSS", "000")
+	return r
 }

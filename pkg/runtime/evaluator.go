@@ -20,6 +20,7 @@ type TreeDispatcherFunc func(dt *ast.DispatchTreeStatement, eval *Evaluator, env
 
 type Evaluator struct {
 	builtins       map[string]*UnitInstance
+	nativeHooks    map[string]NativeMethod
 	treeDispatcher TreeDispatcherFunc
 	loadedModules  map[string]*UnitInstance
 	loadingModules map[string]bool
@@ -37,10 +38,18 @@ func isBuiltinUnit(name string) bool {
 func NewEvaluator() *Evaluator {
 	return &Evaluator{
 		builtins:       NewBuiltinUnits(),
+		nativeHooks:    NewNativeHooks(),
 		loadedModules:  make(map[string]*UnitInstance),
 		loadingModules: make(map[string]bool),
 		interfaces:     make(map[string]*ast.InterfaceStatement),
 	}
+}
+
+func (ev *Evaluator) RegisterNativeHook(name string, fn NativeMethod) {
+	if ev.nativeHooks == nil {
+		ev.nativeHooks = make(map[string]NativeMethod)
+	}
+	ev.nativeHooks[name] = fn
 }
 
 func (ev *Evaluator) SetTreeDispatcher(fn TreeDispatcherFunc) {

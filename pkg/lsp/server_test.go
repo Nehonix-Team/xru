@@ -1720,9 +1720,135 @@ std.println(date.)
 	}
 }
 
+func TestLSPStdNavigation(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
 
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
 
+	code := `from path use { clean }
+let name: string = "  world  "
+let t = name.trim()
+let info: DateInfo = {}
+let p = path::clean("foo/bar")
+`
+	testDir := t.TempDir()
+	testFilePath := filepath.Join(testDir, "main.xru")
+	testURI := "file://" + filepath.ToSlash(testFilePath)
 
+	openPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        testURI,
+				"languageId": "xru",
+				"version":    1,
+				"text":       code,
+			},
+		},
+	}
+	openData, _ := json.Marshal(openPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
 
+	// 1. Definition on 'clean' in 'from path use { clean }' (line 0, char 18)
+	defReq1 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": testURI},
+			"position":     map[string]any{"line": 0, "character": 18},
+		},
+	}
+	d1, _ := json.Marshal(defReq1)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d1), string(d1)))
 
+	// 2. Definition on 'string' in 'let name: string' (line 1, char 12)
+	defReq2 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": testURI},
+			"position":     map[string]any{"line": 1, "character": 12},
+		},
+	}
+	d2, _ := json.Marshal(defReq2)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d2), string(d2)))
+
+	// 3. Definition on 'trim' in 'name.trim()' (line 2, char 14)
+	defReq3 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": testURI},
+			"position":     map[string]any{"line": 2, "character": 14},
+		},
+	}
+	d3, _ := json.Marshal(defReq3)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d3), string(d3)))
+
+	// 4. Definition on 'DateInfo' in 'let info: DateInfo' (line 3, char 13)
+	defReq4 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      5,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": testURI},
+			"position":     map[string]any{"line": 3, "character": 13},
+		},
+	}
+	d4, _ := json.Marshal(defReq4)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d4), string(d4)))
+
+	server := lsp.NewServer(testInput, testOutput)
+	server.Run()
+
+	outStr := testOutput.String()
+
+	getResp := func(id int) string {
+		needle := fmt.Sprintf(`"id":%d,`, id)
+		idx := strings.Index(outStr, needle)
+		if idx == -1 {
+			needle = fmt.Sprintf(`"id": %d,`, id)
+			idx = strings.Index(outStr, needle)
+		}
+		if idx == -1 {
+			return ""
+		}
+		for s := idx; s >= 0; s-- {
+			if outStr[s] == '{' {
+				end := strings.Index(outStr[s:], "\r\n")
+				if end != -1 {
+					return outStr[s : s+end]
+				}
+				return outStr[s:]
+			}
+		}
+		return ""
+	}
+
+	rClean := getResp(2)
+	if !strings.Contains(rClean, "path.xru") {
+		t.Errorf("Expected definition of 'clean' to point to path.xru, got: %s", rClean)
+	}
+
+	rString := getResp(3)
+	if !strings.Contains(rString, "builtin.xru") {
+		t.Errorf("Expected definition of 'string' to point to builtin.xru, got: %s", rString)
+	}
+
+	rTrim := getResp(4)
+	if !strings.Contains(rTrim, "builtin.xru") {
+		t.Errorf("Expected definition of 'trim' to point to builtin.xru, got: %s", rTrim)
+	}
+
+	rDateInfo := getResp(5)
+	if !strings.Contains(rDateInfo, "date.xru") {
+		t.Errorf("Expected definition of 'DateInfo' to point to date.xru, got: %s", rDateInfo)
+	}
+}
 

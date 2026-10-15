@@ -183,20 +183,39 @@ func (ev *Evaluator) evalFunc(fn *ast.FuncStatement, env *Environment) (Value, e
 }
 
 func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *Environment) (Value, error) {
+	if fn.Stmt != nil && fn.Stmt.NativeHook != "" {
+		if ev.nativeHooks != nil {
+			if hook, ok := ev.nativeHooks[fn.Stmt.NativeHook]; ok {
+				return hook(args)
+			}
+		}
+		return nil, fmt.Errorf("native hook '%s' is not registered", fn.Stmt.NativeHook)
+	}
+
 	minArgs := 0
-	maxArgs := len(fn.Stmt.Parameters)
+	hasVariadic := false
 	for _, p := range fn.Stmt.Parameters {
-		if !p.Optional && !strings.HasSuffix(p.Type, "?") {
+		if p.IsVariadic {
+			hasVariadic = true
+		} else if !p.Optional && !strings.HasSuffix(p.Type, "?") {
 			minArgs++
 		}
 	}
 
 	actualCount := len(args)
-	if actualCount < minArgs || actualCount > maxArgs {
-		if minArgs == maxArgs {
+	maxArgs := len(fn.Stmt.Parameters)
+	if hasVariadic {
+		if actualCount < minArgs {
+			return NilValue{}, fmt.Errorf("function '%s' expects at least %d arguments, but got %d", fn.Stmt.Name, minArgs, actualCount)
+		}
+	} else if minArgs == maxArgs {
+		if actualCount != minArgs {
 			return NilValue{}, fmt.Errorf("function '%s' expects %d arguments, but got %d", fn.Stmt.Name, minArgs, actualCount)
 		}
-		return NilValue{}, fmt.Errorf("function '%s' expects between %d and %d arguments, but got %d", fn.Stmt.Name, minArgs, maxArgs, actualCount)
+	} else {
+		if actualCount < minArgs || actualCount > maxArgs {
+			return NilValue{}, fmt.Errorf("function '%s' expects between %d and %d arguments, but got %d", fn.Stmt.Name, minArgs, maxArgs, actualCount)
+		}
 	}
 
 	fnEnv := NewBlockEnvironment(fn.Env)
@@ -227,6 +246,14 @@ func (ev *Evaluator) callUserFunction(fn UserFunction, args []Value, callerEnv *
 		}
 	}
 	for i, param := range fn.Stmt.Parameters {
+		if param.IsVariadic {
+			var varList []Value
+			if i < len(args) {
+				varList = append(varList, args[i:]...)
+			}
+			_ = fnEnv.Set(param.Name, ListValue{Elements: varList}, false)
+			break
+		}
 		var argVal Value = NilValue{}
 		if i < len(args) {
 			argVal = args[i]

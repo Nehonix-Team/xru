@@ -125,11 +125,11 @@ func parseFileImports(text string) []FileImport {
 	var imports []FileImport
 	lines := strings.Split(text, "\n")
 
-	reFromGroup := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)::\(([^)]+)\)`)
-	reFromMember := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)::([a-zA-Z0-9_]+)`)
-	reFromMods := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+\(([^)]+)\)`)
-	reFromAs := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)\s+as\s+([a-zA-Z0-9_]+)`)
-	reFromMod := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)`)
+	reFromGroup := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+(?:([a-zA-Z0-9_]+)::)?(?:\{|\()([^})]+)(?:\}|\))`)
+	reFromMember := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+([a-zA-Z0-9_]+)::([a-zA-Z0-9_]+)`)
+	reFromMods := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+(?:\{|\()([^})]+)(?:\}|\))`)
+	reFromAs := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+([a-zA-Z0-9_]+)\s+as\s+([a-zA-Z0-9_]+)`)
+	reFromMod := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+["']?([a-zA-Z0-9_]+)["']?`)
 	reUseAs := regexp.MustCompile(`^\s*use\s+([a-zA-Z0-9_]+)\s+as\s+([a-zA-Z0-9_]+)`)
 	reUse := regexp.MustCompile(`^\s*use\s+([a-zA-Z0-9_]+)`)
 
@@ -147,9 +147,15 @@ func parseFileImports(text string) []FileImport {
 					members = append(members, mem)
 				}
 			}
+			src := m[1]
+			mod := m[2]
+			if mod == "" {
+				mod = src
+				src = ""
+			}
 			imports = append(imports, FileImport{
-				Source:  m[1],
-				Module:  m[2],
+				Source:  src,
+				Module:  mod,
 				Members: members,
 				Line:    idx,
 			})
@@ -240,6 +246,64 @@ func findDeclarationInFile(filePath, word string) (line, char int, found bool) {
 	return 0, 0, false
 }
 
+func findStdFile(curFileDir, name string) string {
+	if !strings.HasSuffix(name, ".xru") {
+		name += ".xru"
+	}
+	if envStd := os.Getenv("XRU_STD_PATH"); envStd != "" {
+		p := filepath.Join(envStd, name)
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return p
+		}
+	}
+	dir := curFileDir
+	for i := 0; i < 15; i++ {
+		candidate := filepath.Join(dir, "std", name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+		candidate2 := filepath.Join(dir, "mods", "xru", "std", name)
+		if info, err := os.Stat(candidate2); err == nil && !info.IsDir() {
+			return candidate2
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	if wd, err := os.Getwd(); err == nil {
+		dir := wd
+		for i := 0; i < 15; i++ {
+			candidate := filepath.Join(dir, "std", name)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate
+			}
+			candidate2 := filepath.Join(dir, "mods", "xru", "std", name)
+			if info, err := os.Stat(candidate2); err == nil && !info.IsDir() {
+				return candidate2
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		candidate := filepath.Join(execDir, "std", name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+		candidate2 := filepath.Join(execDir, "..", "std", name)
+		if info, err := os.Stat(candidate2); err == nil && !info.IsDir() {
+			return candidate2
+		}
+	}
+	return ""
+}
+
 func (s *Server) resolveModuleFilePath(modCfg *modules.ModConfig, sourceNs, modName, curFileDir string) string {
 	if modCfg != nil {
 		if sourceNs != "" {
@@ -257,6 +321,9 @@ func (s *Server) resolveModuleFilePath(modCfg *modules.ModConfig, sourceNs, modN
 	localPath := filepath.Join(curFileDir, modName+".xru")
 	if info, err := os.Stat(localPath); err == nil && !info.IsDir() {
 		return localPath
+	}
+	if stdPath := findStdFile(curFileDir, modName); stdPath != "" {
+		return stdPath
 	}
 	return ""
 }
@@ -346,6 +413,59 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 					if targetIface != "" {
 						if loc := findMemberInInterface(lines, targetIface, memberName, uri); loc != nil {
 							return loc
+						}
+					}
+					// Builtin primitive methods: string, list, number, map
+					if varInfo.isString || strings.EqualFold(targetIface, "string") || objName == "string" {
+						if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+							if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, memberName); found {
+								return &Location{
+									URI: pathToURI(stdBuiltin),
+									Range: Range{
+										Start: Position{Line: lIdx, Character: charPos},
+										End:   Position{Line: lIdx, Character: charPos + len(memberName)},
+									},
+								}
+							}
+						}
+					}
+					if varInfo.isList || strings.EqualFold(targetIface, "list") || objName == "list" {
+						if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+							if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, memberName); found {
+								return &Location{
+									URI: pathToURI(stdBuiltin),
+									Range: Range{
+										Start: Position{Line: lIdx, Character: charPos},
+										End:   Position{Line: lIdx, Character: charPos + len(memberName)},
+									},
+								}
+							}
+						}
+					}
+					if varInfo.isNumber || strings.EqualFold(targetIface, "number") || objName == "number" {
+						if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+							if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, memberName); found {
+								return &Location{
+									URI: pathToURI(stdBuiltin),
+									Range: Range{
+										Start: Position{Line: lIdx, Character: charPos},
+										End:   Position{Line: lIdx, Character: charPos + len(memberName)},
+									},
+								}
+							}
+						}
+					}
+					if varInfo.isMap || strings.EqualFold(targetIface, "map") || objName == "map" {
+						if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+							if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, memberName); found {
+								return &Location{
+									URI: pathToURI(stdBuiltin),
+									Range: Range{
+										Start: Position{Line: lIdx, Character: charPos},
+										End:   Position{Line: lIdx, Character: charPos + len(memberName)},
+									},
+								}
+							}
 						}
 					}
 					// Inline map in function or variable
@@ -635,15 +755,6 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		}
 
 		if imp.Module == word {
-			if imp.Module == "std" || imp.Module == "fs" || imp.Module == "net" || imp.Module == "crypto" || imp.Module == "cmd" {
-				return &Location{
-					URI: uri,
-					Range: Range{
-						Start: Position{Line: imp.Line, Character: 0},
-						End:   Position{Line: imp.Line, Character: len(lines[imp.Line])},
-					},
-				}
-			}
 			modFile := s.resolveModuleFilePath(modCfg, imp.Source, imp.Module, fileDir)
 			if modFile != "" {
 				lIdx, charPos, _ := findDeclarationInFile(modFile, imp.Module)
@@ -658,14 +769,48 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		}
 	}
 
-	// 6. Builtin 'std' fallback
-	if word == "std" {
-		return &Location{
-			URI: uri,
-			Range: Range{
-				Start: Position{Line: 0, Character: 0},
-				End:   Position{Line: 0, Character: 0},
-			},
+	// 6. Builtin primitive contracts & types in std/builtin.xru
+	lowerWord := strings.ToLower(word)
+	if lowerWord == "string" || lowerWord == "list" || lowerWord == "number" || lowerWord == "map" {
+		targetIface := strings.ToUpper(lowerWord[:1]) + lowerWord[1:]
+		if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+			if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, targetIface); found {
+				return &Location{
+					URI: pathToURI(stdBuiltin),
+					Range: Range{
+						Start: Position{Line: lIdx, Character: charPos},
+						End:   Position{Line: lIdx, Character: charPos + len(targetIface)},
+					},
+				}
+			}
+		}
+	}
+	if word == "DateInfo" {
+		if stdDate := findStdFile(fileDir, "date"); stdDate != "" {
+			if lIdx, charPos, found := findDeclarationInFile(stdDate, "DateInfo"); found {
+				return &Location{
+					URI: pathToURI(stdDate),
+					Range: Range{
+						Start: Position{Line: lIdx, Character: charPos},
+						End:   Position{Line: lIdx, Character: charPos + len(word)},
+					},
+				}
+			}
+		}
+	}
+
+	// 7. Standard library modules: std, path, fs, crypto, date, math, sys, cmd, json, net
+	for _, m := range []string{"std", "path", "fs", "crypto", "date", "math", "sys", "cmd", "json", "net"} {
+		if word == m {
+			if stdFile := findStdFile(fileDir, word); stdFile != "" {
+				return &Location{
+					URI: pathToURI(stdFile),
+					Range: Range{
+						Start: Position{Line: 0, Character: 0},
+						End:   Position{Line: 0, Character: len(word)},
+					},
+				}
+			}
 		}
 	}
 

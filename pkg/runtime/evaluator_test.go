@@ -1709,3 +1709,56 @@ let diffDays = date.diff(added, parsed, "days")
 	}
 }
 
+func TestVariadicParametersAndNativeHooks(t *testing.T) {
+	code := `
+func joinLines(...lines: string) -> string {
+	return lines.join(" - ")
+}
+
+unit CustomHelper {
+	@native("crypto_sha256")
+	func hash(s: string) -> string
+
+	func multiHash(...items: string) -> string {
+		let combined = items.join(":")
+		return &this.hash(combined)
+	}
+}
+
+let res1 = joinLines("alpha", "beta", "gamma")
+let resEmpty = joinLines()
+
+@native("crypto_sha256")
+func rawSha(val: string) -> string
+
+let directHash = rawSha("hello")
+`
+	p := parser.New(lexer.New("variadic_test.xru", code))
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	_, err := ev.Eval(prog, env)
+	if err != nil {
+		t.Fatalf("Runtime error: %v", err)
+	}
+
+	r1, _ := env.Get("res1")
+	if r1.String() != "alpha - beta - gamma" {
+		t.Errorf("Expected 'alpha - beta - gamma', got: %v", r1)
+	}
+
+	re, _ := env.Get("resEmpty")
+	if re.String() != "" {
+		t.Errorf("Expected empty string, got: %v", re)
+	}
+
+	dh, _ := env.Get("directHash")
+	if dh.String() != "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" {
+		t.Errorf("Expected SHA256 of hello, got: %v", dh)
+	}
+}
+
+

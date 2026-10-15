@@ -1,0 +1,101 @@
+// Package date provides comprehensive Date & Time manipulation, formatting, ISO-8601 parsing, and arithmetic.
+
+/// Structured date map contract returned by date.now() and date.parse().
+interface DateInfo @map {
+	iso: string
+	timestamp: number
+	year: number
+	month: number
+	day: number
+	hour: number
+	minute: number
+	second: number
+	weekday: string
+}
+
+unit date {
+	/// Returns the current date and time as a structured Map with iso, timestamp, year, month, day, hour, minute, second, and weekday.
+	@native("date_now")
+	func now() -> DateInfo
+
+	/// Returns an ISO-8601 formatted date string (e.g. "2026-10-15T09:50:36Z").
+	@native("date_iso")
+	func iso(d: any = nil) -> string
+
+	/// Returns current or given date timestamp in Unix milliseconds.
+	@native("date_timestamp")
+	func timestamp(d: any = nil) -> number
+
+	/// Parses a date string into a structured Date Map.
+	@native("date_parse")
+	func parse(dateStr: string, fmt: string = "") -> DateInfo
+
+	/// Adds duration or units to a date (e.g. date.add(d, 2, "days"), date.add(d, "2h")).
+	@native("date_add")
+	func add(d: any, amount: any, u: string = "") -> DateInfo
+
+	/// Formats date using modern template tokens (e.g. "YYYY-MM-DD HH:mm:ss" or "DD/MM/YYYY").
+	@native("date_format")
+	func format(dateOrFormat: any, fmt: string = "") -> string
+
+	/// Returns today's date in "YYYY-MM-DD" format.
+	func today() -> string {
+		let isoStr = date.iso()
+		if isoStr.len() >= 10 {
+			return isoStr.slice(0, 10)
+		}
+		return isoStr
+	}
+
+	/// Returns the full year (e.g. 2026).
+	func year(d: any = nil) -> number {
+		if d != nil {
+			let info = date.parse(d.toString())
+			return info.year
+		}
+		return date.now().year
+	}
+
+	/// Returns the month (1 to 12).
+	func month(d: any = nil) -> number {
+		if d != nil {
+			let info = date.parse(d.toString())
+			return info.month
+		}
+		return date.now().month
+	}
+
+	/// Returns the day of month (1 to 31).
+	func day(d: any = nil) -> number {
+		if d != nil {
+			let info = date.parse(d.toString())
+			return info.day
+		}
+		return date.now().day
+	}
+
+	/// Calculates the absolute difference between two dates in "seconds", "minutes", "hours", or "days".
+	func diff(dateA: any, dateB: any, u: string = "seconds") -> number {
+		let tA = date.timestamp(dateA)
+		let tB = date.timestamp(dateB)
+		let diffMs = tA - tB
+		if diffMs < 0 {
+			diffMs =: -diffMs
+		}
+
+		match u {
+			case "days" {
+				return (diffMs / 86400000).floor()
+			}
+			case "hours" {
+				return (diffMs / 3600000).floor()
+			}
+			case "minutes" {
+				return (diffMs / 60000).floor()
+			}
+			default {
+				return (diffMs / 1000).floor()
+			}
+		}
+	}
+}

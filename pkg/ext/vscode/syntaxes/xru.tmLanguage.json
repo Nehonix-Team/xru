@@ -251,6 +251,10 @@
     "constants": {
       "patterns": [
         {
+          "name": "variable.language.this.xru",
+          "match": "\\b(self)\\b"
+        },
+        {
           "name": "constant.language.boolean.xru",
           "match": "\\b(true|false)\\b"
         },
@@ -325,6 +329,15 @@
     },
     "prop_access": {
       "patterns": [
+        {
+          "match": "(&)([a-zA-Z_][a-zA-Z0-9_]*)(::)([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.property.xru punctuation.definition.variable.prop.xru" },
+            "2": { "name": "variable.language.this.xru entity.name.class.unit.xru" },
+            "3": { "name": "punctuation.accessor.scope.xru" },
+            "4": { "name": "entity.name.function.unit.xru" }
+          }
+        },
         {
           "match": "(&)([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {

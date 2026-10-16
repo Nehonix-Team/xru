@@ -294,6 +294,36 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 			}
 		}
 
+		// 6b. unit definition -> &Unit:: and &self::
+		if m := reUnit.FindStringSubmatch(line); len(m) > 1 {
+			uName := m[1]
+			unitScopeLabel := "&" + uName + "::"
+			if !seen[unitScopeLabel] {
+				seen[unitScopeLabel] = true
+				items = append(items, CompletionItem{
+					Label:            unitScopeLabel,
+					Kind:             CompletionItemKindModule,
+					Detail:           fmt.Sprintf("(&self) %s internal method reference", uName),
+					Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Access internal methods of unit `%s`", uName)},
+					InsertText:       unitScopeLabel,
+					InsertTextFormat: InsertTextFormatPlainText,
+					SortText:         "00_self_unit",
+				})
+			}
+			if !seen["&self::"] {
+				seen["&self::"] = true
+				items = append(items, CompletionItem{
+					Label:            "&self::",
+					Kind:             CompletionItemKindModule,
+					Detail:           "(&self) internal method reference",
+					Documentation:    MarkupContent{Kind: "markdown", Value: "Access internal methods of current unit"},
+					InsertText:       "&self::",
+					InsertTextFormat: InsertTextFormatPlainText,
+					SortText:         "00_self_generic",
+				})
+			}
+		}
+
 		// 7. use <module> as <alias>
 		if m := reUse.FindStringSubmatch(line); len(m) > 1 {
 			name := m[1]

@@ -15,6 +15,7 @@ type varTargetInfo struct {
 	isString         bool
 	isNumber         bool
 	isList           bool
+	listElemType     string
 	isMap            bool
 	mapFields        []CompletionItem
 	interfaceName    string
@@ -131,7 +132,11 @@ func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
 
 			// 9. List type
 			if strings.HasPrefix(typeStr, "list") || strings.HasPrefix(valClean, "[") {
-				return &varTargetInfo{isList: true}
+				elemT := ""
+				if strings.HasPrefix(typeStr, "list[") && strings.HasSuffix(typeStr, "]") {
+					elemT = strings.TrimSuffix(strings.TrimPrefix(typeStr, "list["), "]")
+				}
+				return &varTargetInfo{isList: true, listElemType: elemT}
 			}
 
 			// 10. Custom unit or interface type in annotation
@@ -483,9 +488,18 @@ func collectInterfaceMembers(lines []string, ifaceName string, currentFilePath s
 }
 
 func inferUnitMethodReturnType(lines []string, objName, methodName string) string {
-	unitName := objName
+	unitName := strings.TrimPrefix(objName, "&")
 	if varInfo := findVariableTargetInfo(lines, objName); varInfo != nil && varInfo.unitType != "" {
 		unitName = varInfo.unitType
+	}
+	if unitName == "self" {
+		reFindUnit := regexp.MustCompile(`^\s*unit\s+([a-zA-Z0-9_]+)`)
+		for _, l := range lines {
+			if m := reFindUnit.FindStringSubmatch(l); len(m) > 1 {
+				unitName = m[1]
+				break
+			}
+		}
 	}
 
 	// 1. Built-in units
@@ -499,7 +513,7 @@ func inferUnitMethodReturnType(lines []string, objName, methodName string) strin
 
 	// 2. Local unit declaration in document
 	reUnitStart := regexp.MustCompile(fmt.Sprintf(`^\s*unit\s+%s\b`, regexp.QuoteMeta(unitName)))
-	reFunc := regexp.MustCompile(fmt.Sprintf(`^\s*(?:global\s+)?func\s+%s\s*\(.*?\)(?:\s*->\s*([a-zA-Z0-9_\[\]]+))?`, regexp.QuoteMeta(methodName)))
+	reFunc := regexp.MustCompile(fmt.Sprintf(`^\s*(?:global\s+)?func\s+%s\s*\(.*?\)(?:\s*->\s*(.+))?`, regexp.QuoteMeta(methodName)))
 
 	inUnit := false
 	depth := 0
@@ -526,6 +540,45 @@ func inferUnitMethodReturnType(lines []string, objName, methodName string) strin
 				return strings.TrimSpace(m[1])
 			}
 			return "void"
+		}
+	}
+
+	// 3. Check included interface: unit <unitName> includes <IfaceName>
+	reUnitIncludes := regexp.MustCompile(fmt.Sprintf(`^\s*unit\s+%s\s+(?:includes|extends)\s+([a-zA-Z0-9_]+)`, regexp.QuoteMeta(unitName)))
+	var ifaceName string
+	for _, l := range lines {
+		if m := reUnitIncludes.FindStringSubmatch(l); len(m) > 1 {
+			ifaceName = m[1]
+			break
+		}
+	}
+	if ifaceName != "" {
+		reIfaceStart := regexp.MustCompile(fmt.Sprintf(`^\s*interface\s+%s\b`, regexp.QuoteMeta(ifaceName)))
+		reIfaceFunc := regexp.MustCompile(fmt.Sprintf(`^\s*func\s+%s\s*\(.*?\)(?:\s*->\s*(.+))?`, regexp.QuoteMeta(methodName)))
+		inIface := false
+		iDepth := 0
+		for _, l := range lines {
+			trimmed := strings.TrimSpace(l)
+			if strings.HasPrefix(trimmed, "//") {
+				continue
+			}
+			if !inIface {
+				if reIfaceStart.MatchString(l) {
+					inIface = true
+					iDepth += strings.Count(l, "{") - strings.Count(l, "}")
+				}
+				continue
+			}
+			iDepth += strings.Count(l, "{") - strings.Count(l, "}")
+			if iDepth <= 0 {
+				break
+			}
+			if m := reIfaceFunc.FindStringSubmatch(l); len(m) > 0 {
+				if len(m) > 1 && m[1] != "" {
+					return strings.TrimSpace(m[1])
+				}
+				return "void"
+			}
 		}
 	}
 
@@ -684,9 +737,22 @@ func resolveExpressionTargetInfoDepth(uri string, lines []string, expr string, d
 		if openParen > 0 {
 			caller := strings.TrimSpace(expr[:openParen])
 			lastDot := findLastDotOutsideParens(caller)
+			var callerObj, callerMethod string
 			if lastDot != -1 {
-				callerObj := strings.TrimSpace(caller[:lastDot])
-				callerMethod := strings.TrimSpace(caller[lastDot+1:])
+				callerObj = strings.TrimSpace(caller[:lastDot])
+				callerMethod = strings.TrimSpace(caller[lastDot+1:])
+			} else if colonIdx := strings.LastIndex(caller, "::"); colonIdx != -1 {
+				callerObj = strings.TrimSpace(caller[:colonIdx])
+				callerMethod = strings.TrimSpace(caller[colonIdx+2:])
+			}
+
+			if callerObj != "" && callerMethod != "" {
+				// 0. Unit or Self method call (e.g. path.clean(p), &date::now(), &self::now(), &path::clean(p))
+				cleanUnit := strings.TrimPrefix(callerObj, "&")
+				unitRetType := inferUnitMethodReturnType(lines, cleanUnit, callerMethod)
+				if unitRetType != "" && unitRetType != "void" && unitRetType != "any" {
+					return typeStringToTargetInfo(lines, unitRetType, uriToPath(uri))
+				}
 
 				// Special Built-in: date
 				if strings.EqualFold(callerObj, "date") {
@@ -723,16 +789,18 @@ func resolveExpressionTargetInfoDepth(uri string, lines []string, expr string, d
 						case "len":
 							return &varTargetInfo{isNumber: true}
 						case "split":
-							return &varTargetInfo{isList: true}
+							return &varTargetInfo{isList: true, listElemType: "string"}
 						case "contains", "startswith", "endswith":
 							return nil
+						case "tostring", "to_string":
+							return &varTargetInfo{isString: true}
 						default: // trim, toupper, tolower, replace, slice, etc.
 							return &varTargetInfo{isString: true}
 						}
 					}
 					if objInfo.isNumber {
 						switch mLower {
-						case "tostring":
+						case "tostring", "to_string":
 							return &varTargetInfo{isString: true}
 						default:
 							return &varTargetInfo{isNumber: true}
@@ -744,8 +812,13 @@ func resolveExpressionTargetInfoDepth(uri string, lines []string, expr string, d
 							return &varTargetInfo{isNumber: true}
 						case "join":
 							return &varTargetInfo{isString: true}
+						case "get", "at", "pop":
+							if objInfo.listElemType != "" {
+								return typeStringToTargetInfo(lines, objInfo.listElemType, uriToPath(uri))
+							}
+							return &varTargetInfo{}
 						default:
-							return &varTargetInfo{isList: true}
+							return &varTargetInfo{isList: true, listElemType: objInfo.listElemType}
 						}
 					}
 					if objInfo.isTask {
@@ -899,9 +972,13 @@ func typeStringToTargetInfo(lines []string, tStr string, filePath string) *varTa
 		return &varTargetInfo{isNumber: true}
 	}
 	if strings.HasPrefix(tStr, "list") {
-		return &varTargetInfo{isList: true}
+		elemT := ""
+		if strings.HasPrefix(tStr, "list[") && strings.HasSuffix(tStr, "]") {
+			elemT = strings.TrimSuffix(strings.TrimPrefix(tStr, "list["), "]")
+		}
+		return &varTargetInfo{isList: true, listElemType: elemT}
 	}
-	if strings.HasPrefix(tStr, "@map{") || strings.HasPrefix(tStr, "@map {") {
+	if strings.HasPrefix(tStr, "@map") || strings.HasPrefix(tStr, "{") {
 		return &varTargetInfo{isMap: true, mapFields: parseInlineMapFields(tStr)}
 	}
 	if tStr == "map" {

@@ -146,18 +146,38 @@ func (s *Server) handleFromCompletion(uri, prefixLine, trimmedPrefix string) []C
 func (s *Server) handleScopeMemberCompletion(uri, beforeColon string) []CompletionItem {
 	var items []CompletionItem
 	trimmed := strings.TrimSpace(beforeColon)
+	trimmedNoAmp := strings.TrimPrefix(trimmed, "&")
 	var modIdent string
-	for i := len(trimmed) - 1; i >= 0; i-- {
-		if !isWordChar(trimmed[i]) {
-			modIdent = trimmed[i+1:]
+	for i := len(trimmedNoAmp) - 1; i >= 0; i-- {
+		if !isWordChar(trimmedNoAmp[i]) {
+			modIdent = trimmedNoAmp[i+1:]
 			break
 		}
 		if i == 0 {
-			modIdent = trimmed
+			modIdent = trimmedNoAmp
 		}
 	}
 	if modIdent == "" {
 		return items
+	}
+
+	// 1. Check if modIdent is a local unit, builtin unit, or self
+	if text, ok := s.docs[uri]; ok {
+		docLines := strings.Split(text, "\n")
+		targetUnit := modIdent
+		if modIdent == "self" {
+			reFindUnit := regexp.MustCompile(`^\s*unit\s+([a-zA-Z0-9_]+)`)
+			for _, l := range docLines {
+				if m := reFindUnit.FindStringSubmatch(l); len(m) > 1 {
+					targetUnit = m[1]
+					break
+				}
+			}
+		}
+		unitMembers := collectUnitMembers(docLines, targetUnit)
+		if len(unitMembers) > 0 {
+			return unitMembers
+		}
 	}
 
 	filePath := uriToPath(uri)

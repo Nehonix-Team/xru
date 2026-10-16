@@ -9,7 +9,7 @@ import (
 	"github.com/Nehonix-Team/xru/pkg/modules"
 )
 
-func (s *Server) handleMemberCompletion(uri string, lines []string, prefixLine string) (*CompletionList, bool) {
+func (s *Server) handleMemberCompletion(uri string, lines []string, lineIdx int, prefixLine string) (*CompletionList, bool) {
 	dotIdx := strings.LastIndex(prefixLine, ".")
 	if dotIdx < 0 {
 		return nil, false
@@ -25,7 +25,7 @@ func (s *Server) handleMemberCompletion(uri string, lines []string, prefixLine s
 	}
 
 	rawBefore := prefixLine[:dotIdx]
-	target := extractTargetBeforeDot(rawBefore)
+	target := extractTargetBeforeDotMultiline(lines, lineIdx, rawBefore)
 	if target == "" {
 		return nil, false
 	}
@@ -290,6 +290,16 @@ func collectUnitMembers(lines []string, unitName string) []CompletionItem {
 		}
 	}
 
+	// 3. Included interface methods (unit <unitName> includes <IfaceName>)
+	reUnitIncludes := regexp.MustCompile(fmt.Sprintf(`^\s*unit\s+%s\s+(?:includes|extends)\s+([a-zA-Z0-9_]+)`, regexp.QuoteMeta(unitName)))
+	for _, l := range lines {
+		if m := reUnitIncludes.FindStringSubmatch(l); len(m) > 1 {
+			ifaceMembers := collectInterfaceMembers(lines, m[1], "")
+			items = append(items, ifaceMembers...)
+			break
+		}
+	}
+
 	return items
 }
 
@@ -361,6 +371,34 @@ func getMapCompletionItems(varInfo *varTargetInfo) []CompletionItem {
 }
 
 func extractTargetBeforeDot(rawBefore string) string {
+	return extractTargetCandidate(rawBefore)
+}
+
+func extractTargetBeforeDotMultiline(lines []string, lineIdx int, rawBeforeCurLine string) string {
+	rawBefore := rawBeforeCurLine
+	currLine := lineIdx
+
+	for {
+		target := extractTargetCandidate(rawBefore)
+		if target != "" || currLine <= 0 {
+			if target != "" {
+				return target
+			}
+			return strings.TrimSpace(rawBefore)
+		}
+		currLine--
+		if currLine < 0 || currLine >= len(lines) {
+			break
+		}
+		rawBefore = lines[currLine] + "\n" + rawBefore
+		if len(rawBefore) > 10000 {
+			break
+		}
+	}
+	return strings.TrimSpace(rawBefore)
+}
+
+func extractTargetCandidate(rawBefore string) string {
 	rawBefore = strings.TrimSpace(rawBefore)
 	if rawBefore == "" {
 		return ""
@@ -413,9 +451,9 @@ func extractTargetBeforeDot(rawBefore string) string {
 		default:
 			if depthParen == 0 && depthBracket == 0 && depthBrace == 0 {
 				// Expression or statement delimiters
-				if ch == '=' || ch == ',' || ch == ';' || ch == ':' ||
+				if ch == '=' || ch == ',' || ch == ';' ||
 					ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '%' ||
-					ch == '!' || ch == '&' || ch == '|' || ch == '^' ||
+					ch == '!' || ch == '|' || ch == '^' ||
 					ch == '<' || ch == '>' || ch == '?' || ch == '~' {
 					return strings.TrimSpace(rawBefore[i+1:])
 				}
@@ -423,11 +461,26 @@ func extractTargetBeforeDot(rawBefore string) string {
 				if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
 					after := strings.TrimSpace(rawBefore[i+1:])
 					if after != "" {
+						// If 'after' starts with '{', check if preceded by @map or map or @unit
+						if strings.HasPrefix(after, "{") {
+							prefix := strings.TrimSpace(rawBefore[:i+1])
+							if strings.HasSuffix(prefix, "@map") || strings.HasSuffix(prefix, "map") || strings.HasSuffix(prefix, "@Map") {
+								continue
+							}
+						}
+						// If 'after' starts with '(', check if preceded by function name or method name
+						if strings.HasPrefix(after, "(") {
+							continue
+						}
 						return after
 					}
 				}
 			}
 		}
+	}
+
+	if depthParen > 0 || depthBracket > 0 || depthBrace > 0 {
+		return ""
 	}
 
 	return strings.TrimSpace(rawBefore)

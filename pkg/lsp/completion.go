@@ -108,7 +108,7 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 			subPrefix := prefixLine[lastOpenBrace+3:]
 			subPrefix = strings.TrimSuffix(subPrefix, "}")
 			if strings.Contains(subPrefix, ".") {
-				if memberList, handled := s.handleMemberCompletion(uri, lines, subPrefix); handled {
+				if memberList, handled := s.handleMemberCompletion(uri, lines, pos.Line, subPrefix); handled {
 					return memberList
 				}
 			}
@@ -126,7 +126,7 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 	}
 
 	// 2. Member completion: e.g. "Utils." or "Net." or "Crypto." or "Fs." or "cdn."
-	if memberList, handled := s.handleMemberCompletion(uri, lines, prefixLine); handled {
+	if memberList, handled := s.handleMemberCompletion(uri, lines, pos.Line, prefixLine); handled {
 		return memberList
 	}
 

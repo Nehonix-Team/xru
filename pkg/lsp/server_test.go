@@ -1852,3 +1852,64 @@ let p = path::clean("foo/bar")
 	}
 }
 
+func TestCompletionMultilineAndChaining(t *testing.T) {
+	// 1. Multiline map literal completion after }.
+	uri1 := "file:///test_multiline_map.xru"
+	codeMultilineMap := "func test() {\n    let m = @map {\n        foo: \"bar\"\n    }.\n}\n"
+	didOpen1 := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{"uri": uri1, "languageId": "xru", "version": 1, "text": codeMultilineMap},
+	})
+	comp1 := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri1},
+		"position":     map[string]any{"line": 3, "character": 6},
+	})
+	testInput1 := bytes.NewBufferString(didOpen1 + comp1)
+	testOutput1 := &bytes.Buffer{}
+	srv1 := lsp.NewServer(testInput1, testOutput1)
+	_ = srv1.Run()
+	out1 := testOutput1.String()
+	if !strings.Contains(out1, `"label":"clear"`) || !strings.Contains(out1, `"label":"foo"`) {
+		t.Errorf("Expected multiline map literal completion to contain 'clear' and 'foo', got: %s", out1)
+	}
+
+	// 2. Chained method completion on string.split("/"). (returns list methods)
+	uri2 := "file:///test_chaining.xru"
+	codeChained := "func test(s: string) {\n    let parts = s.split(\"/\").\n}\n"
+	didOpen2 := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{"uri": uri2, "languageId": "xru", "version": 1, "text": codeChained},
+	})
+	comp2 := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri2},
+		"position":     map[string]any{"line": 1, "character": 29},
+	})
+	testInput2 := bytes.NewBufferString(didOpen2 + comp2)
+	testOutput2 := &bytes.Buffer{}
+	srv2 := lsp.NewServer(testInput2, testOutput2)
+	_ = srv2.Run()
+	out2 := testOutput2.String()
+	if !strings.Contains(out2, `"label":"get"`) || !strings.Contains(out2, `"label":"join"`) {
+		t.Errorf("Expected chained list completion to contain 'get' and 'join', got: %s", out2)
+	}
+
+	// 3. Double colon unit self completion on &date::
+	uri3 := "file:///test_unit_scope.xru"
+	codeSelfScope := "unit date {\n    func now() -> string { return \"\" }\n    func today() {\n        let x = &date::\n    }\n}\n"
+	didOpen3 := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{"uri": uri3, "languageId": "xru", "version": 1, "text": codeSelfScope},
+	})
+	comp3 := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri3},
+		"position":     map[string]any{"line": 3, "character": 23},
+	})
+	testInput3 := bytes.NewBufferString(didOpen3 + comp3)
+	testOutput3 := &bytes.Buffer{}
+	srv3 := lsp.NewServer(testInput3, testOutput3)
+	_ = srv3.Run()
+	out3 := testOutput3.String()
+	if !strings.Contains(out3, `"label":"now"`) {
+		t.Errorf("Expected &date:: completion to contain 'now', got: %s", out3)
+	}
+}
+
+
+

@@ -89,7 +89,7 @@ func FindStdDir(curFileDir string) string {
 		}
 	}
 
-	// 5. Global XFPM installations (~/.xfpm/lib/xru/std or /usr/local/share/xfpm/lib/xru/std)
+	// 5. Global XFPM installations (Windows, macOS, Linux)
 	if xfpmEnv := os.Getenv("XFPM_INSTALL"); xfpmEnv != "" {
 		cand := filepath.Join(xfpmEnv, "lib", "xru", "std")
 		if info, err := os.Stat(cand); err == nil && info.IsDir() {
@@ -102,9 +102,30 @@ func FindStdDir(curFileDir string) string {
 			return candHome
 		}
 	}
-	candSys := "/usr/local/share/xfpm/lib/xru/std"
-	if info, err := os.Stat(candSys); err == nil && info.IsDir() {
-		return candSys
+	// Windows specific paths
+	if localApp := os.Getenv("LOCALAPPDATA"); localApp != "" {
+		candWin := filepath.Join(localApp, "xfpm", "lib", "xru", "std")
+		if info, err := os.Stat(candWin); err == nil && info.IsDir() {
+			return candWin
+		}
+	}
+	if appData := os.Getenv("APPDATA"); appData != "" {
+		candWin := filepath.Join(appData, "xfpm", "lib", "xru", "std")
+		if info, err := os.Stat(candWin); err == nil && info.IsDir() {
+			return candWin
+		}
+	}
+	if progData := os.Getenv("ProgramData"); progData != "" {
+		candWin := filepath.Join(progData, "xfpm", "lib", "xru", "std")
+		if info, err := os.Stat(candWin); err == nil && info.IsDir() {
+			return candWin
+		}
+	}
+	// Unix / macOS system locations
+	for _, sysBase := range []string{"/usr/local/share/xfpm/lib/xru/std", "/opt/xfpm/lib/xru/std"} {
+		if info, err := os.Stat(sysBase); err == nil && info.IsDir() {
+			return sysBase
+		}
 	}
 
 	return ""
@@ -189,6 +210,7 @@ func LoadStdDocs(curFileDir string) {
 }
 
 func parseStdFileContent(fileBaseName, content string) {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(content, "\n")
 
 	var docComments []string

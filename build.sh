@@ -86,11 +86,17 @@ for TARGET in "${TARGETS[@]}"; do
         cp -r std/*.xru "${STAGE_DIR}/std/"
 
         ARCHIVE_BASE="${BINARY_NAME}-v${VERSION}-${OS}-${ARCH}"
+        LATEST_BASE="${BINARY_NAME}-${OS}-${ARCH}"
         if [ "$OS" == "windows" ]; then
             (cd "$STAGE_DIR" && zip -q -r "${OLDPWD}/${DIST_DIR}/${ARCHIVE_BASE}.zip" bin std)
+            cp "${DIST_DIR}/${ARCHIVE_BASE}.zip" "${DIST_DIR}/${LATEST_BASE}.zip"
         else
             (cd "$STAGE_DIR" && tar -czf "${OLDPWD}/${DIST_DIR}/${ARCHIVE_BASE}.tar.gz" bin std)
+            cp "${DIST_DIR}/${ARCHIVE_BASE}.tar.gz" "${DIST_DIR}/${LATEST_BASE}.tar.gz"
             (cd "$STAGE_DIR" && zip -q -r "${OLDPWD}/${DIST_DIR}/${ARCHIVE_BASE}.zip" bin std 2>/dev/null || true)
+            if [ -f "${DIST_DIR}/${ARCHIVE_BASE}.zip" ]; then
+                cp "${DIST_DIR}/${ARCHIVE_BASE}.zip" "${DIST_DIR}/${LATEST_BASE}.zip"
+            fi
         fi
         rm -rf "$STAGE_DIR"
         printf "  ${YELLOW}%-20s${NC} ${DIM}»${NC} ${GREEN}[BUNDLE PACKED]${NC}\n" "${ARCHIVE_BASE}"

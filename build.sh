@@ -20,7 +20,7 @@ DIST_DIR="dist"
 BINARY_NAME="xru"
 ENTRY_POINT="./cmd/xru"
 # Extract version from Go source
-VERSION=$(grep "BinVersion =" internal/utils/lib_version.go | cut -d'"' -f2)
+VERSION=$(grep "BinVersion =" internal/utils/lib_version.go | cut -d'"' -f2 | sed 's/^v//')
 
 echo -e "\n${BLUE}${BOLD} XRU BUILD ENGINE ${NC} ${DIM}v${VERSION}${NC}"
 echo -e "${DIM} ──────────────────────────────────────────────────${NC}\n"
@@ -78,6 +78,22 @@ for TARGET in "${TARGETS[@]}"; do
                 echo -e "${YELLOW}[SKIPPED]${NC}"
             fi
         fi
+
+        # Packaging phase (Bundle binary + std library)
+        STAGE_DIR=$(mktemp -d)
+        mkdir -p "${STAGE_DIR}/bin" "${STAGE_DIR}/std"
+        cp "${DIST_DIR}/${OUTPUT}" "${STAGE_DIR}/bin/${BINARY_NAME}$([ "$OS" == "windows" ] && echo ".exe")"
+        cp -r std/*.xru "${STAGE_DIR}/std/"
+
+        ARCHIVE_BASE="${BINARY_NAME}-v${VERSION}-${OS}-${ARCH}"
+        if [ "$OS" == "windows" ]; then
+            (cd "$STAGE_DIR" && zip -q -r "${OLDPWD}/${DIST_DIR}/${ARCHIVE_BASE}.zip" bin std)
+        else
+            (cd "$STAGE_DIR" && tar -czf "${OLDPWD}/${DIST_DIR}/${ARCHIVE_BASE}.tar.gz" bin std)
+            (cd "$STAGE_DIR" && zip -q -r "${OLDPWD}/${DIST_DIR}/${ARCHIVE_BASE}.zip" bin std 2>/dev/null || true)
+        fi
+        rm -rf "$STAGE_DIR"
+        printf "  ${YELLOW}%-20s${NC} ${DIM}»${NC} ${GREEN}[BUNDLE PACKED]${NC}\n" "${ARCHIVE_BASE}"
     else
         echo -e "${NC}[FAILED]${NC}"
         exit 1

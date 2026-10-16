@@ -26,6 +26,9 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		defer func() { c.scope = c.scope.parent }()
 
 		for _, p := range e.Parameters {
+			if p.Type != "" {
+				c.validateTypeAnnotation(e.Pos(), p.Type)
+			}
 			paramSym := &Symbol{Name: p.Name, Kind: SymVar, Type: p.Type, Pos: e.Pos()}
 			if err := c.scope.Define(paramSym); err != nil {
 				c.addError(e.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())

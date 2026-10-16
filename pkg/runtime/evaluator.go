@@ -61,6 +61,9 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 	case *ast.Program:
 		return ev.evalProgram(n, env)
 	case *ast.VarStatement:
+		if n.Type != "" && !ev.isValidType(n.Type) {
+			return nil, fmt.Errorf("variable '%s': type '%s' is not defined", n.Name, n.Type)
+		}
 		val, err := ev.Eval(n.Value, env)
 		if err != nil {
 			return nil, err
@@ -108,6 +111,9 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 	case *ast.ArgStatement:
 		targetVar := n.VarName()
 		if n.Type != "" {
+			if !ev.isValidType(n.Type) {
+				return nil, fmt.Errorf("argument '%s': type '%s' is not defined", targetVar, n.Type)
+			}
 			env.SetVariableType(targetVar, n.Type)
 			if targetVar != n.Name {
 				env.SetVariableType(n.Name, n.Type)
@@ -199,6 +205,20 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			ev.interfaces = make(map[string]*ast.InterfaceStatement)
 		}
 		ev.interfaces[n.Name] = n
+		for _, f := range n.Fields {
+			if f.Params != nil {
+				if f.ReturnType != "" && !ev.isValidType(f.ReturnType) {
+					return nil, fmt.Errorf("interface '%s': type '%s' is not defined for return type of method '%s'", n.Name, f.ReturnType, f.Name)
+				}
+				for _, p := range f.Params {
+					if p.Type != "" && !ev.isValidType(p.Type) {
+						return nil, fmt.Errorf("interface '%s': type '%s' is not defined for parameter '%s' of method '%s'", n.Name, p.Type, p.Name, f.Name)
+					}
+				}
+			} else if f.Type != "" && !ev.isValidType(f.Type) {
+				return nil, fmt.Errorf("interface '%s': type '%s' is not defined for field '%s'", n.Name, f.Type, f.Name)
+			}
+		}
 		return NilValue{}, nil
 	case *ast.UnitStatement:
 		// Enregistre la définition de l'unité
@@ -731,6 +751,14 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 }
 
 func (ev *Evaluator) evalProgram(prog *ast.Program, env *Environment) (Value, error) {
+	if ev.interfaces == nil {
+		ev.interfaces = make(map[string]*ast.InterfaceStatement)
+	}
+	for _, stmt := range prog.Statements {
+		if iface, ok := stmt.(*ast.InterfaceStatement); ok {
+			ev.interfaces[iface.Name] = iface
+		}
+	}
 	var result Value = NilValue{}
 	for _, stmt := range prog.Statements {
 		res, err := ev.Eval(stmt, env)
@@ -763,6 +791,98 @@ func (ev *Evaluator) resolveType(typeName string) string {
 		}
 	}
 	return typeName
+}
+
+func (ev *Evaluator) isValidType(typeName string) bool {
+	typeName = strings.TrimSpace(typeName)
+	if typeName == "" || typeName == "any" || typeName == "void" || typeName == "never" || typeName == "nil" || typeName == "null" {
+		return true
+	}
+	typeName = strings.TrimSuffix(typeName, "?")
+
+	if strings.Contains(typeName, " or ") {
+		for _, part := range strings.Split(typeName, " or ") {
+			if !ev.isValidType(strings.TrimSpace(part)) {
+				return false
+			}
+		}
+		return true
+	}
+
+	if strings.Contains(typeName, "|") {
+		for _, part := range strings.Split(typeName, "|") {
+			if !ev.isValidType(strings.TrimSpace(part)) {
+				return false
+			}
+		}
+		return true
+	}
+
+	if (strings.HasPrefix(typeName, "\"") && strings.HasSuffix(typeName, "\"")) ||
+		(strings.HasPrefix(typeName, "'") && strings.HasSuffix(typeName, "'")) {
+		return true
+	}
+
+	if _, err := strconv.ParseFloat(typeName, 64); err == nil {
+		return true
+	}
+
+	if typeName == "true" || typeName == "false" {
+		return true
+	}
+
+	if idx := strings.Index(typeName, "["); idx != -1 && strings.HasSuffix(typeName, "]") {
+		baseName := strings.TrimSpace(typeName[:idx])
+		key := strings.TrimSuffix(typeName[idx+1:], "]")
+		key = strings.Trim(strings.TrimSpace(key), "\"'")
+		if strings.EqualFold(baseName, "list") || strings.EqualFold(baseName, "task") || strings.EqualFold(baseName, "map") {
+			return ev.isValidType(key)
+		}
+		if ev.interfaces != nil {
+			if _, ok := ev.interfaces[baseName]; ok {
+				return true
+			}
+		}
+		return false
+	}
+
+	if strings.HasPrefix(typeName, "func(") || strings.HasPrefix(typeName, "@map") {
+		return true
+	}
+
+	switch strings.ToLower(typeName) {
+	case "string", "number", "int", "float", "bool", "boolean", "duration", "list", "map", "task", "range", "function", "unit", "document":
+		return true
+	}
+
+	if ev.interfaces != nil {
+		if _, ok := ev.interfaces[typeName]; ok {
+			return true
+		}
+		for name := range ev.interfaces {
+			if strings.EqualFold(name, typeName) {
+				return true
+			}
+		}
+	}
+
+	for bName := range ev.builtins {
+		if strings.EqualFold(bName, typeName) {
+			return true
+		}
+	}
+
+	stdInterfaces := []string{
+		"Document", "SysNative", "ROpt", "FsNative", "NetNative", "CryptoNative",
+		"JsonNative", "MathNative", "DateNative", "CmdNative", "PathNative", "StdNative",
+	}
+	for _, iface := range stdInterfaces {
+		if strings.EqualFold(iface, typeName) {
+			return true
+		}
+	}
+
+	return false
 }
 
 type runtimeInlineField struct {

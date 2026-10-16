@@ -1350,3 +1350,47 @@ func TestInterfaceSyntaxAndCollisions(t *testing.T) {
 	}
 }
 
+func TestTypeAnnotationValidation(t *testing.T) {
+	// 1. Interface with undefined parameter type
+	codeBadParam := `
+	interface MyInterface {
+		func run(opts: notFound) -> bool
+	}
+	`
+	l := lexer.New("test.xru", codeBadParam)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+	foundErr := false
+	for _, err := range c.Errors() {
+		if strings.Contains(err, "ERR_UNDEFINED_TYPE") && strings.Contains(err, "notFound") {
+			foundErr = true
+			break
+		}
+	}
+	if !foundErr {
+		t.Errorf("Expected ERR_UNDEFINED_TYPE for 'notFound', got: %v", c.Errors())
+	}
+
+	// 2. Valid interface type
+	codeGood := `
+	interface ROpt @map {
+		onMismatch? "fatal" or "warn" or "auto-update"
+		mode? "log" or "silent"
+	}
+	interface SysNative {
+		func require(constraint: string, options: ROpt = nil) -> bool
+	}
+	`
+	l2 := lexer.New("test2.xru", codeGood)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+	if len(c2.Errors()) > 0 {
+		t.Errorf("Expected 0 errors for valid interface type ROpt, got: %v", c2.Errors())
+	}
+}
+
+

@@ -227,6 +227,14 @@ func (ev *Evaluator) evalGlobalCall(call *ast.GlobalCallExpression, env *Environ
 }
 
 func (ev *Evaluator) evalFunc(fn *ast.FuncStatement, env *Environment) (Value, error) {
+	if fn.ReturnType != "" && !ev.isValidType(fn.ReturnType) {
+		return nil, fmt.Errorf("function '%s': return type '%s' is not defined", fn.Name, fn.ReturnType)
+	}
+	for _, p := range fn.Parameters {
+		if p.Type != "" && !ev.isValidType(p.Type) {
+			return nil, fmt.Errorf("function '%s': type '%s' is not defined for parameter '%s'", fn.Name, p.Type, p.Name)
+		}
+	}
 	userFn := UserFunction{Stmt: fn, Env: env}
 	if fn.IsGlobal {
 		if env.IsBlockScope() {

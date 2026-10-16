@@ -211,8 +211,9 @@ const (
 	CompletionItemKindKeyword     CompletionItemKind = 14
 	CompletionItemKindSnippet     CompletionItemKind = 15
 	CompletionItemKindFolder      CompletionItemKind = 19
-	CompletionItemKindConstant    CompletionItemKind = 21
-	CompletionItemKindEvent       CompletionItemKind = 23
+	CompletionItemKindConstant      CompletionItemKind = 21
+	CompletionItemKindEvent         CompletionItemKind = 23
+	CompletionItemKindTypeParameter CompletionItemKind = 25
 )
 
 const (

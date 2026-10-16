@@ -1946,5 +1946,70 @@ func TestDynamicStdDocsLoading(t *testing.T) {
 	}
 }
 
+func TestTypeAutocompletionInLSP(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	uri := "file:///test_types.xru"
+	code := `interface ROpt @map {
+	onMismatch "fatal" or "warn" or "auto-update"
+	mode "log" or "silent"
+}
+
+interface SysNative {
+	func require(constraint: string, options: ) -> bool
+}
+`
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       code,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// Request completion right after "options: " at line 6, character 42
+	compPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 6, "character": 42},
+		},
+	}
+	compData, _ := json.Marshal(compPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(compData), string(compData)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Must propose ROpt (declared interface)
+	if !strings.Contains(outStr, `"label":"ROpt"`) {
+		t.Errorf("Expected 'ROpt' in type autocompletions, got: %s", outStr)
+	}
+	// Must propose string, bool, number
+	if !strings.Contains(outStr, `"label":"string"`) || !strings.Contains(outStr, `"label":"bool"`) {
+		t.Errorf("Expected 'string' and 'bool' in type autocompletions, got: %s", outStr)
+	}
+	// Must propose list[T]
+	if !strings.Contains(outStr, `"label":"list[T]"`) {
+		t.Errorf("Expected 'list[T]' in type autocompletions, got: %s", outStr)
+	}
+}
+
+
 
 

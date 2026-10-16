@@ -2,6 +2,7 @@ package checker
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -324,7 +325,7 @@ func (c *Checker) resolveType(typeName string) string {
 
 func (c *Checker) validateTypeAnnotation(pos lexer.Position, typeName string) {
 	typeName = strings.TrimSpace(typeName)
-	if typeName == "" || typeName == "any" || typeName == "void" {
+	if typeName == "" || typeName == "any" || typeName == "void" || typeName == "never" || typeName == "nil" || typeName == "null" {
 		return
 	}
 	typeName = strings.TrimSuffix(typeName, "?")
@@ -333,6 +334,16 @@ func (c *Checker) validateTypeAnnotation(pos lexer.Position, typeName string) {
 		for _, part := range strings.Split(typeName, " or ") {
 			c.validateTypeAnnotation(pos, strings.TrimSpace(part))
 		}
+		return
+	}
+
+	// Function signature types: func(...) -> ...
+	if strings.HasPrefix(typeName, "func(") {
+		return
+	}
+
+	// Inline maps: @map{ ... } or @map
+	if strings.HasPrefix(typeName, "@map") {
 		return
 	}
 
@@ -376,7 +387,73 @@ func (c *Checker) validateTypeAnnotation(pos lexer.Position, typeName string) {
 			c.addError(pos, "ERR_UNDEFINED_TYPE",
 				fmt.Sprintf("Type interface '%s' is not defined", baseName))
 		}
+		return
 	}
+
+	if strings.Contains(typeName, "|") {
+		for _, part := range strings.Split(typeName, "|") {
+			c.validateTypeAnnotation(pos, strings.TrimSpace(part))
+		}
+		return
+	}
+
+	// String literals (e.g. "fatal", 'warn')
+	if (strings.HasPrefix(typeName, "\"") && strings.HasSuffix(typeName, "\"")) ||
+		(strings.HasPrefix(typeName, "'") && strings.HasSuffix(typeName, "'")) {
+		return
+	}
+
+	// Number literals (e.g. 7, 0)
+	if _, err := strconv.ParseFloat(typeName, 64); err == nil {
+		return
+	}
+
+	// Boolean literals
+	if typeName == "true" || typeName == "false" {
+		return
+	}
+
+	// Builtin primitive types
+	switch strings.ToLower(typeName) {
+	case "string", "number", "bool", "duration", "list", "map", "task", "range", "function", "unit", "document":
+		return
+	}
+
+	// Check declared interface in current file or registered interfaces
+	if c.interfaces != nil {
+		if _, ok := c.interfaces[typeName]; ok {
+			return
+		}
+		for name := range c.interfaces {
+			if strings.EqualFold(name, typeName) {
+				return
+			}
+		}
+	}
+
+	// Check if in scope (e.g. Unit, Interface, imported Type)
+	if sym, found := c.scope.Resolve(typeName); found {
+		if sym.Kind == SymInterface || sym.Kind == SymUnit || sym.Kind == SymVar {
+			return
+		}
+	}
+
+	// Check available builtin units (std, sys, fs, net, crypto, etc.)
+	for name := range c.availableModules {
+		if strings.EqualFold(name, typeName) {
+			return
+		}
+	}
+
+	// Check imported symbols
+	for _, sym := range c.importedSyms {
+		if strings.EqualFold(sym.Name, typeName) {
+			return
+		}
+	}
+
+	// If not found anywhere, report error!
+	c.addError(pos, "ERR_UNDEFINED_TYPE", fmt.Sprintf("Type '%s' is not defined", typeName))
 }
 
 func parseInlineMapFieldDefs(typeStr string) []*ast.InterfaceField {

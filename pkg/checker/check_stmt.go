@@ -227,6 +227,10 @@ func (c *Checker) checkArg(s *ast.ArgStatement) {
 		}
 	}
 
+	if s.Type != "" {
+		c.validateTypeAnnotation(s.Pos(), s.Type)
+	}
+
 	if s.DefaultValue != nil {
 		c.checkExpression(s.DefaultValue)
 		if s.Type != "" {
@@ -320,6 +324,7 @@ func (c *Checker) checkUnit(s *ast.UnitStatement) {
 	}
 
 	if s.Includes != "" {
+		c.validateTypeAnnotation(s.Pos(), s.Includes)
 		if iface, ok := c.interfaces[s.Includes]; ok {
 			for _, f := range iface.Fields {
 				if f.Params != nil || strings.HasPrefix(f.Type, "func(") {
@@ -341,6 +346,14 @@ func (c *Checker) checkUnit(s *ast.UnitStatement) {
 	}
 
 	for _, method := range s.Methods {
+		if method.ReturnType != "" {
+			c.validateTypeAnnotation(method.Pos(), method.ReturnType)
+		}
+		for _, p := range method.Parameters {
+			if p.Type != "" {
+				c.validateTypeAnnotation(method.Pos(), p.Type)
+			}
+		}
 		unitSym.Methods[method.Name] = &Symbol{
 			Name:   method.Name,
 			Kind:   SymFunc,
@@ -664,6 +677,20 @@ func (c *Checker) checkInterface(s *ast.InterfaceStatement) {
 			continue
 		}
 		seenLower[lower] = f.Name
+
+		if f.Params != nil {
+			if f.ReturnType != "" {
+				c.validateTypeAnnotation(f.Position, f.ReturnType)
+			}
+			for _, p := range f.Params {
+				if p.Type != "" {
+					c.validateTypeAnnotation(f.Position, p.Type)
+				}
+			}
+		} else if f.Type != "" {
+			c.validateTypeAnnotation(f.Position, f.Type)
+		}
+
 		fields[f.Name] = &Symbol{
 			Name:     f.Name,
 			Kind:     SymVar,

@@ -202,6 +202,14 @@ func (c *Checker) initBuiltinUnits() {
 	c.availableModules["Math"] = mathUnit
 	c.availableModules["math"] = mathUnit
 
+	stdInterfaces := []string{
+		"Document", "SysNative", "ROpt", "FsNative", "NetNative", "CryptoNative",
+		"JsonNative", "MathNative", "DateNative", "CmdNative", "PathNative", "StdNative",
+	}
+	for _, ifaceName := range stdInterfaces {
+		c.interfaces[ifaceName] = &ast.InterfaceStatement{Name: ifaceName}
+	}
+
 	dateMapType := "@map{ iso: string, timestamp: number, year: number, month: number, day: number, hour: number, minute: number, second: number, weekday: string }"
 	dateUnit := &Symbol{
 		Name: "date",

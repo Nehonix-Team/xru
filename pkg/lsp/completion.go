@@ -120,6 +120,12 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 		return &CompletionList{IsIncomplete: false, Items: []CompletionItem{}}
 	}
 
+	// 1.6 Context Check: In a type position (after ':', '->', in interface field, etc.)
+	if isTypeContext(prefixLine, lines, pos.Line) {
+		typeItems := collectTypeCompletions(uri, lines, prefixLine)
+		return &CompletionList{IsIncomplete: false, Items: typeItems}
+	}
+
 	// 1.9 Map Literal Field completion (with duplicate suppression): e.g. inside `let x: TExample = @map{ ... }`
 	if mapItems, handled := s.handleMapLiteralCompletion(uri, lines, pos); handled {
 		return &CompletionList{IsIncomplete: false, Items: mapItems}

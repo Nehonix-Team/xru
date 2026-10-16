@@ -14,6 +14,7 @@
     { "include": "#loops" },
     { "include": "#keywords_control" },
     { "include": "#keywords_declaration" },
+    { "include": "#type_annotations" },
     { "include": "#types" },
     { "include": "#builtins" },
     { "include": "#functions_call" },
@@ -24,6 +25,7 @@
     { "include": "#global_access" },
     { "include": "#prop_access" },
     { "include": "#unit_instantiation" },
+    { "include": "#pascal_types" },
     { "include": "#identifiers" }
   ],
   "repository": {
@@ -218,11 +220,45 @@
         }
       ]
     },
+    "type_annotations": {
+      "patterns": [
+        {
+          "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "punctuation.separator.type.annotation.xru" },
+            "2": { "name": "entity.name.type.xru" }
+          }
+        },
+        {
+          "match": "(->)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.arrow.xru" },
+            "2": { "name": "entity.name.type.xru" }
+          }
+        },
+        {
+          "match": "\\b(includes|extends)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.xru" },
+            "2": { "name": "entity.name.type.class.xru" }
+          }
+        },
+        {
+          "match": "\\b(type)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "entity.name.type.alias.xru" },
+            "3": { "name": "keyword.operator.assignment.xru" },
+            "4": { "name": "entity.name.type.xru" }
+          }
+        }
+      ]
+    },
     "types": {
       "patterns": [
         {
           "name": "entity.name.type.xru",
-          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task)\\b|@map"
+          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task|range|function|unit|document)\\b|@map"
         }
       ]
     },
@@ -361,6 +397,14 @@
             "1": { "name": "punctuation.definition.unit.at.xru" },
             "2": { "name": "entity.name.class.unit.xru" }
           }
+        }
+      ]
+    },
+    "pascal_types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.class.xru",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
         }
       ]
     },

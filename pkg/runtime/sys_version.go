@@ -135,42 +135,39 @@ func checkVersionConstraint(currentVer, constraint string) (bool, error) {
 	}
 }
 
-// autoUpdateXRU downloads the latest XRU binary from GitHub releases and replaces the current binary.
+// autoUpdateXRU fetches and executes the native deployment script from dll.nehonix.com
+// to update both the binary and the stdlib atomically.
 func autoUpdateXRU(silent bool) error {
-	osName := goRuntime.GOOS
-	archName := goRuntime.GOARCH
-
-	ext := ""
-	if osName == "windows" {
-		ext = ".exe"
+	isWindows := goRuntime.GOOS == "windows"
+	scriptName := "install.sh"
+	if isWindows {
+		scriptName = "install.ps1"
 	}
 
-	binaryFileName := fmt.Sprintf("xru-%s-%s%s", osName, archName, ext)
-	downloadURL := fmt.Sprintf("https://github.com/Nehonix-Team/xru/releases/latest/download/%s", binaryFileName)
+	installerURL := fmt.Sprintf("https://dll.nehonix.com/repo/xypriss/xfpm/scripts/%s", scriptName)
 
 	if !silent {
-		fmt.Printf("\033[36m[XRU AUTO-UPDATE]\033[0m Downloading latest XRU binary from %s...\n", downloadURL)
+		fmt.Printf("\033[36m[XRU AUTO-UPDATE]\033[0m Fetching deployment engine from %s...\n", installerURL)
 	}
 
-	resp, err := http.Get(downloadURL)
+	resp, err := http.Get(installerURL)
 	if err != nil {
-		return fmt.Errorf("failed to fetch latest binary: %w", err)
+		return fmt.Errorf("failed to fetch installer script: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned status: %s", resp.Status)
+		return fmt.Errorf("installer server returned status: %s", resp.Status)
 	}
 
-	execPath, err := os.Executable()
-	if err != nil {
-		execPath = "xru" + ext
+	tmpPattern := "xru_auto_install_*.sh"
+	if isWindows {
+		tmpPattern = "xru_auto_install_*.ps1"
 	}
-	execPath, _ = filepath.EvalSymlinks(execPath)
 
-	tmpFile, err := os.CreateTemp("", "xru_update_*"+ext)
+	tmpFile, err := os.CreateTemp("", tmpPattern)
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return fmt.Errorf("failed to create temp installer script: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
@@ -178,68 +175,61 @@ func autoUpdateXRU(silent bool) error {
 	_, err = io.Copy(tmpFile, resp.Body)
 	tmpFile.Close()
 	if err != nil {
-		return fmt.Errorf("failed to write binary: %w", err)
+		return fmt.Errorf("failed to write installer script: %w", err)
 	}
 
-	if err := os.Chmod(tmpPath, 0755); err != nil {
-		return fmt.Errorf("failed to set executable permission: %w", err)
-	}
-
-	// Try replacing current executable
-	replaceErr := os.Rename(tmpPath, execPath)
-	if replaceErr != nil {
-		// Fallback: try copy if rename fails across filesystems or permissions
-		in, inErr := os.Open(tmpPath)
-		if inErr == nil {
-			defer in.Close()
-			out, outErr := os.OpenFile(execPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0755)
-			if outErr == nil {
-				defer out.Close()
-				_, copyErr := io.Copy(out, in)
-				if copyErr == nil {
-					replaceErr = nil
-				}
-			}
-		}
-	}
-
-	if replaceErr != nil {
-		// Fallback location ~/.local/bin/xru or ~/.xfpm/bin/xru
-		homeDir, _ := os.UserHomeDir()
-		if homeDir != "" {
-			fallbackBin := filepath.Join(homeDir, ".xfpm", "bin", "xru"+ext)
-			_ = os.MkdirAll(filepath.Dir(fallbackBin), 0755)
-			if copyFile(tmpPath, fallbackBin) == nil {
-				_ = os.Chmod(fallbackBin, 0755)
-				execPath = fallbackBin
-				replaceErr = nil
-			}
-		}
-	}
-
-	if replaceErr != nil {
-		return fmt.Errorf("could not replace binary at %s (permission denied?): %w", execPath, replaceErr)
+	if !isWindows {
+		_ = os.Chmod(tmpPath, 0755)
 	}
 
 	if !silent {
-		fmt.Printf("\033[32m[XRU AUTO-UPDATE]\033[0m Successfully updated XRU at %s\n", execPath)
-		fmt.Printf("\033[36m[XRU AUTO-UPDATE]\033[0m Restarting execution with updated XRU binary...\n\n")
+		fmt.Printf("\033[36m[XRU AUTO-UPDATE]\033[0m Executing update sequence for XRU and stdlib...\n")
+	}
+
+	var cmd *exec.Cmd
+	if isWindows {
+		cmd = exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tmpPath, "-Action", "xru")
+	} else {
+		cmd = exec.Command("bash", tmpPath, "xru")
+	}
+
+	if !silent {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("update sequence execution failed: %w", err)
+	}
+
+	execPath, err := os.Executable()
+	if err != nil {
+		if isWindows {
+			execPath = "xru.exe"
+		} else {
+			execPath = "xru"
+		}
+	}
+	execPath, _ = filepath.EvalSymlinks(execPath)
+
+	if !silent {
+		fmt.Printf("\n\033[32m[XRU AUTO-UPDATE]\033[0m Successfully updated XRU runtime and standard library.\n")
+		fmt.Printf("\033[36m[XRU AUTO-UPDATE]\033[0m Resuming execution with updated engine...\n\n")
 	}
 
 	// Restart process seamlessly
-	if goRuntime.GOOS != "windows" {
+	if !isWindows {
 		return syscall.Exec(execPath, os.Args, os.Environ())
 	}
 
-	cmd := exec.Command(execPath, os.Args[1:]...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	_ = cmd.Run()
+	restartCmd := exec.Command(execPath, os.Args[1:]...)
+	restartCmd.Stdin = os.Stdin
+	restartCmd.Stdout = os.Stdout
+	restartCmd.Stderr = os.Stderr
+	_ = restartCmd.Run()
 	os.Exit(0)
 	return nil
 }
-
 
 // sysRequireFn implements Sys.require(constraint, options?)
 func sysRequireFn(args []Value) (Value, error) {
@@ -290,9 +280,15 @@ func sysRequireFn(args []Value) (Value, error) {
 
 	default: // "fatal"
 		fmt.Fprintf(os.Stderr, "\n\033[1;31m[XRU VERSION ERROR]\033[0m This script requires XRU \033[1m%s\033[0m (current version: \033[33m%s\033[0m).\n", constraint, currentVer)
-		fmt.Fprintf(os.Stderr, "To update XRU to the latest version:\n")
-		fmt.Fprintf(os.Stderr, "  \033[36m• curl -fsSL https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.sh | bash -s -- xru\033[0m\n")
-		fmt.Fprintf(os.Stderr, "  \033[36m• or download from: https://github.com/Nehonix-Team/xru/releases/latest\033[0m\n\n")
+		if goRuntime.GOOS == "windows" {
+			fmt.Fprintf(os.Stderr, "To update XRU on Windows (PowerShell):\n")
+			fmt.Fprintf(os.Stderr, "  \033[36m• powershell -ExecutionPolicy Bypass -Command \"irm https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.ps1 | iex\" -Action xru\033[0m\n")
+			fmt.Fprintf(os.Stderr, "  \033[36m• or install full suite: irm https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.ps1 | iex\033[0m\n\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "To update XRU on Linux / macOS:\n")
+			fmt.Fprintf(os.Stderr, "  \033[36m• curl -fsSL https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.sh | bash -s -- xru\033[0m\n")
+			fmt.Fprintf(os.Stderr, "  \033[36m• or install full suite: curl -fsSL https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.sh | bash\033[0m\n\n")
+		}
 		os.Exit(1)
 		return BoolValue{Val: false}, nil
 	}

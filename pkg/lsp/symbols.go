@@ -36,42 +36,23 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 	}
 
 	lines := strings.Split(text, "\n")
-	var curLine string
-	if pos.Line >= 0 && pos.Line < len(lines) {
-		curLine = lines[pos.Line]
-	}
 
-	// 0. Hover on property key inside a typed map literal: e.g. `a: 6` in `const data: TExample = { a: 6 }`
-	if curLine != "" && !strings.Contains(fullExpr, ".") {
-		reKey := regexp.MustCompile(fmt.Sprintf(`^\s*(%s)\s*(?::|->)`, regexp.QuoteMeta(word)))
-		if matchLoc := reKey.FindStringSubmatchIndex(curLine); matchLoc != nil && len(matchLoc) >= 4 {
-			if pos.Character >= matchLoc[2] && pos.Character <= matchLoc[3] {
-				mapStartLine := -1
-				depth := 0
-				for l := pos.Line; l >= 0; l-- {
-					line := lines[l]
-					for _, r := range line {
-						if r == '{' {
-							depth++
-						} else if r == '}' {
-							depth--
-						}
-					}
-					if depth > 0 && (strings.Contains(line, "@map") || strings.Contains(line, "=")) {
-						mapStartLine = l
-						break
-					}
-				}
-				if mapStartLine != -1 {
-					expectedType := resolveExpectedMapType(lines, mapStartLine, filename)
-					if expectedType != "" {
-						if propInfo := findPropertyDeclaration(lines, expectedType, word, uri); propInfo != nil {
-							return formatPropertyHover(propInfo)
-						}
-					}
-				}
+	// 0. Hover on property key inside a typed map literal: e.g. `mode: "log"` in Sys.require("...", @map{ mode: "log" })
+	if isKey, keyWord, mapStartLine := isCursorOnMapKey(lines, pos); isKey {
+		expectedType := resolveExpectedMapType(lines, mapStartLine, filename)
+		if expectedType != "" {
+			if propInfo := findPropertyDeclaration(lines, expectedType, keyWord, uri); propInfo != nil {
+				return formatPropertyHover(propInfo)
+			}
+			return &Hover{
+				Contents: MarkupContent{
+					Kind:  "markdown",
+					Value: fmt.Sprintf("```xru\n(property) %s: unknown\n```\nProperty `%s` does not exist on type `%s`.", keyWord, keyWord, expectedType),
+				},
 			}
 		}
+		// In a map key context: NEVER fall through to external variables or global symbols!
+		return nil
 	}
 
 	// 1. Hover on property or method via dot access (e.g. data.a, validExample.c, opts.silent, $f{params.a})

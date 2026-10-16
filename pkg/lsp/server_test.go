@@ -2010,6 +2010,106 @@ interface SysNative {
 	}
 }
 
+func TestMapLiteralKeyAndValueDX(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "draft.xru")
+	content := `use std
+use sys as Sys
+
+Sys.require("<= 2.0.0", @map{
+	mode: "log"
+})
+`
+	_ = os.WriteFile(filePath, []byte(content), 0644)
+	uri := "file://" + filePath
+
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	// 1. Initialize
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	// 2. didOpen
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       content,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// 3. Hover on 'mode' at line 4, character 2
+	hoverPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/hover",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 4, "character": 2},
+		},
+	}
+	hoverData, _ := json.Marshal(hoverPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(hoverData), string(hoverData)))
+
+	// 4. Definition on 'mode' at line 4, character 2
+	defPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 4, "character": 2},
+		},
+	}
+	defData, _ := json.Marshal(defPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(defData), string(defData)))
+
+	// 5. Completion after 'mode: ' at line 4, character 7
+	compValPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 4, "character": 7},
+		},
+	}
+	compValData, _ := json.Marshal(compValPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(compValData), string(compValData)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Hover response must contain ROpt.mode and MUST NOT contain gArgs::mode
+	if !strings.Contains(outStr, "ROpt.mode") {
+		t.Errorf("Expected 'ROpt.mode' in hover, got output: %s", outStr)
+	}
+	if strings.Contains(outStr, "gArgs::mode") {
+		t.Errorf("Map property key 'mode' erroneously resolved to external workspace symbol 'gArgs::mode'!")
+	}
+
+	// Definition response must jump to sys.xru
+	if !strings.Contains(outStr, "sys.xru") {
+		t.Errorf("Expected definition on 'mode' to jump to sys.xru, got: %s", outStr)
+	}
+
+	// Value completion response must propose "log" and "silent"
+	if !strings.Contains(outStr, `"label":"\"log\""`) || !strings.Contains(outStr, `"label":"\"silent\""`) {
+		t.Errorf("Expected value autocompletions '\"log\"' and '\"silent\"', got: %s", outStr)
+	}
+}
+
+
 
 
 

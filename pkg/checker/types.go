@@ -596,7 +596,19 @@ func (c *Checker) isTypeCompatible(expected, actual string) bool {
 		return false
 	}
 	if strings.HasPrefix(cleanExpected, "\"") && strings.HasSuffix(cleanExpected, "\"") {
-		if cleanActual == "string" || cleanActual == cleanExpected {
+		if strings.HasPrefix(cleanActual, "\"") && strings.HasSuffix(cleanActual, "\"") {
+			return cleanExpected == cleanActual
+		}
+		return false
+	}
+	if cleanExpected == "string" && strings.HasPrefix(cleanActual, "\"") && strings.HasSuffix(cleanActual, "\"") {
+		return true
+	}
+	if _, err := strconv.ParseFloat(cleanExpected, 64); err == nil {
+		return cleanExpected == cleanActual
+	}
+	if cleanExpected == "number" {
+		if _, err := strconv.ParseFloat(cleanActual, 64); err == nil {
 			return true
 		}
 	}

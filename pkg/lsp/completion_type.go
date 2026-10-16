@@ -26,6 +26,10 @@ func isTypeContext(prefixLine string, lines []string, lineIdx int) bool {
 		}
 	}
 	if lastColon != -1 {
+		// Inside a map literal object, colon separates key and value expression (not a type declaration)
+		if isInsideMapLiteralValue(lines, lineIdx, lastColon) {
+			return false
+		}
 		afterColon := prefixLine[lastColon+1:]
 		// If there is an '=' after colon, we are past the type (in the value expression)
 		if !strings.Contains(afterColon, "=") {
@@ -310,3 +314,30 @@ func collectTypeCompletions(uri string, lines []string, prefixLine string) []Com
 
 	return items
 }
+
+// isInsideMapLiteralValue checks if lineIdx and colonIdx correspond to a property key-value colon in a map literal.
+func isInsideMapLiteralValue(lines []string, lineIdx int, colonIdx int) bool {
+	if lineIdx < 0 || lineIdx >= len(lines) {
+		return false
+	}
+	depth := 0
+	for l := lineIdx; l >= 0; l-- {
+		line := lines[l]
+		for _, r := range line {
+			if r == '{' {
+				depth++
+			} else if r == '}' {
+				depth--
+			}
+		}
+		if depth > 0 && (strings.Contains(line, "@map") || strings.Contains(line, "=") || strings.Contains(line, "(")) {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "interface ") || strings.HasPrefix(trimmed, "type ") || strings.HasPrefix(trimmed, "unit ") {
+				return false
+			}
+			return true
+		}
+	}
+	return false
+}
+

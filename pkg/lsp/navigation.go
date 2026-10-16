@@ -432,37 +432,16 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		}
 	}
 
-	// 1.6 Clicked on a property key inside a typed map literal: e.g. `a: 6` in `const data: TExample = { a: 6 }`
-	if curLine != "" && !strings.Contains(fullExpr, ".") {
-		reKey := regexp.MustCompile(fmt.Sprintf(`^\s*(%s)\s*(?::|->)`, regexp.QuoteMeta(word)))
-		if matchLoc := reKey.FindStringSubmatchIndex(curLine); matchLoc != nil && len(matchLoc) >= 4 {
-			if pos.Character >= matchLoc[2] && pos.Character <= matchLoc[3] {
-				mapStartLine := -1
-				depth := 0
-				for l := pos.Line; l >= 0; l-- {
-					line := lines[l]
-					for _, r := range line {
-						if r == '{' {
-							depth++
-						} else if r == '}' {
-							depth--
-						}
-					}
-					if depth > 0 && (strings.Contains(line, "@map") || strings.Contains(line, "=")) {
-						mapStartLine = l
-						break
-					}
-				}
-				if mapStartLine != -1 {
-					expectedType := resolveExpectedMapType(lines, mapStartLine, curFilePath)
-					if expectedType != "" {
-						if loc := findMemberInInterface(lines, expectedType, word, uri); loc != nil {
-							return loc
-						}
-					}
-				}
+	// 1.6 Clicked on a property key inside a typed map literal: e.g. `mode: "log"` in Sys.require("...", @map{ mode: "log" })
+	if isKey, keyWord, mapStartLine := isCursorOnMapKey(lines, pos); isKey {
+		expectedType := resolveExpectedMapType(lines, mapStartLine, curFilePath)
+		if expectedType != "" {
+			if loc := findMemberInInterface(lines, expectedType, keyWord, uri); loc != nil {
+				return loc
 			}
 		}
+		// In a map key context: NEVER fall through to external variables or modules!
+		return nil
 	}
 
 	// 2. Clicked on a namespace name in _mod.xru
@@ -796,7 +775,56 @@ func findPropertyDeclaration(lines []string, targetType, propName string, uri st
 		}
 	}
 
-	// 2. Interface declaration in active file
+	// 2. Scan active file
+	if info := scanLinesForPropertyDeclaration(lines, cleanType, propName, uri); info != nil {
+		return info
+	}
+
+	// 3. Scan workspace files in current directory
+	curFilePath := uriToPath(uri)
+	if curFilePath != "" {
+		fileDir := filepath.Dir(curFilePath)
+		entries, err := os.ReadDir(fileDir)
+		if err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".xru") {
+					fp := filepath.Join(fileDir, entry.Name())
+					if fp == curFilePath {
+						continue
+					}
+					if content, rErr := os.ReadFile(fp); rErr == nil {
+						fLines := strings.Split(string(content), "\n")
+						if info := scanLinesForPropertyDeclaration(fLines, cleanType, propName, pathToURI(fp)); info != nil {
+							return info
+						}
+					}
+				}
+			}
+		}
+
+		// 4. Scan stdlib files
+		if stdDir := FindStdDir(fileDir); stdDir != "" {
+			stdEntries, sErr := os.ReadDir(stdDir)
+			if sErr == nil {
+				for _, entry := range stdEntries {
+					if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".xru") {
+						fp := filepath.Join(stdDir, entry.Name())
+						if content, rErr := os.ReadFile(fp); rErr == nil {
+							fLines := strings.Split(string(content), "\n")
+							if info := scanLinesForPropertyDeclaration(fLines, cleanType, propName, pathToURI(fp)); info != nil {
+								return info
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func scanLinesForPropertyDeclaration(lines []string, cleanType, propName, uri string) *PropertyInfo {
 	reIfaceStart := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:interface|type)\s+%s\b`, regexp.QuoteMeta(cleanType)))
 	reField := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:func\s+)?(%s)(\??)(?:\s*:\s*|\s+)([^/\n\r;]+?)(?:;|\s*//(.*))?$`, regexp.QuoteMeta(propName)))
 
@@ -882,8 +910,80 @@ func findPropertyDeclaration(lines []string, targetType, propName string, uri st
 			}
 		}
 	}
-
 	return nil
+}
+
+// isCursorOnMapKey checks whether pos is on a key identifier inside a @map { ... } or object literal block.
+func isCursorOnMapKey(lines []string, pos Position) (bool, string, int) {
+	if pos.Line < 0 || pos.Line >= len(lines) {
+		return false, "", -1
+	}
+	curLine := lines[pos.Line]
+	trimmed := strings.TrimSpace(curLine)
+	if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") {
+		return false, "", -1
+	}
+
+	// 1. Must have a key-value colon on this line (excluding ::)
+	colonIdx := -1
+	for i := 0; i < len(curLine); i++ {
+		if curLine[i] == ':' {
+			if (i > 0 && curLine[i-1] == ':') || (i+1 < len(curLine) && curLine[i+1] == ':') {
+				continue
+			}
+			colonIdx = i
+			break
+		}
+	}
+	if colonIdx == -1 {
+		return false, "", -1
+	}
+
+	// 2. Cursor MUST be before or on the colon (key position)
+	if pos.Character > colonIdx {
+		return false, "", -1
+	}
+
+	// 3. Extract the key before colon
+	reKey := regexp.MustCompile(`^\s*([a-zA-Z_][a-zA-Z0-9_]*|"(?:[^"\\]|\\.)*")\s*:`)
+	matchLoc := reKey.FindStringSubmatchIndex(curLine[:colonIdx+1])
+	if matchLoc == nil || len(matchLoc) < 4 {
+		return false, "", -1
+	}
+	keyStart := matchLoc[2]
+	keyEnd := matchLoc[3]
+	if pos.Character < keyStart || pos.Character > keyEnd {
+		return false, "", -1
+	}
+	keyWord := strings.Trim(curLine[keyStart:keyEnd], "\"")
+
+	// 4. Verify we are inside a map literal block @map { ... } or { ... }
+	depth := 0
+	mapStartLine := -1
+	for l := pos.Line; l >= 0; l-- {
+		line := lines[l]
+		for _, r := range line {
+			if r == '{' {
+				depth++
+			} else if r == '}' {
+				depth--
+			}
+		}
+		if depth > 0 && (strings.Contains(line, "@map") || strings.Contains(line, "=") || strings.Contains(line, "(")) {
+			trimmedL := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmedL, "interface ") || strings.HasPrefix(trimmedL, "type ") || strings.HasPrefix(trimmedL, "unit ") {
+				return false, "", -1
+			}
+			mapStartLine = l
+			break
+		}
+	}
+
+	if mapStartLine == -1 {
+		return false, "", -1
+	}
+
+	return true, keyWord, mapStartLine
 }
 
 func findMemberInInterface(lines []string, ifaceName, memberName string, uri string) *Location {

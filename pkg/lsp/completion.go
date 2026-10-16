@@ -126,6 +126,15 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 		return &CompletionList{IsIncomplete: false, Items: typeItems}
 	}
 
+	// 1.8 Map Literal Value completion (propose allowed literal values, e.g. "log", "silent" for ROpt.mode)
+	if mapValItems, handled := s.handleMapValueCompletion(uri, lines, pos); handled {
+		localItems := collectLocalSymbols(lines, pos.Line)
+		var combined []CompletionItem
+		combined = append(combined, mapValItems...)
+		combined = append(combined, localItems...)
+		return &CompletionList{IsIncomplete: false, Items: combined}
+	}
+
 	// 1.9 Map Literal Field completion (with duplicate suppression): e.g. inside `let x: TExample = @map{ ... }`
 	if mapItems, handled := s.handleMapLiteralCompletion(uri, lines, pos); handled {
 		return &CompletionList{IsIncomplete: false, Items: mapItems}

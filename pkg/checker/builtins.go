@@ -98,8 +98,8 @@ func (c *Checker) initBuiltinUnits() {
 			"sleep":   {Name: "sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
 			"Exit":    {Name: "Exit", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "code", Type: "number"}}, MinArgs: 0, HasOptional: true},
 			"exit":    {Name: "exit", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "code", Type: "number"}}, MinArgs: 0, HasOptional: true},
-			"require": {Name: "require", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "constraint", Type: "string"}, {Name: "options", Type: "any"}}, MinArgs: 1, HasOptional: true},
-			"Require": {Name: "Require", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "constraint", Type: "string"}, {Name: "options", Type: "any"}}, MinArgs: 1, HasOptional: true},
+			"require": {Name: "require", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "constraint", Type: "string"}, {Name: "options", Type: "ROpt", Optional: true}}, MinArgs: 1, HasOptional: true},
+			"Require": {Name: "Require", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "constraint", Type: "string"}, {Name: "options", Type: "ROpt", Optional: true}}, MinArgs: 1, HasOptional: true},
 			"version": {Name: "version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"Version": {Name: "Version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 		},
@@ -203,11 +203,19 @@ func (c *Checker) initBuiltinUnits() {
 	c.availableModules["math"] = mathUnit
 
 	stdInterfaces := []string{
-		"Document", "SysNative", "ROpt", "FsNative", "NetNative", "CryptoNative",
+		"Document", "SysNative", "FsNative", "NetNative", "CryptoNative",
 		"JsonNative", "MathNative", "DateNative", "CmdNative", "PathNative", "StdNative",
 	}
 	for _, ifaceName := range stdInterfaces {
 		c.interfaces[ifaceName] = &ast.InterfaceStatement{Name: ifaceName}
+	}
+
+	c.interfaces["ROpt"] = &ast.InterfaceStatement{
+		Name: "ROpt",
+		Fields: []*ast.InterfaceField{
+			{Name: "onMismatch", Type: "\"fatal\" or \"warn\" or \"auto-update\"", Optional: true},
+			{Name: "mode", Type: "\"log\" or \"silent\"", Optional: true},
+		},
 	}
 
 	dateMapType := "@map{ iso: string, timestamp: number, year: number, month: number, day: number, hour: number, minute: number, second: number, weekday: string }"

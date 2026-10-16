@@ -612,6 +612,23 @@ func (c *Checker) validateArgAgainstInterface(arg ast.Expression, iface *ast.Int
 			}
 		}
 
+		// Check for unknown properties not defined on the interface
+		if len(iface.Fields) > 0 {
+			for key, valExpr := range keys {
+				found := false
+				for _, f := range iface.Fields {
+					if f.Name == key {
+						found = true
+						break
+					}
+				}
+				if !found {
+					c.addError(valExpr.Pos(), "ERR_UNKNOWN_PROPERTY",
+						fmt.Sprintf("Property '%s' does not exist on type '%s'", key, iface.Name))
+				}
+			}
+		}
+
 		for _, f := range iface.Fields {
 			valExpr, exists := keys[f.Name]
 			if !f.Optional && !strings.HasSuffix(f.Type, "?") {
@@ -665,6 +682,13 @@ func (c *Checker) validateArgAgainstInterface(arg ast.Expression, iface *ast.Int
 				}
 
 				valType := c.inferType(valExpr)
+				if strings.Contains(expectedFieldType, " or ") || strings.HasPrefix(expectedFieldType, "\"") {
+					if strLit, ok := valExpr.(*ast.StringLiteral); ok {
+						valType = fmt.Sprintf("%q", strLit.Value)
+					} else if numLit, ok := valExpr.(*ast.NumberLiteral); ok {
+						valType = fmt.Sprintf("%v", numLit.Value)
+					}
+				}
 				if !c.isTypeCompatible(expectedFieldType, valType) {
 					c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
 						fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got '%s'",
@@ -711,6 +735,23 @@ func (c *Checker) validateArgAgainstInlineMap(arg ast.Expression, typeStr, param
 				keys[strLit.Value] = pair.Value
 			} else if ident, ok := pair.Key.(*ast.Identifier); ok {
 				keys[ident.Value] = pair.Value
+			}
+		}
+
+		// Check for unknown properties not defined in the inline map
+		if len(fields) > 0 {
+			for key, valExpr := range keys {
+				found := false
+				for _, f := range fields {
+					if f.Name == key {
+						found = true
+						break
+					}
+				}
+				if !found {
+					c.addError(valExpr.Pos(), "ERR_UNKNOWN_PROPERTY",
+						fmt.Sprintf("Property '%s' does not exist on inline map type '%s'", key, typeStr))
+				}
 			}
 		}
 
@@ -765,6 +806,13 @@ func (c *Checker) validateArgAgainstInlineMap(arg ast.Expression, typeStr, param
 				}
 
 				valType := c.inferType(valExpr)
+				if strings.Contains(expectedFieldType, " or ") || strings.HasPrefix(expectedFieldType, "\"") {
+					if strLit, ok := valExpr.(*ast.StringLiteral); ok {
+						valType = fmt.Sprintf("%q", strLit.Value)
+					} else if numLit, ok := valExpr.(*ast.NumberLiteral); ok {
+						valType = fmt.Sprintf("%v", numLit.Value)
+					}
+				}
 				if !c.isTypeCompatible(expectedFieldType, valType) {
 					c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
 						fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got '%s'",

@@ -1393,4 +1393,69 @@ func TestTypeAnnotationValidation(t *testing.T) {
 	}
 }
 
+func TestSysRequireOptionValidation(t *testing.T) {
+	// 1. Valid Sys.require with mode: "log"
+	codeValid := `
+	use sys as Sys
+	Sys.require("<= 2.0.0", @map{
+		mode: "log"
+	})
+	`
+	l1 := lexer.New("test1.xru", codeValid)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	c1 := checker.New()
+	c1.Check(prog1)
+	if len(c1.Errors()) > 0 {
+		t.Errorf("Expected 0 errors for valid Sys.require with mode 'log', got: %v", c1.Errors())
+	}
+
+	// 2. Invalid mode value: "potato"
+	codeInvalidVal := `
+	use sys as Sys
+	Sys.require("<= 2.0.0", @map{
+		mode: "potato"
+	})
+	`
+	l2 := lexer.New("test2.xru", codeInvalidVal)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+	foundTypeMismatch := false
+	for _, err := range c2.Errors() {
+		if strings.Contains(err, "ERR_TYPE_MISMATCH") && strings.Contains(err, "mode") {
+			foundTypeMismatch = true
+			break
+		}
+	}
+	if !foundTypeMismatch {
+		t.Errorf("Expected ERR_TYPE_MISMATCH for mode: 'potato', got: %v", c2.Errors())
+	}
+
+	// 3. Unknown property: badOption: 123
+	codeUnknownProp := `
+	use sys as Sys
+	Sys.require("<= 2.0.0", @map{
+		badOption: 123
+	})
+	`
+	l3 := lexer.New("test3.xru", codeUnknownProp)
+	p3 := parser.New(l3)
+	prog3 := p3.ParseProgram()
+	c3 := checker.New()
+	c3.Check(prog3)
+	foundUnknownProp := false
+	for _, err := range c3.Errors() {
+		if strings.Contains(err, "ERR_UNKNOWN_PROPERTY") && strings.Contains(err, "badOption") {
+			foundUnknownProp = true
+			break
+		}
+	}
+	if !foundUnknownProp {
+		t.Errorf("Expected ERR_UNKNOWN_PROPERTY for badOption, got: %v", c3.Errors())
+	}
+}
+
+
 

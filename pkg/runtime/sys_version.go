@@ -291,7 +291,7 @@ func sysRequireFn(args []Value) (Value, error) {
 	default: // "fatal"
 		fmt.Fprintf(os.Stderr, "\n\033[1;31m[XRU VERSION ERROR]\033[0m This script requires XRU \033[1m%s\033[0m (current version: \033[33m%s\033[0m).\n", constraint, currentVer)
 		fmt.Fprintf(os.Stderr, "To update XRU to the latest version:\n")
-		fmt.Fprintf(os.Stderr, "  \033[36m• curl -sL https://xypriss.nehonix.com/install.js | node - xru\033[0m\n")
+		fmt.Fprintf(os.Stderr, "  \033[36m• curl -fsSL https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.sh | bash -s -- xru\033[0m\n")
 		fmt.Fprintf(os.Stderr, "  \033[36m• or download from: https://github.com/Nehonix-Team/xru/releases/latest\033[0m\n\n")
 		os.Exit(1)
 		return BoolValue{Val: false}, nil

@@ -210,6 +210,21 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			MethodDefs:  n.Methods,
 			IsPrototype: true,
 		}
+		if n.Includes != "" {
+			targetMod := strings.TrimSuffix(n.Includes, "Native")
+			for bName, bUnit := range ev.builtins {
+				if strings.EqualFold(bName, n.Name) || strings.EqualFold(bName, targetMod) {
+					for mName, mFn := range bUnit.Methods {
+						unitInst.Methods[mName] = mFn
+					}
+					for dName, dFn := range bUnit.Directives {
+						unitInst.Directives[dName] = dFn
+					}
+					unitInst.IsPrototype = bUnit.IsPrototype
+					break
+				}
+			}
+		}
 		for _, prop := range n.Properties {
 			pVal, _ := ev.Eval(prop.Value, env)
 			unitInst.Properties[prop.Name] = pVal
@@ -328,7 +343,10 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			if val, ok := env.unitRef.Properties[n.Name]; ok {
 				return val, nil
 			}
-			return nil, fmt.Errorf("undefined property '&%s' on unit '%s'", n.Name, env.unitRef.UnitName)
+			if fn, ok := env.unitRef.Methods[n.Name]; ok {
+				return FunctionValue{Fn: fn}, nil
+			}
+			return nil, fmt.Errorf("undefined property or method '&%s' on unit '%s'", n.Name, env.unitRef.UnitName)
 		}
 		return nil, fmt.Errorf("property '&%s' cannot be accessed outside a unit definition", n.Name)
 	case *ast.StringLiteral:
@@ -677,6 +695,23 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		}
 		return nil, fmt.Errorf("cannot access property '%s' on %s", n.Property, obj.Type())
 	case *ast.ScopeAccessExpression:
+		if n.IsUnitSelf {
+			if env.unitRef == nil {
+				return nil, fmt.Errorf("internal unit reference '&%s::%s' cannot be accessed outside a unit definition", n.Scope, n.Member)
+			}
+			if prop, exists := env.unitRef.Properties[n.Member]; exists {
+				return prop, nil
+			}
+			if method, exists := env.unitRef.Methods[n.Member]; exists {
+				return FunctionValue{Name: n.Member, Fn: method}, nil
+			}
+			for mName, mFn := range env.unitRef.Methods {
+				if strings.EqualFold(mName, n.Member) {
+					return FunctionValue{Name: mName, Fn: mFn}, nil
+				}
+			}
+			return nil, fmt.Errorf("member '%s' not found on unit '%s'", n.Member, env.unitRef.UnitName)
+		}
 		scopeVal, ok := env.Get(n.Scope)
 		if !ok {
 			return nil, fmt.Errorf("module or scope '%s' not found", n.Scope)

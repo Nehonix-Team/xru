@@ -1761,4 +1761,46 @@ let directHash = rawSha("hello")
 	}
 }
 
+func TestEvalUnitSelfScopeAccess(t *testing.T) {
+	code := `
+unit Calc {
+    declare base = 10
+
+    func add(x: number) -> number {
+        return &base + x
+    }
+
+    func compute(a: number, b: number) -> number {
+        let r1 = &Calc::add(a)
+        let r2 = &self::add(b)
+        return r1 + r2
+    }
+}
+
+let c = @Calc()
+let total = c.compute(5, 7)
+`
+	p := parser.New(lexer.New("self_test.xru", code))
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	_, err := ev.Eval(prog, env)
+	if err != nil {
+		t.Fatalf("Runtime error: %v", err)
+	}
+
+	totalVal, ok := env.Get("total")
+	if !ok {
+		t.Fatalf("Variable 'total' not found")
+	}
+	// r1 = 10 + 5 = 15; r2 = 10 + 7 = 17; total = 32
+	if totalVal.String() != "32" {
+		t.Errorf("Expected 32, got %v", totalVal)
+	}
+}
+
+
 

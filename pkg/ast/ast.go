@@ -168,11 +168,13 @@ type InterfaceStatement struct {
 }
 
 type InterfaceField struct {
-	Position lexer.Position
-	Name     string
-	Type     string
-	Optional bool
-	Nested   *InterfaceStatement
+	Position   lexer.Position
+	Name       string
+	Type       string
+	Optional   bool
+	Nested     *InterfaceStatement
+	Params     []*Parameter
+	ReturnType string
 }
 
 func (s *InterfaceStatement) statementNode()      {}
@@ -224,6 +226,7 @@ func (s *ReassignStatement) String() string {
 type UnitStatement struct {
 	Position   lexer.Position
 	Name       string
+	Includes   string
 	Properties []*DeclareStatement
 	Directives []*DirectiveDefStatement
 	Methods    []*FuncStatement
@@ -281,10 +284,11 @@ func (s *FuncStatement) String() string {
 }
 
 type Parameter struct {
-	Name       string
-	Type       string
-	Optional   bool
-	IsVariadic bool
+	Name         string
+	Type         string
+	Optional     bool
+	IsVariadic   bool
+	DefaultValue Expression
 }
 
 // ReturnStatement : #RETURN expr
@@ -728,16 +732,22 @@ func (e *GlobalAccessExpression) expressionNode()      {}
 func (e *GlobalAccessExpression) Pos() lexer.Position { return e.Position }
 func (e *GlobalAccessExpression) String() string      { return fmt.Sprintf("::%s", e.Name) }
 
-// ScopeAccessExpression : Module::Member (ex: auth::b ou a::login)
+// ScopeAccessExpression : Module::Member (ex: auth::b ou a::login) ou &unit::method
 type ScopeAccessExpression struct {
-	Position lexer.Position
-	Scope    string
-	Member   string
+	Position   lexer.Position
+	Scope      string
+	Member     string
+	IsUnitSelf bool
 }
 
 func (e *ScopeAccessExpression) expressionNode()      {}
 func (e *ScopeAccessExpression) Pos() lexer.Position { return e.Position }
-func (e *ScopeAccessExpression) String() string      { return fmt.Sprintf("%s::%s", e.Scope, e.Member) }
+func (e *ScopeAccessExpression) String() string {
+	if e.IsUnitSelf {
+		return fmt.Sprintf("&%s::%s", e.Scope, e.Member)
+	}
+	return fmt.Sprintf("%s::%s", e.Scope, e.Member)
+}
 
 // LambdaExpression : (params...) => Expr ou () => Expr
 type LambdaExpression struct {

@@ -385,6 +385,14 @@ var StringMethodSpecs = map[string]NativeMethodSpec{
 		},
 		ReturnType: "string",
 	},
+	"tostring": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"to_string": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
 }
 
 var ListMethodSpecs = map[string]NativeMethodSpec{
@@ -428,6 +436,18 @@ var ListMethodSpecs = map[string]NativeMethodSpec{
 			{Name: "end", Type: "number", Optional: true},
 		},
 		ReturnType: "list",
+	},
+	"get": {
+		Params: []NativeParam{
+			{Name: "index", Type: "number"},
+		},
+		ReturnType: "any",
+	},
+	"at": {
+		Params: []NativeParam{
+			{Name: "index", Type: "number"},
+		},
+		ReturnType: "any",
 	},
 }
 

@@ -11,17 +11,16 @@ unit path {
 		let stack: list[string] = []
 
 		for seg in rawParts {
-			if seg == "" || seg == "." {
-				continue
-			}
-			if seg == ".." {
-				if stack.len() > 0 && stack[stack.len() - 1] != ".." {
-					stack.pop()
-				} elif !isAbsolute {
-					stack.push("..")
+			if seg != "" && seg != "." {
+				if seg == ".." {
+					if stack.len() > 0 {
+						stack.pop()
+					} elif !isAbsolute {
+						stack.push("..")
+					}
+				} else {
+					stack.push(seg)
 				}
-			} else {
-				stack.push(seg)
 			}
 		}
 
@@ -42,40 +41,42 @@ unit path {
 
 	/// Returns the last element of path. Trailing slashes are removed before extracting the element.
 	func base(p: string) -> string {
-		let cleaned = path.clean(p)
+		let cleaned = &path::clean(p)
 		if cleaned == "/" || cleaned == "." {
 			return cleaned
 		}
 		let parts = cleaned.split("/")
-		return parts[parts.len() - 1]
+		let lastIdx = parts.len() - 1
+		return parts.get(lastIdx).toString()
 	}
 
 	/// Returns the file name extension used by path (e.g. ".xru", ".json").
 	func ext(p: string) -> string {
-		let b = path.base(p)
+		let b = &path::base(p)
 		let parts = b.split(".")
 		if parts.len() <= 1 {
 			return ""
 		}
-		return "." + parts[parts.len() - 1]
+		let lastIdx = parts.len() - 1
+		return "." + parts.get(lastIdx).toString()
 	}
 
 	/// Returns all but the last element of path, typically the path's directory.
 	func dir(p: string) -> string {
-		let cleaned = path.clean(p)
+		let cleaned = &path::clean(p)
 		if cleaned == "/" || cleaned == "." {
 			return cleaned
 		}
 		let parts = cleaned.split("/")
 		if parts.len() <= 1 {
-			if path.isAbs(p) {
+			if &path::isAbs(p) {
 				return "/"
 			}
 			return "."
 		}
 		let parentParts = parts.slice(0, parts.len() - 1)
 		let joined = parentParts.join("/")
-		if path.isAbs(p) && !joined.startsWith("/") {
+		if &path::isAbs(p) && !joined.startsWith("/") {
 			return "/" + joined
 		}
 		return joined
@@ -87,6 +88,6 @@ unit path {
 			return ""
 		}
 		let raw = parts.join("/")
-		return path.clean(raw)
+		return &path::clean(raw)
 	}
 }

@@ -15,6 +15,14 @@ func (p *Parser) parseUnitStatement() *ast.UnitStatement {
 	}
 	stmt.Name = p.curToken.Literal
 
+	if p.peekTokenIs(lexer.INCLUDES) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "extends") {
+		p.nextToken()
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.Includes = p.curToken.Literal
+	}
+
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}

@@ -1,21 +1,23 @@
 // Package crypto provides cryptographic primitives, hashing, and UUID generation.
-unit crypto {
+
+/// Native cryptographic primitives provided by the engine.
+interface CryptoNative {
 	/// Computes the SHA-256 cryptographic hash of the given string formatted as lowercase hexadecimal.
-	@native("crypto_sha256")
 	func sha256(data: string) -> string
 
 	/// Generates cryptographically secure random bytes formatted as hexadecimal.
-	@native("crypto_random_bytes")
 	func getRandomBytes(length: number = 32) -> string
+}
 
+unit crypto includes CryptoNative {
 	/// Generates a random hexadecimal string of the specified byte length.
 	func randomHex(length: number = 32) -> string {
-		return crypto.getRandomBytes(length)
+		return &crypto::getRandomBytes(length)
 	}
 
 	/// Generates a random UUID version 4 string according to RFC 4122.
 	func uuid() -> string {
-		let b = crypto.getRandomBytes(16)
+		let b = &crypto::getRandomBytes(16)
 		if b.len() < 32 {
 			return b
 		}

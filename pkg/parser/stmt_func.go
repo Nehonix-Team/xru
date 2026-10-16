@@ -96,6 +96,12 @@ func (p *Parser) parseParameterList() []*ast.Parameter {
 				param.Optional = true
 			}
 		}
+		if p.peekTokenIs(lexer.ASSIGN) {
+			p.nextToken() // saute '='
+			param.Optional = true
+			p.nextToken() // curToken becomes first token of default value
+			param.DefaultValue = p.parseExpression()
+		}
 		params = append(params, param)
 
 		if p.peekTokenIs(lexer.COMMA) {

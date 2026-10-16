@@ -76,6 +76,36 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		}
 		return method(args)
 	case *ast.ScopeAccessExpression:
+		if c.IsUnitSelf {
+			if env.unitRef == nil {
+				return nil, fmt.Errorf("internal unit reference '&%s::%s' cannot be called outside a unit definition", c.Scope, c.Member)
+			}
+			method, ok := env.unitRef.Methods[c.Member]
+			if !ok {
+				for mName, mFn := range env.unitRef.Methods {
+					if strings.EqualFold(mName, c.Member) {
+						method = mFn
+						ok = true
+						break
+					}
+				}
+			}
+			if !ok {
+				return nil, fmt.Errorf("method '%s' not found on unit '%s'", c.Member, env.unitRef.UnitName)
+			}
+			var args []Value
+			for _, arg := range call.Arguments {
+				a, err := ev.Eval(arg, env)
+				if err != nil {
+					return nil, err
+				}
+				args = append(args, a)
+			}
+			if env.unitRef.UnitName == "Fs" && env != nil && env.CurrentDir() != "" {
+				resolveFsPathArgs(c.Member, args, env.CurrentDir())
+			}
+			return method(args)
+		}
 		scopeVal, ok := env.Get(c.Scope)
 		if !ok {
 			return nil, fmt.Errorf("module or scope '%s' not found", c.Scope)
@@ -110,6 +140,35 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		}
 		if unit.UnitName == "Fs" && env != nil && env.CurrentDir() != "" {
 			resolveFsPathArgs(c.Member, args, env.CurrentDir())
+		}
+		return method(args)
+	case *ast.PropAccess:
+		if env.unitRef == nil {
+			return nil, fmt.Errorf("method '&%s' cannot be called outside a unit definition", c.Name)
+		}
+		method, ok := env.unitRef.Methods[c.Name]
+		if !ok {
+			for mName, mFn := range env.unitRef.Methods {
+				if strings.EqualFold(mName, c.Name) {
+					method = mFn
+					ok = true
+					break
+				}
+			}
+		}
+		if !ok {
+			return nil, fmt.Errorf("method '&%s' not found on unit '%s'", c.Name, env.unitRef.UnitName)
+		}
+		var args []Value
+		for _, arg := range call.Arguments {
+			a, err := ev.Eval(arg, env)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, a)
+		}
+		if env.unitRef.UnitName == "Fs" && env != nil && env.CurrentDir() != "" {
+			resolveFsPathArgs(c.Name, args, env.CurrentDir())
 		}
 		return method(args)
 	case *ast.Identifier:
@@ -437,6 +496,8 @@ func (ev *Evaluator) evalStringMethod(c *ast.MemberExpression, strVal StringValu
 			start = end
 		}
 		return StringValue{Val: s[start:end]}, nil
+	case "tostring", "to_string":
+		return strVal, nil
 	default:
 		return nil, fmt.Errorf("method '%s' not found on string", c.Property)
 	}
@@ -484,6 +545,22 @@ func (ev *Evaluator) evalListMethod(c *ast.MemberExpression, listVal ListValue, 
 			}
 		}
 		return BoolValue{Val: found}, nil
+	case "get", "at":
+		if len(args) != 1 {
+			return nil, fmt.Errorf("method '%s' requires 1 argument (index: number), but got %d", c.Property, len(args))
+		}
+		n, ok := args[0].(NumberValue)
+		if !ok {
+			return nil, fmt.Errorf("method '%s' expects number for index, got %s", c.Property, args[0].Type())
+		}
+		idx := int(n.Val)
+		if idx < 0 {
+			idx = len(elems) + idx
+		}
+		if idx < 0 || idx >= len(elems) {
+			return NilValue{}, nil
+		}
+		return elems[idx], nil
 	case "push":
 		if len(args) != 1 {
 			return nil, fmt.Errorf("method 'push' requires 1 argument (item: any), but got %d", len(args))

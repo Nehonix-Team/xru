@@ -171,8 +171,17 @@
           }
         },
         {
+          "match": "\\b(unit)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(includes|extends)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "entity.name.type.class.xru" },
+            "3": { "name": "keyword.other.xru" },
+            "4": { "name": "entity.name.type.class.xru" }
+          }
+        },
+        {
           "name": "keyword.declaration.xru",
-          "match": "\\b(let|const|arg|declare|unit|func|directive|global|interface)\\b"
+          "match": "\\b(let|const|arg|declare|unit|func|directive|global|interface|type|includes|extends)\\b"
         }
       ]
     },

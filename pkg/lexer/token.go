@@ -56,6 +56,7 @@ const (
 	CATCH         TokenType = "catch"
 	INTERFACE     TokenType = "interface"
 	TYPE          TokenType = "type"
+	INCLUDES      TokenType = "includes"
 
 	// Operators & Symbols
 	ASSIGN     TokenType = "="
@@ -157,6 +158,7 @@ var keywords = map[string]TokenType{
 	"catch":         CATCH,
 	"interface":     INTERFACE,
 	"type":          TYPE,
+	"includes":      INCLUDES,
 }
 
 func LookupIdent(ident string) TokenType {

@@ -1137,5 +1137,115 @@ let x = 10
 	}
 }
 
+func TestCheckStdFiles(t *testing.T) {
+	stdDir := "../../std"
+	entries, err := os.ReadDir(stdDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".xru") {
+			path := filepath.Join(stdDir, e.Name())
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := parser.New(lexer.New(path, string(content)))
+			prog := p.ParseProgram()
+			if len(p.Errors()) > 0 {
+				t.Errorf("[%s] Parser errors:\n%s", e.Name(), strings.Join(p.Errors(), "\n"))
+			}
+			c := checker.New()
+			c.SetCurrentFile(path)
+			c.Check(prog)
+			if len(c.Errors()) > 0 {
+				t.Errorf("[%s] Checker errors:\n%s", e.Name(), strings.Join(c.Errors(), "\n"))
+			}
+		}
+	}
+}
+
+func TestUnitSelfScopeAccess(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{
+			name: "valid self method call via unit name",
+			input: `
+			unit Worker {
+				func ping() -> string { return "pong" }
+				func execute() -> string {
+					return &Worker::ping()
+				}
+			}
+			`,
+			wantErr: "",
+		},
+		{
+			name: "valid self method call via self keyword",
+			input: `
+			unit Worker {
+				func ping() -> string { return "pong" }
+				func execute() -> string {
+					return &self::ping()
+				}
+			}
+			`,
+			wantErr: "",
+		},
+		{
+			name: "invalid self method call outside unit",
+			input: `
+			func outside() -> string {
+				return &Worker::ping()
+			}
+			`,
+			wantErr: "ERR_INVALID_PROP_ACCESS",
+		},
+		{
+			name: "mismatched unit self ref",
+			input: `
+			unit Other {}
+			unit Worker {
+				func execute() -> string {
+					return &Other::ping()
+				}
+			}
+			`,
+			wantErr: "ERR_INVALID_UNIT_SELF_REF",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := lexer.New("test.xru", tt.input)
+			p := parser.New(l)
+			prog := p.ParseProgram()
+			if len(p.Errors()) > 0 {
+				t.Fatalf("Parser errors: %v", p.Errors())
+			}
+			c := checker.New()
+			c.Check(prog)
+			if tt.wantErr == "" {
+				if len(c.Errors()) > 0 {
+					t.Errorf("Expected 0 errors, got: %v", c.Errors())
+				}
+			} else {
+				found := false
+				for _, err := range c.Errors() {
+					if strings.Contains(err, tt.wantErr) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected error containing '%s', got: %v", tt.wantErr, c.Errors())
+				}
+			}
+		})
+	}
+}
 

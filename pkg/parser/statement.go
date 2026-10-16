@@ -81,7 +81,40 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.peekTokenIs(lexer.IDENT) {
 			pos := p.curToken.Pos
 			p.nextToken() // saute '&', curToken est l'identifiant
-			propName := p.curToken.Literal
+			name := p.curToken.Literal
+			if p.peekTokenIs(lexer.DOUBLE_COLON) {
+				p.nextToken() // curToken est '::'
+				if !p.expectPeek(lexer.IDENT) {
+					p.addError(pos, "expected identifier after '::'")
+					return nil
+				}
+				member := p.curToken.Literal
+				scopeExpr := &ast.ScopeAccessExpression{
+					Position:   pos,
+					Scope:      name,
+					Member:     member,
+					IsUnitSelf: true,
+				}
+				var expr ast.Expression = scopeExpr
+				if p.peekTokenIs(lexer.LPAREN) {
+					p.nextToken()
+					args := p.parseExpressionList(lexer.RPAREN)
+					expr = &ast.CallExpression{
+						Position:  pos,
+						Caller:    scopeExpr,
+						Arguments: args,
+					}
+				}
+				expr = p.parseExpressionWithPrimary(expr, LOWEST)
+				stmt := &ast.ExpressionStatement{
+					Position:   pos,
+					Expression: expr,
+				}
+				if p.peekTokenIs(lexer.SEMICOLON) {
+					p.nextToken()
+				}
+				return stmt
+			}
 			if p.peekTokenIs(lexer.MUT_ASSIGN) {
 				p.nextToken() // saute l'identifiant, curToken est '=:'
 				p.nextToken() // saute '=:', curToken est l'expression
@@ -91,17 +124,33 @@ func (p *Parser) parseStatement() ast.Statement {
 				}
 				return &ast.ReassignStatement{
 					Position: pos,
-					Name:     "&" + propName,
+					Name:     "&" + name,
 					Value:    val,
 				}
 			}
-			return &ast.ExpressionStatement{
+			prop := &ast.PropAccess{
 				Position: pos,
-				Expression: &ast.PropAccess{
-					Position: pos,
-					Name:     propName,
-				},
+				Name:     name,
 			}
+			var expr ast.Expression = prop
+			if p.peekTokenIs(lexer.LPAREN) {
+				p.nextToken()
+				args := p.parseExpressionList(lexer.RPAREN)
+				expr = &ast.CallExpression{
+					Position:  pos,
+					Caller:    prop,
+					Arguments: args,
+				}
+			}
+			expr = p.parseExpressionWithPrimary(expr, LOWEST)
+			stmt := &ast.ExpressionStatement{
+				Position:   pos,
+				Expression: expr,
+			}
+			if p.peekTokenIs(lexer.SEMICOLON) {
+				p.nextToken()
+			}
+			return stmt
 		}
 		return p.parseExpressionStatement()
 	case lexer.IDENT:

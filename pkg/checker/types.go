@@ -62,6 +62,17 @@ func (c *Checker) inferType(expr ast.Expression) string {
 		if sym, ok := c.scope.Resolve(e.Name); ok {
 			return sym.Type
 		}
+		unitSym := c.scope.GetEnclosingUnit()
+		if unitSym != nil && unitSym.Methods != nil {
+			if mSym, ok := unitSym.Methods[e.Name]; ok && mSym.Type != "" {
+				return mSym.Type
+			}
+			for mName, mSym := range unitSym.Methods {
+				if strings.EqualFold(mName, e.Name) && mSym.Type != "" {
+					return mSym.Type
+				}
+			}
+		}
 		return "any"
 	case *ast.PrefixExpression:
 		if e.Operator == "!" {
@@ -110,7 +121,7 @@ func (c *Checker) inferType(expr ast.Expression) string {
 					return "bool"
 				case "push":
 					return "void"
-				case "pop":
+				case "get", "at", "pop":
 					if strings.HasPrefix(objType, "list[") && strings.HasSuffix(objType, "]") {
 						return strings.TrimSuffix(strings.TrimPrefix(objType, "list["), "]")
 					}
@@ -154,6 +165,43 @@ func (c *Checker) inferType(expr ast.Expression) string {
 								}
 							}
 						}
+					}
+				}
+			}
+		} else if scopeAccess, ok := e.Caller.(*ast.ScopeAccessExpression); ok {
+			if scopeAccess.IsUnitSelf {
+				unitSym := c.scope.GetEnclosingUnit()
+				if unitSym != nil && unitSym.Methods != nil {
+					if mSym, ok := unitSym.Methods[scopeAccess.Member]; ok && mSym.Type != "" {
+						return mSym.Type
+					}
+					for mName, mSym := range unitSym.Methods {
+						if strings.EqualFold(mName, scopeAccess.Member) && mSym.Type != "" {
+							return mSym.Type
+						}
+					}
+				}
+			} else if sym, ok := c.scope.Resolve(scopeAccess.Scope); ok {
+				if sym.Kind == SymUnit && sym.Methods != nil {
+					if mSym, ok := sym.Methods[scopeAccess.Member]; ok && mSym.Type != "" {
+						return mSym.Type
+					}
+					for mName, mSym := range sym.Methods {
+						if strings.EqualFold(mName, scopeAccess.Member) && mSym.Type != "" {
+							return mSym.Type
+						}
+					}
+				}
+			}
+		} else if propAccess, ok := e.Caller.(*ast.PropAccess); ok {
+			unitSym := c.scope.GetEnclosingUnit()
+			if unitSym != nil && unitSym.Methods != nil {
+				if mSym, ok := unitSym.Methods[propAccess.Name]; ok && mSym.Type != "" {
+					return mSym.Type
+				}
+				for mName, mSym := range unitSym.Methods {
+					if strings.EqualFold(mName, propAccess.Name) && mSym.Type != "" {
+						return mSym.Type
 					}
 				}
 			}

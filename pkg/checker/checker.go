@@ -127,6 +127,16 @@ func (c *Checker) Check(prog *ast.Program) {
 	// 2. Règle d'ordre strict des déclarations 'mod' et 'use' / 'from...use'
 	c.checkTopLevelOrder(prog.Statements)
 
+	// Pre-register all interfaces in the program
+	for _, stmt := range prog.Statements {
+		if stmt == nil {
+			continue
+		}
+		if iface, ok := stmt.(*ast.InterfaceStatement); ok {
+			c.interfaces[iface.Name] = iface
+		}
+	}
+
 	c.checkStatementList(prog.Statements)
 }
 

@@ -62,6 +62,9 @@ interface List {
 
 	/// Returns a new list containing a portion of the list from index start up to optional index end.
 	func slice(start: number, end: number = -1) -> list
+
+	/// Returns the element at the specified zero-based index. Negative indices count back from the end.
+	func get(index: number) -> any
 }
 
 /// Numeric value type (IEEE 754 64-bit floating point or integer).
@@ -111,3 +114,4 @@ interface Map {
 	/// Removes all entries from the map.
 	func clear() -> void
 }
+

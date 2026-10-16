@@ -264,10 +264,13 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 // interface Name @map { field: type, ... } ou type Name = @map { ... }
 func (p *Parser) parseInterfaceStatement() *ast.InterfaceStatement {
 	stmt := &ast.InterfaceStatement{Position: p.curToken.Pos}
-	if !p.expectPeek(lexer.IDENT) {
+	if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.MAP) {
+		p.nextToken()
+		stmt.Name = p.curToken.Literal
+	} else {
+		p.expectPeek(lexer.IDENT)
 		return nil
 	}
-	stmt.Name = p.curToken.Literal
 
 	// 'type Name = ...' : saute '='
 	if p.peekTokenIs(lexer.ASSIGN) {
@@ -323,9 +326,11 @@ func (p *Parser) parseInterfaceFields() []*ast.InterfaceField {
 				}
 				fnType := fmt.Sprintf("func(%s) -> %s", strings.Join(paramSigs, ", "), retType)
 				fields = append(fields, &ast.InterfaceField{
-					Position: fnPos,
-					Name:     methodName,
-					Type:     fnType,
+					Position:   fnPos,
+					Name:       methodName,
+					Type:       fnType,
+					Params:     params,
+					ReturnType: retType,
 				})
 			}
 		} else if p.curTokenIs(lexer.IDENT) {

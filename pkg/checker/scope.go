@@ -40,6 +40,7 @@ type Scope struct {
 	parent  *Scope
 	symbols map[string]*Symbol
 	isUnit  bool
+	unitSym *Symbol
 }
 
 func NewScope(parent *Scope, isUnit bool) *Scope {
@@ -48,6 +49,16 @@ func NewScope(parent *Scope, isUnit bool) *Scope {
 		symbols: make(map[string]*Symbol),
 		isUnit:  isUnit,
 	}
+}
+
+func (s *Scope) GetEnclosingUnit() *Symbol {
+	if s.unitSym != nil {
+		return s.unitSym
+	}
+	if s.parent != nil {
+		return s.parent.GetEnclosingUnit()
+	}
+	return nil
 }
 
 func (s *Scope) Define(sym *Symbol) error {

@@ -72,6 +72,10 @@ func (p *Parser) parseExpressionWithPrecedence(precedence int) ast.Expression {
 	if expr == nil {
 		return nil
 	}
+	return p.parseExpressionWithPrimary(expr, precedence)
+}
+
+func (p *Parser) parseExpressionWithPrimary(expr ast.Expression, precedence int) ast.Expression {
 
 	// Gestion des membres 'Target.Property' ou 'Target.Method()'
 	for p.peekTokenIs(lexer.DOT) {
@@ -302,9 +306,48 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 			Right:    right,
 		}
 	case lexer.AMP:
-		// Accès propriété interne &prop
-		p.nextToken()
-		return &ast.PropAccess{Position: p.curToken.Pos, Name: p.curToken.Literal}
+		pos := p.curToken.Pos
+		if p.peekTokenIs(lexer.IDENT) {
+			p.nextToken() // curToken est l'identifiant (ex: date, self, ou prop)
+			name := p.curToken.Literal
+			if p.peekTokenIs(lexer.DOUBLE_COLON) {
+				p.nextToken() // saute l'identifiant, curToken est '::'
+				if !p.expectPeek(lexer.IDENT) {
+					p.addError(pos, "expected identifier after '::'")
+					return nil
+				}
+				member := p.curToken.Literal
+				scopeExpr := &ast.ScopeAccessExpression{
+					Position:   pos,
+					Scope:      name,
+					Member:     member,
+					IsUnitSelf: true,
+				}
+				if p.peekTokenIs(lexer.LPAREN) {
+					p.nextToken()
+					args := p.parseExpressionList(lexer.RPAREN)
+					return &ast.CallExpression{
+						Position:  pos,
+						Caller:    scopeExpr,
+						Arguments: args,
+					}
+				}
+				return scopeExpr
+			}
+			prop := &ast.PropAccess{Position: pos, Name: name}
+			if p.peekTokenIs(lexer.LPAREN) {
+				p.nextToken()
+				args := p.parseExpressionList(lexer.RPAREN)
+				return &ast.CallExpression{
+					Position:  pos,
+					Caller:    prop,
+					Arguments: args,
+				}
+			}
+			return prop
+		}
+		p.addError(pos, "expected identifier after '&'")
+		return nil
 	case lexer.WITH:
 		pos := p.curToken.Pos
 		p.nextToken()

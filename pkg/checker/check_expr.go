@@ -36,7 +36,30 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	case *ast.PropAccess:
 		if !c.scope.InUnitScope() {
 			c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
-				fmt.Sprintf("Property access '&%s' is only allowed inside a #UNIT definition", e.Name))
+				fmt.Sprintf("Property or method access '&%s' is only allowed inside a unit definition", e.Name))
+		} else {
+			if _, ok := c.scope.Resolve("&" + e.Name); !ok {
+				if _, ok2 := c.scope.Resolve(e.Name); !ok2 {
+					unitSym := c.scope.GetEnclosingUnit()
+					var found bool
+					if unitSym != nil && unitSym.Methods != nil {
+						if _, ok3 := unitSym.Methods[e.Name]; ok3 {
+							found = true
+						} else {
+							for mName := range unitSym.Methods {
+								if strings.EqualFold(mName, e.Name) {
+									found = true
+									break
+								}
+							}
+						}
+					}
+					if !found {
+						c.addError(e.Pos(), "ERR_UNDEFINED_PROPERTY",
+							fmt.Sprintf("Property or method '&%s' is not defined in this unit", e.Name))
+					}
+				}
+			}
 		}
 
 	case *ast.StringLiteral:
@@ -168,7 +191,35 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 				}
 			}
 		} else if scopeAccess, ok := e.Caller.(*ast.ScopeAccessExpression); ok {
-			if sym, ok := c.scope.Resolve(scopeAccess.Scope); ok {
+			if scopeAccess.IsUnitSelf {
+				if !c.scope.InUnitScope() {
+					c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
+						fmt.Sprintf("Internal unit reference '&%s::%s' is only allowed inside a unit definition", scopeAccess.Scope, scopeAccess.Member))
+				} else {
+					unitSym := c.scope.GetEnclosingUnit()
+					if unitSym != nil && scopeAccess.Scope != "self" && !strings.EqualFold(scopeAccess.Scope, unitSym.Name) {
+						c.addError(e.Pos(), "ERR_INVALID_UNIT_SELF_REF",
+							fmt.Sprintf("Cannot reference '&%s::%s' inside unit '%s'; use '&%s::%s' or '&self::%s'", scopeAccess.Scope, scopeAccess.Member, unitSym.Name, unitSym.Name, scopeAccess.Member, scopeAccess.Member))
+					} else if unitSym != nil && unitSym.Methods != nil {
+						targetMethod, methodOk := unitSym.Methods[scopeAccess.Member]
+						if !methodOk {
+							for mName, mSym := range unitSym.Methods {
+								if strings.EqualFold(mName, scopeAccess.Member) {
+									targetMethod = mSym
+									methodOk = true
+									break
+								}
+							}
+						}
+						if !methodOk {
+							c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+								fmt.Sprintf("Method '%s' not found on unit '%s'", scopeAccess.Member, unitSym.Name))
+						} else if targetMethod.Kind == SymFunc {
+							c.validateCallArgs(e, scopeAccess.Member, targetMethod)
+						}
+					}
+				}
+			} else if sym, ok := c.scope.Resolve(scopeAccess.Scope); ok {
 				sym.Used = true
 				if sym.Kind == SymUnit && len(sym.Methods) > 0 {
 					targetMethod, methodOk := sym.Methods[scopeAccess.Member]
@@ -191,6 +242,31 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			} else {
 				c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
 					fmt.Sprintf("Module or scope '%s' is not defined", scopeAccess.Scope))
+			}
+		} else if propAccess, ok := e.Caller.(*ast.PropAccess); ok {
+			if !c.scope.InUnitScope() {
+				c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
+					fmt.Sprintf("Method access '&%s' is only allowed inside a unit definition", propAccess.Name))
+			} else {
+				unitSym := c.scope.GetEnclosingUnit()
+				var targetMethod *Symbol
+				if unitSym != nil && unitSym.Methods != nil {
+					targetMethod = unitSym.Methods[propAccess.Name]
+					if targetMethod == nil {
+						for mName, mSym := range unitSym.Methods {
+							if strings.EqualFold(mName, propAccess.Name) {
+								targetMethod = mSym
+								break
+							}
+						}
+					}
+				}
+				if targetMethod == nil {
+					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+						fmt.Sprintf("Method '%s' not found on current unit", propAccess.Name))
+				} else if targetMethod.Kind == SymFunc {
+					c.validateCallArgs(e, propAccess.Name, targetMethod)
+				}
 			}
 		} else if ident, ok := e.Caller.(*ast.Identifier); ok {
 			if sym, ok := c.scope.Resolve(ident.Value); ok {
@@ -218,7 +294,18 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		}
 
 	case *ast.ScopeAccessExpression:
-		if sym, ok := c.scope.Resolve(e.Scope); ok {
+		if e.IsUnitSelf {
+			if !c.scope.InUnitScope() {
+				c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
+					fmt.Sprintf("Internal unit reference '&%s::%s' is only allowed inside a unit definition", e.Scope, e.Member))
+			} else {
+				unitSym := c.scope.GetEnclosingUnit()
+				if unitSym != nil && e.Scope != "self" && !strings.EqualFold(e.Scope, unitSym.Name) {
+					c.addError(e.Pos(), "ERR_INVALID_UNIT_SELF_REF",
+						fmt.Sprintf("Cannot reference '&%s::%s' inside unit '%s'; use '&%s::%s' or '&self::%s'", e.Scope, e.Member, unitSym.Name, unitSym.Name, e.Member, e.Member))
+				}
+			}
+		} else if sym, ok := c.scope.Resolve(e.Scope); ok {
 			sym.Used = true
 			if sym.Kind == SymUnit && len(sym.Methods) > 0 {
 				if methodSym, memberOk := sym.Methods[e.Member]; !memberOk {

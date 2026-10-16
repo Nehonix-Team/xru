@@ -1,14 +1,15 @@
 // Package net provides HTTP networking client, remote asset streaming, and repository cloning.
-unit Net {
+
+/// Native networking and HTTP streaming operations.
+interface NetNative {
 	/// Performs an HTTP GET request and returns the response body as a string.
-	@native("net_get")
 	func get(url: string) -> string
 
 	/// Clones a remote Git repository to the target destination folder.
-	@native("net_clone")
 	func clone(repoUrl: string, dest: string) -> bool
 
 	/// Downloads an asset from a remote URL with streaming progress or fetches string content.
-	@native("net_fetch")
 	func fetch(url: string, dest: string = "") -> any
 }
+
+unit Net includes NetNative {}

@@ -153,9 +153,8 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 
 func (c *Checker) checkReassign(s *ast.ReassignStatement) {
 	lookupName := s.Name
-	if strings.HasPrefix(lookupName, "&") {
-		lookupName = strings.TrimPrefix(lookupName, "&")
-	}
+	lookupName = strings.TrimPrefix(lookupName, "&")
+
 	sym, found := c.scope.Resolve(lookupName)
 	if !found {
 		c.addError(s.Pos(), "ERR_UNDEFINED_VARIABLE", fmt.Sprintf("Variable '%s' is not defined", s.Name))
@@ -320,6 +319,27 @@ func (c *Checker) checkUnit(s *ast.UnitStatement) {
 		unitSym.Directives[dirName] = true
 	}
 
+	if s.Includes != "" {
+		if iface, ok := c.interfaces[s.Includes]; ok {
+			for _, f := range iface.Fields {
+				if f.Params != nil || strings.HasPrefix(f.Type, "func(") {
+					retType := f.ReturnType
+					if retType == "" && strings.Contains(f.Type, "->") {
+						parts := strings.Split(f.Type, "->")
+						retType = strings.TrimSpace(parts[len(parts)-1])
+					}
+					unitSym.Methods[f.Name] = &Symbol{
+						Name:   f.Name,
+						Kind:   SymFunc,
+						Type:   retType,
+						Pos:    f.Position,
+						Params: f.Params,
+					}
+				}
+			}
+		}
+	}
+
 	for _, method := range s.Methods {
 		unitSym.Methods[method.Name] = &Symbol{
 			Name:   method.Name,
@@ -335,6 +355,7 @@ func (c *Checker) checkUnit(s *ast.UnitStatement) {
 	}
 
 	unitScope := NewScope(c.scope, true)
+	unitScope.unitSym = unitSym
 	c.scope = unitScope
 	defer func() { c.scope = c.scope.parent }()
 
@@ -491,8 +512,8 @@ func (c *Checker) checkFunc(s *ast.FuncStatement) {
 	}
 
 	cleanRet := strings.TrimSpace(s.ReturnType)
-	if cleanRet != "" && !strings.EqualFold(cleanRet, "void") && cleanRet != "any" {
-		if !hasReturnStatement(s.Body) {
+	if cleanRet != "" && !strings.EqualFold(cleanRet, "void") && !strings.EqualFold(cleanRet, "never") && cleanRet != "any" {
+		if s.NativeHook == "" && s.Body != nil && !hasReturnStatement(s.Body) {
 			c.addError(s.Pos(), "ERR_MISSING_RETURN",
 				fmt.Sprintf("Function '%s' declares return type '%s' but has no return statement", s.Name, s.ReturnType))
 		}
@@ -681,6 +702,15 @@ func hasReturnStatement(stmts []ast.Statement) bool {
 		case *ast.WhileStatement:
 			if hasReturnStatement(s.Body) {
 				return true
+			}
+		case *ast.MatchStatement:
+			if len(s.DefaultBlock) > 0 && hasReturnStatement(s.DefaultBlock) {
+				return true
+			}
+			for _, mc := range s.Cases {
+				if hasReturnStatement(mc.Body) {
+					return true
+				}
 			}
 		}
 	}

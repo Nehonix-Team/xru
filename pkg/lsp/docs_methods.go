@@ -50,6 +50,14 @@ var StringMethodsDocs = map[string]DocItem{
 		Detail: "(string).slice(start: number, end?: number) -> string",
 		Doc:    "Returns a substring starting from index `start` up to optional index `end` (or the end of the string).",
 	},
+	"tostring": {
+		Detail: "(string).toString() -> string",
+		Doc:    "Returns the string itself.",
+	},
+	"to_string": {
+		Detail: "(string).to_string() -> string",
+		Doc:    "Returns the string itself.",
+	},
 }
 
 // ListMethodsDocs contient la documentation des méthodes natives sur les listes
@@ -81,6 +89,14 @@ var ListMethodsDocs = map[string]DocItem{
 	"slice": {
 		Detail: "(list).slice(start: number, end?: number) -> list",
 		Doc:    "Returns a new list containing a portion of the list from index `start` up to optional index `end`.",
+	},
+	"get": {
+		Detail: "(list).get(index: number) -> any",
+		Doc:    "Returns the element at the specified index (supports negative index).",
+	},
+	"at": {
+		Detail: "(list).at(index: number) -> any",
+		Doc:    "Returns the element at the specified index (supports negative index).",
 	},
 }
 

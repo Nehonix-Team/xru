@@ -1249,3 +1249,104 @@ func TestUnitSelfScopeAccess(t *testing.T) {
 	}
 }
 
+func TestInterfaceSyntaxAndCollisions(t *testing.T) {
+	// 1. Valid interface with space separation and optional semicolons
+	codeValid := `
+	interface Config @map {
+		host string;
+		port? number;
+		retries number
+	}
+	interface EndpointConfig @map {
+		endpoint string
+		timeout duration
+	}
+	interface Service {
+		func run(cfg: Config) -> bool
+	}
+	`
+	lVal := lexer.New("valid.xru", codeValid)
+	pVal := parser.New(lVal)
+	progVal := pVal.ParseProgram()
+	if len(pVal.Errors()) > 0 {
+		t.Fatalf("Expected 0 parser errors, got: %v", pVal.Errors())
+	}
+	cVal := checker.New()
+	cVal.Check(progVal)
+	if len(cVal.Errors()) > 0 {
+		t.Fatalf("Expected 0 checker errors, got: %v", cVal.Errors())
+	}
+
+	// 2. Colons in interface fields are forbidden and report a parser error
+	codeColon := `
+	interface InvalidColon {
+		host: string
+	}
+	`
+	lColon := lexer.New("colon.xru", codeColon)
+	pColon := parser.New(lColon)
+	pColon.ParseProgram()
+	foundColonErr := false
+	for _, err := range pColon.Errors() {
+		if strings.Contains(err, "colons ':' are not allowed in interface fields") {
+			foundColonErr = true
+			break
+		}
+	}
+	if !foundColonErr {
+		t.Errorf("Expected colon error in interface fields, got: %v", pColon.Errors())
+	}
+
+	// 3. Case-insensitive field collision (a string vs A number) triggers ERR_DUPLICATE_FIELD
+	codeCollision := `
+	interface DuplicateKeys {
+		a string;
+		A number;
+	}
+	`
+	lCol := lexer.New("col.xru", codeCollision)
+	pCol := parser.New(lCol)
+	progCol := pCol.ParseProgram()
+	if len(pCol.Errors()) > 0 {
+		t.Fatalf("Unexpected parser errors: %v", pCol.Errors())
+	}
+	cCol := checker.New()
+	cCol.Check(progCol)
+	foundDuplicate := false
+	for _, err := range cCol.Errors() {
+		if strings.Contains(err, "ERR_DUPLICATE_FIELD") && strings.Contains(err, "conflicts with 'a'") {
+			foundDuplicate = true
+			break
+		}
+	}
+	if !foundDuplicate {
+		t.Errorf("Expected ERR_DUPLICATE_FIELD for 'A' conflicting with 'a', got: %v", cCol.Errors())
+	}
+
+	// 4. Case-insensitive method collision in interface
+	codeMethodCollision := `
+	interface DuplicateMethods {
+		func execute() -> void
+		func Execute() -> void
+	}
+	`
+	lMCol := lexer.New("mcol.xru", codeMethodCollision)
+	pMCol := parser.New(lMCol)
+	progMCol := pMCol.ParseProgram()
+	if len(pMCol.Errors()) > 0 {
+		t.Fatalf("Unexpected parser errors: %v", pMCol.Errors())
+	}
+	cMCol := checker.New()
+	cMCol.Check(progMCol)
+	foundMethodDuplicate := false
+	for _, err := range cMCol.Errors() {
+		if strings.Contains(err, "ERR_DUPLICATE_FIELD") && strings.Contains(err, "conflicts with 'execute'") {
+			foundMethodDuplicate = true
+			break
+		}
+	}
+	if !foundMethodDuplicate {
+		t.Errorf("Expected ERR_DUPLICATE_FIELD for 'Execute' conflicting with 'execute', got: %v", cMCol.Errors())
+	}
+}
+

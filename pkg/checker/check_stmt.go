@@ -655,7 +655,15 @@ func (c *Checker) checkInterface(s *ast.InterfaceStatement) {
 	}
 	c.interfaces[s.Name] = s
 	fields := make(map[string]*Symbol)
+	seenLower := make(map[string]string)
 	for _, f := range s.Fields {
+		lower := strings.ToLower(f.Name)
+		if prev, exists := seenLower[lower]; exists {
+			c.addError(f.Position, "ERR_DUPLICATE_FIELD",
+				fmt.Sprintf("duplicate or case-colliding field '%s' (conflicts with '%s') in interface '%s'", f.Name, prev, s.Name))
+			continue
+		}
+		seenLower[lower] = f.Name
 		fields[f.Name] = &Symbol{
 			Name:     f.Name,
 			Kind:     SymVar,

@@ -469,7 +469,7 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 						}
 					}
 					// Inline map in function or variable
-					reFieldDecl := regexp.MustCompile(fmt.Sprintf(`\b(%s)\s*\??\s*:`, regexp.QuoteMeta(memberName)))
+					reFieldDecl := regexp.MustCompile(fmt.Sprintf(`\b(%s)\s*\??\s*(?::|\s+)`, regexp.QuoteMeta(memberName)))
 					for idx, l := range lines {
 						if strings.Contains(l, "@map") && strings.Contains(l, memberName) {
 							if matchLoc := reFieldDecl.FindStringSubmatchIndex(l); matchLoc != nil && len(matchLoc) >= 4 {
@@ -838,7 +838,7 @@ func findPropertyDeclaration(lines []string, targetType, propName string, uri st
 
 	// 1. If targetType is an inline map type: @map{ a: string, ... }
 	if strings.HasPrefix(cleanType, "@map") && strings.Contains(cleanType, "{") {
-		reField := regexp.MustCompile(fmt.Sprintf(`\b(%s)(\??)\s*:\s*([^,\n}]+)`, regexp.QuoteMeta(propName)))
+		reField := regexp.MustCompile(fmt.Sprintf(`\b(%s)(\??)(?:\s*:\s*|\s+)([^,\n}]+)`, regexp.QuoteMeta(propName)))
 		if m := reField.FindStringSubmatch(cleanType); len(m) > 3 {
 			pType := strings.TrimSpace(m[3])
 			return &PropertyInfo{
@@ -854,14 +854,14 @@ func findPropertyDeclaration(lines []string, targetType, propName string, uri st
 
 	// 2. Interface declaration in active file
 	reIfaceStart := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:interface|type)\s+%s\b`, regexp.QuoteMeta(cleanType)))
-	reField := regexp.MustCompile(fmt.Sprintf(`\b(%s)(\??)\s*:\s*([^/\n\r]+?)(?:\s*//(.*))?$`, regexp.QuoteMeta(propName)))
+	reField := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:func\s+)?(%s)(\??)(?:\s*:\s*|\s+)([^/\n\r;]+?)(?:;|\s*//(.*))?$`, regexp.QuoteMeta(propName)))
 
 	inTargetIface := false
 	braceDepth := 0
 
 	for idx, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "//") && !inTargetIface {
+		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
 			continue
 		}
 

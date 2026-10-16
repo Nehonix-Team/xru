@@ -164,6 +164,7 @@ func (s *FromUseStatement) String() string {
 type InterfaceStatement struct {
 	Position lexer.Position
 	Name     string
+	IsMap    bool
 	Fields   []*InterfaceField
 }
 
@@ -179,7 +180,12 @@ type InterfaceField struct {
 
 func (s *InterfaceStatement) statementNode()      {}
 func (s *InterfaceStatement) Pos() lexer.Position { return s.Position }
-func (s *InterfaceStatement) String() string      { return fmt.Sprintf("interface %s @map { ... }", s.Name) }
+func (s *InterfaceStatement) String() string {
+	if s.IsMap {
+		return fmt.Sprintf("interface %s @map { ... }", s.Name)
+	}
+	return fmt.Sprintf("interface %s { ... }", s.Name)
+}
 
 // VarStatement : let/const name: type = expr
 type VarStatement struct {

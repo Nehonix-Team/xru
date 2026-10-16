@@ -905,9 +905,9 @@ func TestLSPTypeBasedCompletion(t *testing.T) {
 	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
 
 	code := `interface TServerConfig @map {
-    host: string,
-    port?: number,
-    start: func() -> void,
+    host string
+    port? number
+    start func() -> void
 }
 
 let cfg: TServerConfig = @map{}
@@ -1223,8 +1223,8 @@ func TestPropertyHoverAndDefinitionAndTypeActions(t *testing.T) {
     /**
      * Voilà un bon a bien propre
      */
-    a: string
-    c: func(id: string?) -> void or number // Signature de fonction
+    a string
+    c func(id: string?) -> void or number // Signature de fonction
 }
 
 const data: TExample = {

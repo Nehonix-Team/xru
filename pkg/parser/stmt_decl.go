@@ -284,6 +284,7 @@ func (p *Parser) parseInterfaceStatement() *ast.InterfaceStatement {
 			p.addError(p.curToken.Pos, "type definition must specify '@map'")
 			return nil
 		}
+		stmt.IsMap = true
 	}
 
 	if !p.expectPeek(lexer.LBRACE) {
@@ -343,9 +344,10 @@ func (p *Parser) parseInterfaceFields() []*ast.InterfaceField {
 				p.nextToken() // saute '?'
 			}
 
-			// ':' optionnel
+			// Pas de ':' dans un block d'interface : séparation par espace
 			if p.peekTokenIs(lexer.COLON) {
-				p.nextToken() // saute ':'
+				p.addError(p.peekToken.Pos, "colons ':' are not allowed in interface fields; separate field name and type with whitespace (e.g. 'name type')")
+				p.nextToken() // saute ':' pour continuer
 			}
 
 			// Type du champ

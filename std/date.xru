@@ -2,15 +2,15 @@
 
 /// Structured date map contract returned by date.now() and date.parse().
 interface DateInfo @map {
-	iso: string
-	timestamp: number
-	year: number
-	month: number
-	day: number
-	hour: number
-	minute: number
-	second: number
-	weekday: string
+	iso string
+	timestamp number
+	year number
+	month number
+	day number
+	hour number
+	minute number
+	second number
+	weekday string
 }
 
 /// Native engine contracts provided by the Go runtime.

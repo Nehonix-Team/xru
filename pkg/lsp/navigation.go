@@ -246,63 +246,7 @@ func findDeclarationInFile(filePath, word string) (line, char int, found bool) {
 	return 0, 0, false
 }
 
-func findStdFile(curFileDir, name string) string {
-	if !strings.HasSuffix(name, ".xru") {
-		name += ".xru"
-	}
-	if envStd := os.Getenv("XRU_STD_PATH"); envStd != "" {
-		p := filepath.Join(envStd, name)
-		if info, err := os.Stat(p); err == nil && !info.IsDir() {
-			return p
-		}
-	}
-	dir := curFileDir
-	for i := 0; i < 15; i++ {
-		candidate := filepath.Join(dir, "std", name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate
-		}
-		candidate2 := filepath.Join(dir, "mods", "xru", "std", name)
-		if info, err := os.Stat(candidate2); err == nil && !info.IsDir() {
-			return candidate2
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	if wd, err := os.Getwd(); err == nil {
-		dir := wd
-		for i := 0; i < 15; i++ {
-			candidate := filepath.Join(dir, "std", name)
-			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-				return candidate
-			}
-			candidate2 := filepath.Join(dir, "mods", "xru", "std", name)
-			if info, err := os.Stat(candidate2); err == nil && !info.IsDir() {
-				return candidate2
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
-	}
-	if execPath, err := os.Executable(); err == nil {
-		execDir := filepath.Dir(execPath)
-		candidate := filepath.Join(execDir, "std", name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate
-		}
-		candidate2 := filepath.Join(execDir, "..", "std", name)
-		if info, err := os.Stat(candidate2); err == nil && !info.IsDir() {
-			return candidate2
-		}
-	}
-	return ""
-}
+// findStdFile is implemented in std_resolver.go with global XFPM and local project paths resolution.
 
 func (s *Server) resolveModuleFilePath(modCfg *modules.ModConfig, sourceNs, modName, curFileDir string) string {
 	if modCfg != nil {

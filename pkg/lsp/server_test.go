@@ -1911,5 +1911,40 @@ func TestCompletionMultilineAndChaining(t *testing.T) {
 	}
 }
 
+func TestDynamicStdDocsLoading(t *testing.T) {
+	// Verify that documentation is dynamically resolved from std/*.xru definitions
+	docToday := lsp.GetDocForWord("date.today", "today")
+	if docToday == nil {
+		t.Fatalf("Expected documentation for date.today, got nil")
+	}
+	if !strings.Contains(docToday.Doc, "today's date") {
+		t.Errorf("Expected doc comment from std/date.xru, got: %s", docToday.Doc)
+	}
+
+	docPrintln := lsp.GetDocForWord("std.println", "println")
+	if docPrintln == nil {
+		t.Fatalf("Expected documentation for std.println, got nil")
+	}
+	if !strings.Contains(docPrintln.Doc, "standard output with rich ANSI") {
+		t.Errorf("Expected doc comment from std/std.xru, got: %s", docPrintln.Doc)
+	}
+
+	docTrim := lsp.GetDocForWord("str.trim", "trim")
+	if docTrim == nil {
+		t.Fatalf("Expected documentation for string.trim, got nil")
+	}
+	if !strings.Contains(docTrim.Doc, "whitespace removed") {
+		t.Errorf("Expected doc comment from std/builtin.xru, got: %s", docTrim.Doc)
+	}
+
+	docGetLine := lsp.GetDocForWord("doc.getLine", "getLine")
+	if docGetLine == nil {
+		t.Fatalf("Expected documentation for doc.getLine, got nil")
+	}
+	if !strings.Contains(docGetLine.Doc, "1-based index") {
+		t.Errorf("Expected doc comment from std/builtin.xru, got: %s", docGetLine.Doc)
+	}
+}
+
 
 

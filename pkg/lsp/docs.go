@@ -25,6 +25,7 @@ type DirectiveDoc struct {
 
 // GetDocForWord recherche une documentation complète pour un mot ou une expression membre
 func GetDocForWord(fullExpr, targetWord string) *DocItem {
+	EnsureStdDocsLoaded("")
 	fullExpr = strings.TrimSpace(fullExpr)
 	targetWord = strings.ToLower(strings.TrimSpace(targetWord))
 

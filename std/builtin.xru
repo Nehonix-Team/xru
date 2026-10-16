@@ -115,3 +115,66 @@ interface Map {
 	func clear() -> void
 }
 
+/// Multi-view surgical file manipulation document providing raw, linewise, JSON, and fuzzy editing capabilities.
+interface Document {
+	/// Returns the entire raw content of the document as a string.
+	func getContent() -> string
+
+	/// Replaces the entire content of the document with the provided string.
+	func setContent(newContent: string) -> bool
+
+	/// Appends the specified text to the end of the document.
+	func append(content: string) -> bool
+
+	/// Prepends the specified text to the beginning of the document.
+	func prepend(content: string) -> bool
+
+	/// Checks whether the document contains the specified pattern.
+	func contains(pattern: string) -> bool
+
+	/// Returns the total number of lines in the document.
+	func size() -> number
+
+	/// Returns all lines of the document as a list of strings.
+	func getLines() -> list[string]
+
+	/// Replaces all lines of the document with the provided list of strings.
+	func setLines(lines: list[string]) -> bool
+
+	/// Returns the content of the line at 1-based index lineNum.
+	func getLine(lineNum: number) -> string
+
+	/// Updates the content of the line at 1-based index lineNum.
+	func setLine(lineNum: number, text: string) -> bool
+
+	/// Deletes the line at 1-based index lineNum, or deletes the first line containing the given pattern.
+	func removeLine(lineNumOrPattern: any) -> bool
+
+	/// Deletes all lines containing pattern, or deletes lines in the 1-based range [startLine, endLine].
+	func removeLines(patternOrStart: any, endLine: number = -1) -> bool
+
+	/// Parses the document as JSON and retrieves the value at dot-separated keyPath (e.g. 'scripts.build').
+	func getJson(keyPath: string) -> any
+
+	/// Sets or updates a field at dot-separated keyPath with formatted JSON indentation.
+	func setJson(keyPath: string, value: any) -> bool
+
+	/// Removes a field at dot-separated keyPath from the JSON structure.
+	func removeJson(keyPath: string) -> bool
+
+	/// Replaces target with whitespace-insensitive fuzzy token matching.
+	func replaceFuzzy(target: string, replacement: string) -> bool
+
+	/// Deletes target using whitespace-insensitive fuzzy token matching.
+	func removeFuzzy(target: string) -> bool
+
+	/// Removes content between start and end delimiters.
+	func removeBetween(start: string, end: string, includeBounds: bool = false) -> bool
+
+	/// Surgically removes a block starting at anchor by counting matched bracket depth, safely ignoring strings and comments.
+	func removeBalanced(anchor: string, openChar: string = "{", closeChar: string = "}") -> bool
+
+	/// Manually flushes document modifications to disk immediately.
+	func save() -> bool
+}
+

@@ -484,6 +484,27 @@ func collectInterfaceMembers(lines []string, ifaceName string, currentFilePath s
 		}
 	}
 
+	// 3. Scan in std directory for standard library interfaces (e.g. DateInfo in std/date.xru)
+	curDir := ""
+	if currentFilePath != "" {
+		curDir = filepath.Dir(currentFilePath)
+	}
+	if stdDir := FindStdDir(curDir); stdDir != "" {
+		stdEntries, err := os.ReadDir(stdDir)
+		if err == nil {
+			for _, entry := range stdEntries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".xru") {
+					content, readErr := os.ReadFile(filepath.Join(stdDir, entry.Name()))
+					if readErr == nil {
+						if scanLines(strings.Split(string(content), "\n")) {
+							return items
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return items
 }
 
@@ -751,7 +772,9 @@ func resolveExpressionTargetInfoDepth(uri string, lines []string, expr string, d
 				cleanUnit := strings.TrimPrefix(callerObj, "&")
 				unitRetType := inferUnitMethodReturnType(lines, cleanUnit, callerMethod)
 				if unitRetType != "" && unitRetType != "void" && unitRetType != "any" {
-					return typeStringToTargetInfo(lines, unitRetType, uriToPath(uri))
+					if info := typeStringToTargetInfo(lines, unitRetType, uriToPath(uri)); info != nil {
+						return info
+					}
 				}
 
 				// Special Built-in: date

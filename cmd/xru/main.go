@@ -25,6 +25,7 @@ func printUsage() {
 Usage:
   xru run <file.xru> [flags...]     Execute an XRU 2.0 rule file
   xru lsp                           Start language server (LSP) for editor integration
+  xru build [entry.xru] <output.xru> Build project into a single standalone .xru module
   xru pack [output.xpack]           Package project into a structured .xpack bundle
   xru unpack <file.xpack> [dest]    Unpack an .xpack bundle to destination
   xru version                       Show XRU version
@@ -76,6 +77,9 @@ func main() {
 			fmt.Fprintf(os.Stderr, "LSP server error: %v\n", err)
 			os.Exit(1)
 		}
+
+	case "build":
+		handleBuild(cmdArgs, verbose)
 
 	case "pack":
 		handlePack(cmdArgs, verbose)

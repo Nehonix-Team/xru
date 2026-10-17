@@ -17,7 +17,13 @@ import (
 // BundleAndMinify bundles main.xru with all imported modules and subdescriptors inlined
 // and minifies / mangles variable and function names.
 func (p *Packager) BundleAndMinify() (string, error) {
-	prog, err := p.BuildBundledProgram()
+	return p.BundleAndMinifyWithEntry("main.xru")
+}
+
+// BundleAndMinifyWithEntry bundles a given entry .xru file with all imported modules and subdescriptors inlined
+// and minifies / mangles variable and function names into a single standalone module.
+func (p *Packager) BundleAndMinifyWithEntry(entryFile string) (string, error) {
+	prog, err := p.BuildBundledProgramWithEntry(entryFile)
 	if err != nil {
 		return "", err
 	}
@@ -31,23 +37,41 @@ func (p *Packager) BundleAndMinify() (string, error) {
 // BuildBundledProgram compiles main.xru by recursively inlining all local module dependencies
 // declared in _mod.xru and all subdescriptors from dispatch statements into a single unified AST.
 func (p *Packager) BuildBundledProgram() (*ast.Program, error) {
-	mainPath := filepath.Join(p.rootDir, "main.xru")
-	content, err := os.ReadFile(mainPath)
+	return p.BuildBundledProgramWithEntry("main.xru")
+}
+
+// BuildBundledProgramWithEntry compiles a given entry .xru file by recursively inlining all local module dependencies
+// declared in _mod.xru and all subdescriptors from dispatch statements into a single unified AST.
+func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program, error) {
+	if entryFile == "" {
+		entryFile = "main.xru"
+	}
+	var entryPath string
+	if filepath.IsAbs(entryFile) {
+		entryPath = entryFile
+	} else {
+		entryPath = filepath.Join(p.rootDir, entryFile)
+	}
+
+	content, err := os.ReadFile(entryPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if os.IsNotExist(err) && entryFile == "main.xru" {
 			return nil, nil
 		}
 		return nil, err
 	}
 
-	l := lexer.New("main.xru", string(content))
+	l := lexer.New(filepath.Base(entryPath), string(content))
 	pr := parser.New(l)
 	mainProg := pr.ParseProgram()
 	if len(pr.Errors()) > 0 {
-		return nil, fmt.Errorf("syntax error in main.xru: %s", pr.Errors()[0])
+		return nil, fmt.Errorf("syntax error in %s: %s", filepath.Base(entryPath), pr.Errors()[0])
 	}
 
-	modFilePath := modules.FindModConfigFile(p.rootDir)
+	modFilePath := modules.FindModConfigFile(filepath.Dir(entryPath))
+	if modFilePath == "" {
+		modFilePath = modules.FindModConfigFile(p.rootDir)
+	}
 	var modCfg *modules.ModConfig
 	if modFilePath != "" {
 		if cfg, errs := modules.LoadModConfig(modFilePath); len(errs) == 0 {
@@ -64,11 +88,18 @@ func (p *Packager) BuildBundledProgram() (*ast.Program, error) {
 
 	seenUses := make(map[string]bool)
 	seenArgs := make(map[string]bool)
-	seenFuncs := make(map[string]bool)
 	visitedFiles := make(map[string]bool)
 
-	var inlineModule func(source, modName string) error
-	inlineModule = func(source, modName string) error {
+	moduleAliases := make(map[string]string)
+	importedMembers := make(map[string]string)
+
+	var inlineModule func(source, modName, alias string) error
+	inlineModule = func(source, modName, alias string) error {
+		if alias != "" {
+			moduleAliases[alias] = modName
+		}
+		moduleAliases[modName] = modName
+
 		if modCfg == nil || source == "root" {
 			return nil
 		}
@@ -98,16 +129,66 @@ func (p *Packager) BuildBundledProgram() (*ast.Program, error) {
 			if fus, ok := st.(*ast.FromUseStatement); ok {
 				if len(fus.Modules) > 0 {
 					for _, m := range fus.Modules {
-						if err := inlineModule(fus.Source, m); err != nil {
+						if err := inlineModule(fus.Source, m, ""); err != nil {
 							return err
 						}
 					}
 				} else if fus.Module != "" {
-					if err := inlineModule(fus.Source, fus.Module); err != nil {
+					if err := inlineModule(fus.Source, fus.Module, fus.Alias); err != nil {
 						return err
 					}
 				}
 			}
+		}
+
+		// Collect all top-level symbols declared in this module
+		declNames := make(map[string]bool)
+		for _, st := range subProg.Statements {
+			switch s := st.(type) {
+			case *ast.FuncStatement:
+				declNames[s.Name] = true
+			case *ast.VarStatement:
+				declNames[s.Name] = true
+			case *ast.UnitStatement:
+				declNames[s.Name] = true
+			}
+		}
+
+		// Rename all declared symbols inside subProg to avoid collisions across modules
+		for _, st := range subProg.Statements {
+			switch s := st.(type) {
+			case *ast.FuncStatement:
+				s.Name = modName + "__" + s.Name
+			case *ast.VarStatement:
+				s.Name = modName + "__" + s.Name
+			case *ast.UnitStatement:
+				s.Name = modName + "__" + s.Name
+			case *ast.ReassignStatement:
+				if declNames[s.Name] {
+					s.Name = modName + "__" + s.Name
+				}
+			}
+		}
+
+		// Transform all internal identifier references in subProg that point to declared symbols
+		for i, st := range subProg.Statements {
+			subProg.Statements[i] = transformStmt(st, func(expr ast.Expression) ast.Expression {
+				if sa, ok := expr.(*ast.ScopeAccessExpression); ok && !sa.IsUnitSelf {
+					if targetMod, ok := moduleAliases[sa.Scope]; ok {
+						return &ast.Identifier{Position: sa.Position, Value: targetMod + "__" + sa.Member}
+					}
+					return &ast.Identifier{Position: sa.Position, Value: sa.Scope + "__" + sa.Member}
+				}
+				if id, ok := expr.(*ast.Identifier); ok {
+					if declNames[id.Value] {
+						return &ast.Identifier{Position: id.Position, Value: modName + "__" + id.Value}
+					}
+					if target, ok := importedMembers[id.Value]; ok {
+						return &ast.Identifier{Position: id.Position, Value: target}
+					}
+				}
+				return expr
+			})
 		}
 
 		// Extract declarations
@@ -125,14 +206,9 @@ func (p *Packager) BuildBundledProgram() (*ast.Program, error) {
 					argStmts = append(argStmts, s)
 				}
 			case *ast.FuncStatement:
-				if !seenFuncs[s.Name] {
-					seenFuncs[s.Name] = true
-					funcStmts = append(funcStmts, s)
-				}
+				funcStmts = append(funcStmts, s)
 			case *ast.VarStatement:
-				if s.IsGlobal {
-					varStmts = append(varStmts, s)
-				}
+				varStmts = append(varStmts, s)
 			case *ast.UnitStatement:
 				unitStmts = append(unitStmts, s)
 			}
@@ -140,20 +216,61 @@ func (p *Packager) BuildBundledProgram() (*ast.Program, error) {
 		return nil
 	}
 
+	// First pass on mainProg: inline modules
 	for _, stmt := range mainProg.Statements {
-		switch s := stmt.(type) {
-		case *ast.FromUseStatement:
+		if s, ok := stmt.(*ast.FromUseStatement); ok {
 			if len(s.Modules) > 0 {
 				for _, m := range s.Modules {
-					if err := inlineModule(s.Source, m); err != nil {
+					if err := inlineModule(s.Source, m, ""); err != nil {
 						return nil, err
 					}
 				}
 			} else if s.Module != "" {
-				if err := inlineModule(s.Source, s.Module); err != nil {
+				if err := inlineModule(s.Source, s.Module, s.Alias); err != nil {
 					return nil, err
 				}
+				if len(s.Members) > 0 {
+					for _, member := range s.Members {
+						importedMembers[member] = s.Module + "__" + member
+					}
+				} else if s.Member != "" {
+					target := s.Member
+					if s.Alias != "" {
+						target = s.Alias
+					}
+					importedMembers[target] = s.Module + "__" + s.Member
+				}
 			}
+		}
+	}
+
+	// Second pass on mainProg: rewrite scope accesses and imported identifiers
+	for i, stmt := range mainProg.Statements {
+		if reassign, ok := stmt.(*ast.ReassignStatement); ok {
+			if target, ok := importedMembers[reassign.Name]; ok {
+				reassign.Name = target
+			}
+		}
+		mainProg.Statements[i] = transformStmt(stmt, func(expr ast.Expression) ast.Expression {
+			if sa, ok := expr.(*ast.ScopeAccessExpression); ok && !sa.IsUnitSelf {
+				if targetMod, ok := moduleAliases[sa.Scope]; ok {
+					return &ast.Identifier{Position: sa.Position, Value: targetMod + "__" + sa.Member}
+				}
+				return &ast.Identifier{Position: sa.Position, Value: sa.Scope + "__" + sa.Member}
+			}
+			if id, ok := expr.(*ast.Identifier); ok {
+				if target, ok := importedMembers[id.Value]; ok {
+					return &ast.Identifier{Position: id.Position, Value: target}
+				}
+			}
+			return expr
+		})
+	}
+
+	for _, stmt := range mainProg.Statements {
+		switch s := stmt.(type) {
+		case *ast.FromUseStatement, *ast.ModStatement:
+			// Stripped in bundled output
 		case *ast.UseStatement:
 			key := s.Module + "::" + s.Alias
 			if !seenUses[key] {
@@ -166,10 +283,7 @@ func (p *Packager) BuildBundledProgram() (*ast.Program, error) {
 				argStmts = append(argStmts, s)
 			}
 		case *ast.FuncStatement:
-			if !seenFuncs[s.Name] {
-				seenFuncs[s.Name] = true
-				funcStmts = append(funcStmts, s)
-			}
+			funcStmts = append(funcStmts, s)
 		case *ast.UnitStatement:
 			unitStmts = append(unitStmts, s)
 		case *ast.DispatchTreeStatement:
@@ -191,8 +305,6 @@ func (p *Packager) BuildBundledProgram() (*ast.Program, error) {
 				return nil, err
 			}
 			mainStmts = append(mainStmts, inlinedBlocks...)
-		case *ast.ModStatement:
-			// ignore
 		default:
 			mainStmts = append(mainStmts, s)
 		}
@@ -208,6 +320,136 @@ func (p *Packager) BuildBundledProgram() (*ast.Program, error) {
 
 	mainProg.Statements = finalStmts
 	return mainProg, nil
+}
+
+func transformExpr(expr ast.Expression, fn func(ast.Expression) ast.Expression) ast.Expression {
+	if expr == nil {
+		return nil
+	}
+	expr = fn(expr)
+	switch e := expr.(type) {
+	case *ast.PrefixExpression:
+		e.Right = transformExpr(e.Right, fn)
+	case *ast.InfixExpression:
+		e.Left = transformExpr(e.Left, fn)
+		e.Right = transformExpr(e.Right, fn)
+	case *ast.CallExpression:
+		e.Caller = transformExpr(e.Caller, fn)
+		for i, a := range e.Arguments {
+			e.Arguments[i] = transformExpr(a, fn)
+		}
+	case *ast.MemberExpression:
+		e.Object = transformExpr(e.Object, fn)
+	case *ast.ListLiteral:
+		for i, el := range e.Elements {
+			e.Elements[i] = transformExpr(el, fn)
+		}
+	case *ast.MapLiteral:
+		for i, p := range e.Pairs {
+			e.Pairs[i].Key = transformExpr(p.Key, fn)
+			e.Pairs[i].Value = transformExpr(p.Value, fn)
+		}
+	case *ast.LambdaExpression:
+		e.Body = transformExpr(e.Body, fn)
+	case *ast.BlockStatement:
+		for i, st := range e.Statements {
+			e.Statements[i] = transformStmt(st, fn)
+		}
+	case *ast.IfExpression:
+		e.Condition = transformExpr(e.Condition, fn)
+		e.Consequence = transformExpr(e.Consequence, fn)
+		e.Alternative = transformExpr(e.Alternative, fn)
+	case *ast.CatchExpression:
+		e.Target = transformExpr(e.Target, fn)
+		if fbExpr, ok := e.Fallback.(ast.Expression); ok {
+			e.Fallback = transformExpr(fbExpr, fn)
+		}
+	case *ast.WithExpression:
+		e.Target = transformExpr(e.Target, fn)
+	}
+	return expr
+}
+
+func transformStmt(stmt ast.Statement, fn func(ast.Expression) ast.Expression) ast.Statement {
+	if stmt == nil {
+		return nil
+	}
+	switch s := stmt.(type) {
+	case *ast.ExpressionStatement:
+		s.Expression = transformExpr(s.Expression, fn)
+	case *ast.VarStatement:
+		s.Value = transformExpr(s.Value, fn)
+	case *ast.ReassignStatement:
+		s.Value = transformExpr(s.Value, fn)
+	case *ast.ReturnStatement:
+		s.Value = transformExpr(s.Value, fn)
+	case *ast.IfStatement:
+		s.Condition = transformExpr(s.Condition, fn)
+		for i, st := range s.Consequence {
+			s.Consequence[i] = transformStmt(st, fn)
+		}
+		for i, eb := range s.ElifBlocks {
+			s.ElifBlocks[i].Condition = transformExpr(eb.Condition, fn)
+			for j, st := range eb.Body {
+				s.ElifBlocks[i].Body[j] = transformStmt(st, fn)
+			}
+		}
+		for i, st := range s.Alternative {
+			s.Alternative[i] = transformStmt(st, fn)
+		}
+	case *ast.ForStatement:
+		s.Iterable = transformExpr(s.Iterable, fn)
+		for i, st := range s.Body {
+			s.Body[i] = transformStmt(st, fn)
+		}
+	case *ast.WhileStatement:
+		s.Condition = transformExpr(s.Condition, fn)
+		for i, st := range s.Body {
+			s.Body[i] = transformStmt(st, fn)
+		}
+	case *ast.MatchStatement:
+		s.Target = transformExpr(s.Target, fn)
+		for i, c := range s.Cases {
+			s.Cases[i].Pattern = transformExpr(c.Pattern, fn)
+			for j, st := range c.Body {
+				s.Cases[i].Body[j] = transformStmt(st, fn)
+			}
+		}
+		for i, st := range s.DefaultBlock {
+			s.DefaultBlock[i] = transformStmt(st, fn)
+		}
+	case *ast.FileStatement:
+		if s.PathExpr != nil {
+			s.PathExpr = transformExpr(s.PathExpr, fn)
+		}
+		if s.Handler != nil {
+			s.Handler = transformExpr(s.Handler, fn)
+		}
+		for i, st := range s.Body {
+			s.Body[i] = transformStmt(st, fn)
+		}
+	case *ast.InStatement:
+		s.Path = transformExpr(s.Path, fn)
+		for i, st := range s.Body {
+			s.Body[i] = transformStmt(st, fn)
+		}
+	case *ast.FuncStatement:
+		for i, st := range s.Body {
+			s.Body[i] = transformStmt(st, fn)
+		}
+	case *ast.WithStatement:
+		if s.Target != nil {
+			s.Target = transformExpr(s.Target, fn)
+		}
+		for i, st := range s.Body {
+			s.Body[i] = transformStmt(st, fn)
+		}
+	case *ast.BlockStatement:
+		for i, st := range s.Statements {
+			s.Statements[i] = transformStmt(st, fn)
+		}
+	}
+	return stmt
 }
 
 func (p *Packager) inlineSubdescriptors(targetDir, pattern string) ([]ast.Statement, error) {
@@ -414,11 +656,16 @@ func (m *Mangler) getMangledName(orig string) string {
 }
 
 func (m *Mangler) Minify(prog *ast.Program) string {
-	// Pass 1: register all top-level user function names so calls can resolve
+	// Pass 1: register all top-level user function and variable names so calls and refs resolve properly
 	for _, stmt := range prog.Statements {
 		if fn, ok := stmt.(*ast.FuncStatement); ok {
 			if !m.reserved[fn.Name] {
 				_ = m.getMangledName(fn.Name)
+			}
+		}
+		if v, ok := stmt.(*ast.VarStatement); ok {
+			if !m.reserved[v.Name] {
+				_ = m.getMangledName(v.Name)
 			}
 		}
 	}
@@ -467,6 +714,53 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 
 	case *ast.InterfaceStatement:
 		return "" // Strip interface definitions in bundled package
+
+	case *ast.UnitStatement:
+		unitName := s.Name
+		inc := ""
+		if s.Includes != "" {
+			inc = " extends " + s.Includes
+		}
+		var parts []string
+		for _, p := range s.Properties {
+			parts = append(parts, p.String())
+		}
+		for _, d := range s.Directives {
+			parts = append(parts, d.String())
+		}
+		for _, mth := range s.Methods {
+			ms := m.minifyStatement(mth)
+			if ms != "" {
+				parts = append(parts, ms)
+			}
+		}
+		return fmt.Sprintf("unit %s%s{%s}", unitName, inc, strings.Join(parts, ";"))
+
+	case *ast.MatchStatement:
+		targetStr := m.minifyExpression(s.Target)
+		var cases []string
+		for _, c := range s.Cases {
+			patStr := m.minifyExpression(c.Pattern)
+			var bodyParts []string
+			for _, st := range c.Body {
+				ms := m.minifyStatement(st)
+				if ms != "" {
+					bodyParts = append(bodyParts, ms)
+				}
+			}
+			cases = append(cases, fmt.Sprintf("case %s{%s}", patStr, strings.Join(bodyParts, ";")))
+		}
+		if len(s.DefaultBlock) > 0 {
+			var defParts []string
+			for _, st := range s.DefaultBlock {
+				ms := m.minifyStatement(st)
+				if ms != "" {
+					defParts = append(defParts, ms)
+				}
+			}
+			cases = append(cases, fmt.Sprintf("default{%s}", strings.Join(defParts, ";")))
+		}
+		return fmt.Sprintf("match %s{%s}", targetStr, strings.Join(cases, ";"))
 
 	case *ast.VarStatement:
 		kw := "let"
@@ -734,7 +1028,7 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 				parts = append(parts, ms)
 			}
 		}
-		return fmt.Sprintf("{\n%s\n}", strings.Join(parts, "\n"))
+		return fmt.Sprintf("{%s}", strings.Join(parts, ";"))
 
 	case *ast.ScopeAccessExpression:
 		member := e.Member

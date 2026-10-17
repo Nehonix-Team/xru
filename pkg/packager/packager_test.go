@@ -162,3 +162,123 @@ prune("controller", mode, cdn)
 	}
 }
 
+func TestBuildSingleFileModule(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_singlefile_build_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// 1. Create _mod.xru
+	modConf := `map {
+    "rt" -> "./rt"
+}`
+	_ = os.WriteFile(filepath.Join(tempDir, "_mod.xru"), []byte(modConf), 0644)
+
+	// 2. Create rt/cArg.xru
+	_ = os.MkdirAll(filepath.Join(tempDir, "rt"), 0755)
+	cArgContent := `use std
+const dArgVal: string = "hello"
+func run(x: number) -> string {
+    return dArgVal + " " + x
+}`
+	_ = os.WriteFile(filepath.Join(tempDir, "rt", "cArg.xru"), []byte(cArgContent), 0644)
+
+	// 3. Create main.xru that uses cArg as a qualified module
+	mainContent := `use std
+from "rt" use (cArg)
+
+let res = cArg::run(42)
+file "output.txt", (doc, err) -> {
+    doc.replace("INITIAL", res)
+}`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(mainContent), 0644)
+
+	// 4. Create other.xru that uses direct member import
+	otherContent := `use std
+from "rt" use cArg::(dArgVal, run)
+
+let res2 = run(99)
+file "output2.txt", (doc, err) -> {
+    doc.replace("INITIAL", res2)
+}`
+	_ = os.WriteFile(filepath.Join(tempDir, "other.xru"), []byte(otherContent), 0644)
+
+	pkg := packager.New(tempDir, "")
+
+	// Bundle main.xru
+	bundledMain, err := pkg.BundleAndMinifyWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("BundleAndMinifyWithEntry(main.xru) failed: %v", err)
+	}
+	t.Logf("Bundled main:\n%s", bundledMain)
+
+	// Ensure no 'from "rt" use' remains
+	if strings.Contains(bundledMain, "from \"rt\"") {
+		t.Errorf("Expected no 'from \"rt\"' in bundled output, got: %s", bundledMain)
+	}
+
+	// Execute bundledMain in an isolated directory WITHOUT _mod.xru or rt/
+	isolatedDir, err := os.MkdirTemp("", "xru_isolated_eval_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(isolatedDir)
+
+	_ = os.WriteFile(filepath.Join(isolatedDir, "output.txt"), []byte("INITIAL"), 0644)
+	_ = os.WriteFile(filepath.Join(isolatedDir, "output2.txt"), []byte("INITIAL"), 0644)
+
+	l := lexer.New("bundle.xru", bundledMain)
+	pr := parser.New(l)
+	prog := pr.ParseProgram()
+	if len(pr.Errors()) > 0 {
+		t.Fatalf("Parse error on bundledMain: %v", pr.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	env.SetCurrentDir(isolatedDir)
+
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on bundled code: %v", err)
+	}
+
+	outBytes, err := os.ReadFile(filepath.Join(isolatedDir, "output.txt"))
+	if err != nil {
+		t.Fatalf("Failed to read output.txt: %v", err)
+	}
+	if string(outBytes) != "hello 42" {
+		t.Errorf("Expected 'hello 42', got: %s", string(outBytes))
+	}
+
+	// Bundle other.xru
+	bundledOther, err := pkg.BundleAndMinifyWithEntry("other.xru")
+	if err != nil {
+		t.Fatalf("BundleAndMinifyWithEntry(other.xru) failed: %v", err)
+	}
+	t.Logf("Bundled other:\n%s", bundledOther)
+
+	l2 := lexer.New("bundle2.xru", bundledOther)
+	pr2 := parser.New(l2)
+	prog2 := pr2.ParseProgram()
+	if len(pr2.Errors()) > 0 {
+		t.Fatalf("Parse error on bundledOther: %v", pr2.Errors())
+	}
+
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	env2.SetCurrentDir(isolatedDir)
+
+	if _, err := ev2.Eval(prog2, env2); err != nil {
+		t.Fatalf("Eval error on bundled other code: %v", err)
+	}
+
+	out2Bytes, err := os.ReadFile(filepath.Join(isolatedDir, "output2.txt"))
+	if err != nil {
+		t.Fatalf("Failed to read output2.txt: %v", err)
+	}
+	if string(out2Bytes) != "hello 99" {
+		t.Errorf("Expected 'hello 99', got: %s", string(out2Bytes))
+	}
+}
+

@@ -1972,3 +1972,32 @@ let activeVal = m.get("active")
 		t.Errorf("Expected activeval to be 'true', got %v", actVal)
 	}
 }
+
+func TestSysCwd(t *testing.T) {
+	code := `
+use sys
+
+let dir = sys.cwd()
+`
+	l := lexer.New("test_sys_cwd.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on sys.cwd(): %v", err)
+	}
+
+	dirVal, ok := env.Get("dir")
+	if !ok {
+		t.Fatalf("Expected dir to be set")
+	}
+	expectedWd, _ := os.Getwd()
+	if dirVal.String() != expectedWd {
+		t.Errorf("Expected %s, got %s", expectedWd, dirVal.String())
+	}
+}
+

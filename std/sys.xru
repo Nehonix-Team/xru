@@ -32,6 +32,9 @@ interface SysNative {
 
 	/// Returns the current active XRU engine semantic version (e.g. "2.0.67").
 	func version() -> string
+
+	/// Returns the current working directory of the process (equivalent to process.cwd() in JS).
+	func cwd() -> string
 }
 
 unit sys includes SysNative {}

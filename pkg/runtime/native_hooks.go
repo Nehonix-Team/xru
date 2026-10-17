@@ -81,6 +81,17 @@ func NewNativeHooks() map[string]NativeMethod {
 		return StringValue{Val: time.Now().Format(time.RFC3339)}, nil
 	}
 
+	hooks["sys_cwd"] = func(args []Value) (Value, error) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return StringValue{Val: ""}, err
+		}
+		if abs, err := filepath.Abs(wd); err == nil {
+			return StringValue{Val: abs}, nil
+		}
+		return StringValue{Val: wd}, nil
+	}
+
 	hooks["sys_sleep"] = func(args []Value) (Value, error) {
 		if len(args) > 0 {
 			if dur, ok := args[0].(DurationValue); ok {

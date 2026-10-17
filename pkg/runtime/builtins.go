@@ -371,7 +371,25 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	units["net"] = netUnit
 
 	// 4. #UNIT Sys
-	sysUnit := &UnitInstance{
+	var sysUnit *UnitInstance
+	cwdFn := func(args []Value) (Value, error) {
+		dir := ""
+		if sysUnit != nil && sysUnit.WorkingDir != "" {
+			dir = sysUnit.WorkingDir
+		} else {
+			wd, err := os.Getwd()
+			if err != nil {
+				return StringValue{Val: ""}, err
+			}
+			dir = wd
+		}
+		if abs, err := filepath.Abs(dir); err == nil {
+			return StringValue{Val: abs}, nil
+		}
+		return StringValue{Val: dir}, nil
+	}
+
+	sysUnit = &UnitInstance{
 		UnitName:   "Sys",
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
@@ -381,8 +399,49 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 				}
 				return StringValue{Val: os.Getenv(args[0].String())}, nil
 			},
+			"env": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return StringValue{Val: ""}, nil
+				}
+				return StringValue{Val: os.Getenv(args[0].String())}, nil
+			},
+			"getEnv": func(args []Value) (Value, error) {
+				if len(args) == 0 {
+					return StringValue{Val: ""}, nil
+				}
+				val := os.Getenv(args[0].String())
+				if val == "" && len(args) > 1 {
+					val = args[1].String()
+				}
+				return StringValue{Val: val}, nil
+			},
+			"GetEnv": func(args []Value) (Value, error) {
+				if len(args) == 0 {
+					return StringValue{Val: ""}, nil
+				}
+				val := os.Getenv(args[0].String())
+				if val == "" && len(args) > 1 {
+					val = args[1].String()
+				}
+				return StringValue{Val: val}, nil
+			},
 			"Time": func(args []Value) (Value, error) {
 				return StringValue{Val: time.Now().Format(time.RFC3339)}, nil
+			},
+			"time": func(args []Value) (Value, error) {
+				return StringValue{Val: time.Now().Format(time.RFC3339)}, nil
+			},
+			"Os": func(args []Value) (Value, error) {
+				return StringValue{Val: goRuntime.GOOS}, nil
+			},
+			"os": func(args []Value) (Value, error) {
+				return StringValue{Val: goRuntime.GOOS}, nil
+			},
+			"Arch": func(args []Value) (Value, error) {
+				return StringValue{Val: goRuntime.GOARCH}, nil
+			},
+			"arch": func(args []Value) (Value, error) {
+				return StringValue{Val: goRuntime.GOARCH}, nil
 			},
 			"Sleep":   sleepFn,
 			"sleep":   sleepFn,
@@ -392,6 +451,8 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Require": sysRequireFn,
 			"version": sysVersionFn,
 			"Version": sysVersionFn,
+			"cwd":     cwdFn,
+			"Cwd":     cwdFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}

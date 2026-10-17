@@ -102,6 +102,8 @@ func (c *Checker) initBuiltinUnits() {
 			"Require": {Name: "Require", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "constraint", Type: "string"}, {Name: "options", Type: "ROpt", Optional: true}}, MinArgs: 1, HasOptional: true},
 			"version": {Name: "version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"Version": {Name: "Version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"cwd":     {Name: "cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"Cwd":     {Name: "Cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 		},
 	}
 	cmdUnit := &Symbol{

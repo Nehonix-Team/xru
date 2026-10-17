@@ -504,6 +504,19 @@ func (ev *Evaluator) evalStringMethod(c *ast.MemberExpression, strVal StringValu
 			start = end
 		}
 		return StringValue{Val: s[start:end]}, nil
+	case "repeat":
+		if len(args) != 1 {
+			return nil, fmt.Errorf("method 'repeat' requires 1 argument (count: number), but got %d", len(args))
+		}
+		n, ok := args[0].(NumberValue)
+		if !ok {
+			return nil, fmt.Errorf("method 'repeat' expects number for count, got %s", args[0].Type())
+		}
+		count := int(n.Val)
+		if count < 0 {
+			return nil, fmt.Errorf("method 'repeat' count must be non-negative, got %d", count)
+		}
+		return StringValue{Val: strings.Repeat(s, count)}, nil
 	case "tostring", "to_string":
 		return strVal, nil
 	default:

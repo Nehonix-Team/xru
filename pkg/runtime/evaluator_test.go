@@ -1112,6 +1112,8 @@ let replaced = trimmed.replace("World", "XRU")
 let sliced = trimmed.slice(0, 5)
 let parts = trimmed.split(" ")
 let countParts = parts.len()
+let repeated = "abc".repeat(3)
+let repeatZero = "xyz".repeat(0)
 `
 	l := lexer.New("test_str_methods.xru", code)
 	p := parser.New(l)
@@ -1165,6 +1167,14 @@ let countParts = parts.len()
 	countVal, _ := env.Get("countParts")
 	if countVal.String() != "2" {
 		t.Errorf("Expected countParts == 2, got %v", countVal)
+	}
+	repThreeVal, _ := env.Get("repeated")
+	if repThreeVal.String() != "abcabcabc" {
+		t.Errorf("Expected repeated == 'abcabcabc', got %v", repThreeVal)
+	}
+	repZeroVal, _ := env.Get("repeatZero")
+	if repZeroVal.String() != "" {
+		t.Errorf("Expected repeatZero == '', got %v", repZeroVal)
 	}
 }
 

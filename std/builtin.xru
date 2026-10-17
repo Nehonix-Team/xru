@@ -38,6 +38,9 @@ interface String {
 
 	/// Returns a substring starting from index start up to optional index end.
 	func slice(start: number, end: number = -1) -> string
+
+	/// Returns a new string consisting of the specified number of copies of the string concatenated together.
+	func repeat(count: number) -> string
 }
 
 /// Dynamically sized ordered list collection.

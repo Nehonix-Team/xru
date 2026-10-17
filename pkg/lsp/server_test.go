@@ -2299,3 +2299,46 @@ const b: number = cArg::dArgVal
 		t.Errorf("Expected hover to show 'cArg::dArgVal: string', got: %s", outStr)
 	}
 }
+
+func TestStringRepeatCompletionAndHover(t *testing.T) {
+	uri := "file:///test_repeat.xru"
+	code := `let str = "hello"
+str.repeat(3)
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
+
+	// Completion after 'str.' on line 1, col 4
+	compReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 1, "character": 4},
+	})
+
+	// Hover on "repeat" on line 1, col 6
+	hoverReq := formatLSPMessage("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 1, "character": 6},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + compReq + hoverReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	if !strings.Contains(outStr, `"label":"repeat"`) {
+		t.Errorf("Expected 'repeat' in string completions, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, "repeat(count: number)") {
+		t.Errorf("Expected repeat signature in hover/completion, got: %s", outStr)
+	}
+}
+

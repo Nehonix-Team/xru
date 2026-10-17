@@ -109,7 +109,7 @@ func (c *Checker) inferType(expr ast.Expression) string {
 					return "bool"
 				case "split":
 					return "list[string]"
-				case "trim", "trimleft", "trimright", "toupper", "tolower", "replace", "slice":
+				case "trim", "trimleft", "trimright", "toupper", "tolower", "replace", "slice", "repeat":
 					return "string"
 				}
 			} else if strings.HasPrefix(objType, "list") {

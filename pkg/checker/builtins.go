@@ -401,6 +401,12 @@ var StringMethodSpecs = map[string]NativeMethodSpec{
 		},
 		ReturnType: "string",
 	},
+	"repeat": {
+		Params: []NativeParam{
+			{Name: "count", Type: "number"},
+		},
+		ReturnType: "string",
+	},
 	"tostring": {
 		Params:     []NativeParam{},
 		ReturnType: "string",

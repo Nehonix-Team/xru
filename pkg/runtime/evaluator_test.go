@@ -1899,5 +1899,23 @@ let val = v
 	}
 }
 
+func TestTerminalColorFormatting(t *testing.T) {
+	code := `
+use std
 
-
+std.info("<blue>=== </blue><red>TEST</red>")
+std.println("<blue>=== <red>NESTED</red> ===</blue>")
+std.println("<green><bold>SUCCESS</bold></green>")
+`
+	l := lexer.New("test_colors.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on color formatting: %v", err)
+	}
+}

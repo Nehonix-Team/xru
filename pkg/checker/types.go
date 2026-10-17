@@ -131,6 +131,13 @@ func (c *Checker) inferType(expr ast.Expression) string {
 				case "trim", "trimleft", "trimright", "toupper", "tolower", "replace", "slice", "repeat":
 					return "string"
 				}
+			} else if objType == "number" {
+				switch strings.ToLower(member.Property) {
+				case "abs", "floor", "ceil", "round", "int":
+					return "number"
+				case "tostring", "to_string", "fixed":
+					return "string"
+				}
 			} else if strings.HasPrefix(objType, "list") {
 				switch strings.ToLower(member.Property) {
 				case "len":
@@ -148,6 +155,23 @@ func (c *Checker) inferType(expr ast.Expression) string {
 					return "any"
 				case "reverse", "slice":
 					return objType
+				}
+			} else if objType == "map" || objType == "@map" || strings.HasPrefix(objType, "@map") || (c.interfaces != nil && c.interfaces[objType] != nil && c.interfaces[objType].IsMap) {
+				switch strings.ToLower(member.Property) {
+				case "keys":
+					return "list[string]"
+				case "values", "entries":
+					return "list[any]"
+				case "has":
+					return "bool"
+				case "len", "size":
+					return "number"
+				case "delete", "clear":
+					return "void"
+				case "set", "merge":
+					return "map"
+				case "get":
+					return "any"
 				}
 			}
 
@@ -334,6 +358,11 @@ func (c *Checker) inferType(expr ast.Expression) string {
 		}
 		if targetType == "map" || targetType == "@map" || strings.HasPrefix(targetType, "@map") || (c.interfaces != nil && c.interfaces[targetType] != nil && c.interfaces[targetType].IsMap) {
 			if spec, ok := GetMapMethodSpec(e.Property); ok {
+				return spec.ReturnType
+			}
+		}
+		if targetType == "number" {
+			if spec, ok := GetNumberMethodSpec(e.Property); ok {
 				return spec.ReturnType
 			}
 		}

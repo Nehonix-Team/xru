@@ -133,6 +133,17 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 					}
 				}
 				return
+			} else if objType == "number" {
+				if spec, ok := GetNumberMethodSpec(member.Property); ok {
+					c.validateNativeMethodCall(e, "number", member.Property, spec)
+				} else {
+					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+						fmt.Sprintf("Method '%s' not found on number", member.Property))
+					for _, arg := range e.Arguments {
+						c.checkExpression(arg)
+					}
+				}
+				return
 			} else if strings.HasPrefix(objType, "list") {
 				if spec, ok := GetListMethodSpec(member.Property); ok {
 					c.validateNativeMethodCall(e, "list", member.Property, spec)
@@ -153,6 +164,13 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 					for _, arg := range e.Arguments {
 						c.checkExpression(arg)
 					}
+				}
+				return
+			} else if objType == "bool" {
+				c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+					fmt.Sprintf("Method '%s' not found on bool", member.Property))
+				for _, arg := range e.Arguments {
+					c.checkExpression(arg)
 				}
 				return
 			}
@@ -608,6 +626,13 @@ func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, sym *S
 func (c *Checker) validatePropertyAccessOnType(e *ast.MemberExpression, typeName string) {
 	typeName = strings.TrimSpace(typeName)
 	typeName = strings.TrimSuffix(typeName, "?")
+
+	// 0. Primitive types do not have properties
+	if typeName == "number" || typeName == "bool" || typeName == "string" || typeName == "duration" || strings.HasPrefix(typeName, "list") {
+		c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
+			fmt.Sprintf("Cannot access property '%s' on %s", e.Property, typeName))
+		return
+	}
 
 	// 1. Interface
 	if iface, ok := c.interfaces[typeName]; ok {

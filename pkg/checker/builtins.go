@@ -493,6 +493,53 @@ func GetListMethodSpec(name string) (NativeMethodSpec, bool) {
 	return spec, ok
 }
 
+var NumberMethodSpecs = map[string]NativeMethodSpec{
+	"abs": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"floor": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"ceil": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"round": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"int": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"tostring": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"to_string": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"fixed": {
+		Params: []NativeParam{
+			{Name: "digits", Type: "number", Optional: true},
+		},
+		ReturnType: "string",
+	},
+}
+
+func IsNumberMethod(name string) bool {
+	_, ok := NumberMethodSpecs[strings.ToLower(name)]
+	return ok
+}
+
+func GetNumberMethodSpec(name string) (NativeMethodSpec, bool) {
+	spec, ok := NumberMethodSpecs[strings.ToLower(name)]
+	return spec, ok
+}
+
 var MapMethodSpecs = map[string]NativeMethodSpec{
 	"get": {
 		Params: []NativeParam{

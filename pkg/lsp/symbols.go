@@ -87,21 +87,25 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 					if doc, ok := StringMethodsDocs[memberName]; ok {
 						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
 					}
+					return nil
 				}
 				if vInfo.isNumber {
 					if doc, ok := NumberMethodsDocs[memberName]; ok {
 						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
 					}
+					return nil
 				}
 				if vInfo.isList {
 					if doc, ok := ListMethodsDocs[memberName]; ok {
 						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
 					}
+					return nil
 				}
 				if vInfo.isMap {
 					if doc, ok := MapMethodsDocs[memberName]; ok {
 						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
 					}
+					return nil
 				}
 			}
 		}
@@ -124,6 +128,9 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 			for _, d := range c.AllDeclaredVars() {
 				if d.Name == objectName && d.Type != "" {
 					if iface, ok := c.AllInterfaces()[d.Type]; ok && (len(iface.Fields) > 0 || iface.Pos().Filename != "") {
+						return nil
+					}
+					if d.Type == "number" || d.Type == "string" || d.Type == "bool" || d.Type == "duration" {
 						return nil
 					}
 					lookupExpr = d.Type + "." + methodName

@@ -259,6 +259,30 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 					Position: s.Pos(),
 				}
 			}
+		case *ast.FromUseStatement:
+			if s != nil {
+				if len(s.Members) > 0 {
+					for _, mem := range s.Members {
+						exports[mem] = &ExportedMember{
+							Name:     mem,
+							Kind:     "var",
+							Type:     "any",
+							Position: s.Pos(),
+						}
+					}
+				} else if s.Member != "" {
+					target := s.Member
+					if s.Alias != "" {
+						target = s.Alias
+					}
+					exports[target] = &ExportedMember{
+						Name:     target,
+						Kind:     "var",
+						Type:     "any",
+						Position: s.Pos(),
+					}
+				}
+			}
 		}
 	}
 

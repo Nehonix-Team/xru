@@ -113,13 +113,42 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 }
 
 // declare prop: type = value
+// Syntaxes supportées:
+// - declare prop: type = value (défaut public)
+// - declare prop, private: type = value
+// - declare prop, public: type = value
+// - declare private prop: type = value
+// - declare public prop: type = value
+// - declare prop: type = value, private
 func (p *Parser) parseDeclareStatement() *ast.DeclareStatement {
 	stmt := &ast.DeclareStatement{Position: p.curToken.Pos}
-	if !p.expectPeek(lexer.IDENT) {
+
+	// 1. Prefix modifier: declare private x / declare public x
+	if p.peekTokenIs(lexer.PRIVATE) || p.peekTokenIs(lexer.PUBLIC) {
+		stmt.IsPrivate = p.peekTokenIs(lexer.PRIVATE)
+		p.nextToken() // saute 'private' ou 'public'
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.Name = p.curToken.Literal
+	} else if p.expectPeek(lexer.IDENT) {
+		stmt.Name = p.curToken.Literal
+		// 2. Second param modifier via comma: declare x, private / declare x, public
+		if p.peekTokenIs(lexer.COMMA) {
+			p.nextToken() // saute ','
+			if p.peekTokenIs(lexer.PRIVATE) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "private") {
+				stmt.IsPrivate = true
+				p.nextToken()
+			} else if p.peekTokenIs(lexer.PUBLIC) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "public") {
+				stmt.IsPrivate = false
+				p.nextToken()
+			}
+		}
+	} else {
 		return nil
 	}
-	stmt.Name = p.curToken.Literal
 
+	// 3. Type annotation: : type
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // saute ':'
 		if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.MAP) {
@@ -130,6 +159,7 @@ func (p *Parser) parseDeclareStatement() *ast.DeclareStatement {
 		}
 	}
 
+	// 4. Initial value assignment: = value
 	if p.peekTokenIs(lexer.ASSIGN) {
 		p.nextToken() // saute '='
 		assignPos := p.curToken.Pos
@@ -144,6 +174,23 @@ func (p *Parser) parseDeclareStatement() *ast.DeclareStatement {
 			return stmt
 		}
 	}
+
+	// 5. Trailing modifier via comma: , private / , public
+	if p.peekTokenIs(lexer.COMMA) {
+		p.nextToken() // saute ','
+		if p.peekTokenIs(lexer.PRIVATE) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "private") {
+			stmt.IsPrivate = true
+			p.nextToken()
+		} else if p.peekTokenIs(lexer.PUBLIC) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "public") {
+			stmt.IsPrivate = false
+			p.nextToken()
+		}
+	}
+
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
+
 	return stmt
 }
 

@@ -2,9 +2,15 @@ package checker
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/lexer"
+	"github.com/Nehonix-Team/xru/pkg/parser"
 )
 
 func (c *Checker) checkStatement(stmt ast.Statement) {
@@ -173,12 +179,7 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.MatchStatement:
 		c.checkMatch(s)
 	case *ast.DispatchTreeStatement:
-		if s.PathExpr != nil {
-			c.checkExpression(s.PathExpr)
-		}
-		if s.PatternExpr != nil {
-			c.checkExpression(s.PatternExpr)
-		}
+		c.checkDispatchTree(s)
 	case *ast.InStatement:
 		c.checkIn(s)
 	case *ast.ReassignStatement:
@@ -398,11 +399,13 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 
 func (c *Checker) checkUnit(s *ast.UnitStatement) {
 	unitSym := &Symbol{
-		Name:       s.Name,
-		Kind:       SymUnit,
-		Pos:        s.Pos(),
-		Directives: make(map[string]bool),
-		Methods:    make(map[string]*Symbol),
+		Name:         s.Name,
+		Kind:         SymUnit,
+		Pos:          s.Pos(),
+		Directives:   make(map[string]bool),
+		Methods:      make(map[string]*Symbol),
+		Properties:   make(map[string]*Symbol),
+		PrivateProps: make(map[string]bool),
 	}
 
 	for _, dir := range s.Directives {
@@ -461,6 +464,10 @@ func (c *Checker) checkUnit(s *ast.UnitStatement) {
 
 	for _, prop := range s.Properties {
 		propSym := &Symbol{Name: prop.Name, Kind: SymVar, Type: prop.Type, Pos: prop.Pos()}
+		unitSym.Properties[prop.Name] = propSym
+		if prop.IsPrivate {
+			unitSym.PrivateProps[prop.Name] = true
+		}
 		if err := c.scope.Define(propSym); err != nil {
 			c.addError(prop.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 		}
@@ -846,3 +853,105 @@ func hasReturnStatement(stmts []ast.Statement) bool {
 	return false
 }
 
+
+func (c *Checker) checkDispatchTree(s *ast.DispatchTreeStatement) {
+	if s.PathExpr != nil {
+		c.checkExpression(s.PathExpr)
+	}
+	if s.PatternExpr != nil {
+		c.checkExpression(s.PatternExpr)
+	}
+
+	targetDir := s.Path
+	if targetDir == "" && s.PathExpr != nil {
+		if strLit, ok := s.PathExpr.(*ast.StringLiteral); ok {
+			targetDir = strLit.Value
+		}
+	}
+	if targetDir == "" {
+		targetDir = "./"
+	}
+	pattern := s.Pattern
+	if pattern == "" && s.PatternExpr != nil {
+		if strLit, ok := s.PatternExpr.(*ast.StringLiteral); ok {
+			pattern = strLit.Value
+		}
+	}
+	if pattern == "" {
+		pattern = ".rules.xru"
+	}
+
+	baseDir := "."
+	if c.currentFile != "" {
+		baseDir = filepath.Dir(c.currentFile)
+	}
+	fullTarget := filepath.Join(baseDir, targetDir)
+	if !filepath.IsAbs(fullTarget) {
+		if abs, err := filepath.Abs(fullTarget); err == nil {
+			fullTarget = abs
+		}
+	}
+
+	if fi, err := os.Stat(fullTarget); err != nil || !fi.IsDir() {
+		return
+	}
+
+	var discoveredFiles []string
+	_ = filepath.WalkDir(fullTarget, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		name := entry.Name()
+		matched, _ := filepath.Match(pattern, name)
+		if matched || name == pattern {
+			discoveredFiles = append(discoveredFiles, path)
+		}
+		return nil
+	})
+
+	sort.Strings(discoveredFiles)
+
+	for _, path := range discoveredFiles {
+		absPath, _ := filepath.Abs(path)
+		if c.visitedDispatches == nil {
+			c.visitedDispatches = make(map[string]bool)
+		}
+		if c.visitedDispatches[absPath] {
+			continue
+		}
+		c.visitedDispatches[absPath] = true
+
+		subContent, err := os.ReadFile(path)
+		if err != nil {
+			c.addError(s.Pos(), "ERR_DISPATCH_READ", fmt.Sprintf("cannot read dispatched file '%s': %v", path, err))
+			continue
+		}
+		subLex := lexer.New(path, string(subContent))
+		subParser := parser.New(subLex)
+		subProg := subParser.ParseProgram()
+		if len(subParser.Errors()) > 0 {
+			for _, pe := range subParser.Errors() {
+				c.addError(s.Pos(), "ERR_SYNTAX", fmt.Sprintf("syntax error in dispatched file %s: %s", filepath.Base(path), pe))
+			}
+			continue
+		}
+
+		subChecker := New()
+		subChecker.SetCurrentFile(path)
+		subChecker.scope = NewScope(c.scope, false)
+		subChecker.scope.Define(&Symbol{Name: "keep", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "Keep", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "drop", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "Drop", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "useVariant", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "UseVariant", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "Local", Kind: SymUnit, Type: "Unit", Pos: s.Pos()})
+
+		subChecker.Check(subProg)
+		if len(subChecker.Errors()) > 0 {
+			for _, errStr := range subChecker.Errors() {
+				c.addError(s.Pos(), "ERR_DISPATCH_VALIDATION", errStr)
+			}
+		}
+	}
+}

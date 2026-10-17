@@ -57,6 +57,8 @@ const (
 	INTERFACE     TokenType = "interface"
 	TYPE          TokenType = "type"
 	INCLUDES      TokenType = "includes"
+	PUBLIC        TokenType = "public"
+	PRIVATE       TokenType = "private"
 
 	// Operators & Symbols
 	ASSIGN     TokenType = "="
@@ -160,6 +162,8 @@ var keywords = map[string]TokenType{
 	"interface":     INTERFACE,
 	"type":          TYPE,
 	"includes":      INCLUDES,
+	"public":        PUBLIC,
+	"private":       PRIVATE,
 }
 
 func LookupIdent(ident string) TokenType {

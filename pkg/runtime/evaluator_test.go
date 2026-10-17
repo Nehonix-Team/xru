@@ -2001,3 +2001,98 @@ let dir = sys.cwd()
 	}
 }
 
+func TestUnitEncapsulationAndVisibility(t *testing.T) {
+	// 1. Valid private property access inside unit, public outside
+	codeValid := `
+unit UserAccount {
+    declare public username: string = "alice"
+    declare private passwordHash: string = "hash123"
+    declare private loginAttempts: number = 0
+
+    func tryLogin(attempt: string) -> bool {
+        if attempt == &passwordHash {
+            return true
+        }
+        &loginAttempts =: &loginAttempts + 1
+        return false
+    }
+
+    func getAttempts() -> number {
+        return &loginAttempts
+    }
+
+    func verifyUser(attempt: string) -> bool {
+        return &self::tryLogin(attempt)
+    }
+}
+
+let acc = @UserAccount()
+let u = acc.username
+let resFail = acc.verifyUser("wrong")
+let attempts = acc.getAttempts()
+let resSuccess = acc.verifyUser("hash123")
+`
+	l := lexer.New("test_unit.xru", codeValid)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on valid unit: %v", err)
+	}
+
+	uVal, _ := env.Get("u")
+	if uVal.String() != "alice" {
+		t.Errorf("Expected username alice, got %s", uVal.String())
+	}
+	attemptsVal, _ := env.Get("attempts")
+	if attemptsVal.String() != "1" {
+		t.Errorf("Expected attempts 1, got %s", attemptsVal.String())
+	}
+	succVal, _ := env.Get("resSuccess")
+	if succVal.String() != "true" {
+		t.Errorf("Expected login success true, got %s", succVal.String())
+	}
+
+	// 2. Accessing private property outside unit must fail at runtime
+	codePriv := `
+unit Vault {
+    declare private secretKey: string = "confidential"
+}
+let v = @Vault()
+let s = v.secretKey
+`
+	p2 := parser.New(lexer.New("test_priv.xru", codePriv))
+	prog2 := p2.ParseProgram()
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	_, err2 := ev2.Eval(prog2, env2)
+	if err2 == nil || !strings.Contains(err2.Error(), "is private") {
+		t.Fatalf("Expected private property error, got: %v", err2)
+	}
+
+	// 3. Calling &method() directly must fail at runtime
+	codeDirectCall := `
+unit Bot {
+    func action() -> string { return "done" }
+    func run() -> string {
+        return &action()
+    }
+}
+let b = @Bot()
+let r = b.run()
+`
+	p3 := parser.New(lexer.New("test_direct.xru", codeDirectCall))
+	prog3 := p3.ParseProgram()
+	ev3 := runtime.NewEvaluator()
+	env3 := runtime.NewEnvironment(nil)
+	_, err3 := ev3.Eval(prog3, env3)
+	if err3 == nil || !strings.Contains(err3.Error(), "cannot call '&action()'") {
+		t.Fatalf("Expected cannot call &action() error, got: %v", err3)
+	}
+}
+
+

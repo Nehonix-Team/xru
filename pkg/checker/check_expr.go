@@ -39,27 +39,17 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	case *ast.PropAccess:
 		if !c.scope.InUnitScope() {
 			c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
-				fmt.Sprintf("Property or method access '&%s' is only allowed inside a unit definition", e.Name))
+				fmt.Sprintf("Property access '&%s' is only allowed inside a unit definition", e.Name))
 		} else {
-			if _, ok := c.scope.Resolve("&" + e.Name); !ok {
-				if _, ok2 := c.scope.Resolve(e.Name); !ok2 {
-					unitSym := c.scope.GetEnclosingUnit()
-					var found bool
-					if unitSym != nil && unitSym.Methods != nil {
-						if _, ok3 := unitSym.Methods[e.Name]; ok3 {
-							found = true
-						} else {
-							for mName := range unitSym.Methods {
-								if strings.EqualFold(mName, e.Name) {
-									found = true
-									break
-								}
-							}
-						}
-					}
-					if !found {
+			unitSym := c.scope.GetEnclosingUnit()
+			if unitSym != nil {
+				if _, ok := unitSym.Properties[e.Name]; !ok {
+					if _, isMethod := unitSym.Methods[e.Name]; isMethod {
+						c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
+							fmt.Sprintf("Cannot access unit method '%s' via '&%s'. Use '&%s::%s()' or '&self::%s()'. The '&' prefix is strictly reserved for variables declared via 'declare'", e.Name, e.Name, unitSym.Name, e.Name, e.Name))
+					} else {
 						c.addError(e.Pos(), "ERR_UNDEFINED_PROPERTY",
-							fmt.Sprintf("Property or method '&%s' is not defined in this unit", e.Name))
+							fmt.Sprintf("Property '&%s' is not declared in unit '%s'", e.Name, unitSym.Name))
 					}
 				}
 			}
@@ -291,31 +281,22 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 					fmt.Sprintf("Module or scope '%s' is not defined", scopeAccess.Scope))
 			}
 		} else if propAccess, ok := e.Caller.(*ast.PropAccess); ok {
-			if !c.scope.InUnitScope() {
-				c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
-					fmt.Sprintf("Method access '&%s' is only allowed inside a unit definition", propAccess.Name))
-			} else {
-				unitSym := c.scope.GetEnclosingUnit()
-				var targetMethod *Symbol
-				if unitSym != nil && unitSym.Methods != nil {
-					targetMethod = unitSym.Methods[propAccess.Name]
-					if targetMethod == nil {
-						for mName, mSym := range unitSym.Methods {
-							if strings.EqualFold(mName, propAccess.Name) {
-								targetMethod = mSym
-								break
-							}
-						}
+			unitName := "Unit"
+			if unitSym := c.scope.GetEnclosingUnit(); unitSym != nil {
+				unitName = unitSym.Name
+			}
+			c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
+				fmt.Sprintf("Cannot call '&%s()' directly. The '&' symbol is strictly reserved for variables declared via 'declare'. To call unit methods, use '&%s::%s()' or '&self::%s()'", propAccess.Name, unitName, propAccess.Name, propAccess.Name))
+		} else if ident, ok := e.Caller.(*ast.Identifier); ok {
+			if c.scope.InUnitScope() {
+				if unitSym := c.scope.GetEnclosingUnit(); unitSym != nil && unitSym.Methods != nil {
+					if _, isMethod := unitSym.Methods[ident.Value]; isMethod {
+						c.addError(e.Pos(), "ERR_INVALID_METHOD_CALL",
+							fmt.Sprintf("Cannot call unit method '%s' directly. Use '&%s::%s()' or '&self::%s()'", ident.Value, unitSym.Name, ident.Value, ident.Value))
+						goto skipIdentCall
 					}
 				}
-				if targetMethod == nil {
-					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
-						fmt.Sprintf("Method '%s' not found on current unit", propAccess.Name))
-				} else if targetMethod.Kind == SymFunc {
-					c.validateCallArgs(e, propAccess.Name, targetMethod)
-				}
 			}
-		} else if ident, ok := e.Caller.(*ast.Identifier); ok {
 			if sym, ok := c.scope.Resolve(ident.Value); ok {
 				sym.Used = true
 				if sym.Kind == SymFunc {
@@ -325,6 +306,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 				c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
 					fmt.Sprintf("Function '%s' is not defined", ident.Value))
 			}
+		skipIdentCall:
 		} else {
 			c.checkExpression(e.Caller)
 		}
@@ -656,6 +638,27 @@ func (c *Checker) validatePropertyAccessOnType(e *ast.MemberExpression, typeName
 		}
 		c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
 			fmt.Sprintf("Property '%s' does not exist on inline map type '%s'", e.Property, typeName))
+		return
+	}
+
+	// 3. Unit prototype: check properties and methods + enforce private encapsulation
+	if sym, ok := c.scope.Resolve(typeName); ok && sym.Kind == SymUnit {
+		if sym.Properties != nil {
+			if _, propOk := sym.Properties[e.Property]; propOk {
+				if sym.PrivateProps != nil && sym.PrivateProps[e.Property] {
+					c.addError(e.Pos(), "ERR_PRIVATE_PROPERTY",
+						fmt.Sprintf("Property '%s' of unit '%s' is private and cannot be accessed outside the unit definition", e.Property, sym.Name))
+				}
+				return
+			}
+		}
+		if sym.Methods != nil {
+			if _, methodOk := sym.Methods[e.Property]; methodOk {
+				return
+			}
+		}
+		c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
+			fmt.Sprintf("Property or method '%s' does not exist on unit '%s'", e.Property, sym.Name))
 		return
 	}
 }

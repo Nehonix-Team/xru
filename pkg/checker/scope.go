@@ -25,10 +25,12 @@ type Symbol struct {
 	Pos         lexer.Position
 	IsGlobal    bool               // Déclaré avec 'global'
 	ValueStr    string             // Valeur initiale / par défaut pour inspection
-	Directives  map[string]bool    // Pour les #UNIT : directives déclarées
-	Params      []*ast.Parameter   // Pour les fonctions : paramètres
-	Methods     map[string]*Symbol // Pour les #UNIT : méthodes exposées
-	Used        bool               // Indique si le symbole a été utilisé
+	Directives   map[string]bool    // Pour les #UNIT : directives déclarées
+	Params       []*ast.Parameter   // Pour les fonctions : paramètres
+	Methods      map[string]*Symbol // Pour les #UNIT : méthodes exposées
+	Properties   map[string]*Symbol // Pour les #UNIT : propriétés déclarées via 'declare'
+	PrivateProps map[string]bool    // Pour les #UNIT : propriétés privées
+	Used         bool               // Indique si le symbole a été utilisé
 	MinArgs     int                // Nombre minimum d'arguments obligatoires
 	HasOptional bool               // Les paramètres au-delà de MinArgs sont optionnels (non variadique)
 	IsVariadic  bool               // Vrai si accepte des arguments supplémentaires

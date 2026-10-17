@@ -230,12 +230,13 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 	case *ast.UnitStatement:
 		// Enregistre la définition de l'unité
 		unitInst := &UnitInstance{
-			UnitName:    n.Name,
-			Properties:  make(map[string]Value),
-			Methods:     make(map[string]NativeMethod),
-			Directives:  make(map[string]NativeDirective),
-			MethodDefs:  n.Methods,
-			IsPrototype: true,
+			UnitName:     n.Name,
+			Properties:   make(map[string]Value),
+			PrivateProps: make(map[string]bool),
+			Methods:      make(map[string]NativeMethod),
+			Directives:   make(map[string]NativeDirective),
+			MethodDefs:   n.Methods,
+			IsPrototype:  true,
 		}
 		if n.Includes != "" {
 			targetMod := strings.TrimSuffix(n.Includes, "Native")
@@ -255,6 +256,9 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		for _, prop := range n.Properties {
 			pVal, _ := ev.Eval(prop.Value, env)
 			unitInst.Properties[prop.Name] = pVal
+			if prop.IsPrivate {
+				unitInst.PrivateProps[prop.Name] = true
+			}
 		}
 		for _, method := range n.Methods {
 			capturedMethod := method
@@ -281,12 +285,13 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		}
 		// Cloner l'instance
 		clone := &UnitInstance{
-			UnitName:    proto.UnitName,
-			Properties:  make(map[string]Value),
-			Methods:     make(map[string]NativeMethod),
-			Directives:  proto.Directives,
-			MethodDefs:  proto.MethodDefs,
-			IsPrototype: false,
+			UnitName:     proto.UnitName,
+			Properties:   make(map[string]Value),
+			PrivateProps: proto.PrivateProps,
+			Methods:      make(map[string]NativeMethod),
+			Directives:   proto.Directives,
+			MethodDefs:   proto.MethodDefs,
+			IsPrototype:  false,
 		}
 		for k, v := range proto.Properties {
 			clone.Properties[k] = v
@@ -370,10 +375,10 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			if val, ok := env.unitRef.Properties[n.Name]; ok {
 				return val, nil
 			}
-			if fn, ok := env.unitRef.Methods[n.Name]; ok {
-				return FunctionValue{Fn: fn}, nil
+			if _, ok := env.unitRef.Methods[n.Name]; ok {
+				return nil, fmt.Errorf("cannot access unit method '%s' via '&%s': use '&%s::%s()' or '&self::%s()'. The '&' prefix is strictly reserved for variables declared via 'declare'", n.Name, n.Name, env.unitRef.UnitName, n.Name, n.Name)
 			}
-			return nil, fmt.Errorf("undefined property or method '&%s' on unit '%s'", n.Name, env.unitRef.UnitName)
+			return nil, fmt.Errorf("property '&%s' is not declared in unit '%s'", n.Name, env.unitRef.UnitName)
 		}
 		return nil, fmt.Errorf("property '&%s' cannot be accessed outside a unit definition", n.Name)
 	case *ast.StringLiteral:
@@ -695,6 +700,11 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		}
 		if unit, ok := obj.(*UnitInstance); ok {
 			if prop, exists := unit.Properties[n.Property]; exists {
+				if unit.PrivateProps != nil && unit.PrivateProps[n.Property] {
+					if env.unitRef != unit {
+						return nil, fmt.Errorf("property '%s' of unit '%s' is private and cannot be accessed outside the unit definition", n.Property, unit.UnitName)
+					}
+				}
 				return prop, nil
 			}
 			if method, exists := unit.Methods[n.Property]; exists {

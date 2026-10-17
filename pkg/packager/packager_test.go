@@ -72,8 +72,8 @@ func TestPackBundleAndMinify(t *testing.T) {
 
 	// Create root main.xru
 	mainCode := `
-arg mode: string = "default"
-arg cdn: bool = true
+global arg mode: string = "default"
+global arg cdn: bool = true
 
 global func prune(kind: string, mode: string, cdn: bool) {
     if mode == "minimal" || !cdn {
@@ -92,6 +92,8 @@ dispatch "./src"
 	_ = os.MkdirAll(controllerDir, 0755)
 	controllerRule := `
 from "root" use main::prune
+from "root" use main::mode
+from "root" use main::cdn
 prune("controller", mode, cdn)
 `
 	_ = os.WriteFile(filepath.Join(controllerDir, ".rules.xru"), []byte(controllerRule), 0644)
@@ -386,5 +388,48 @@ std.println()
 	}
 	if !strings.Contains(errStr, "ERR_TYPE_MISMATCH") && !strings.Contains(errStr, "ERR_ARG_COUNT") {
 		t.Errorf("Expected specific checker error in message, got: %s", errStr)
+	}
+}
+
+func TestBundleImportedArgPreservesCleanName(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_bundle_args_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	modCfg := "map {\n    root -> \"./\"\n    dll -> \"./scripts/\"\n}"
+	_ = os.WriteFile(filepath.Join(tempDir, "_mod.xru"), []byte(modCfg), 0644)
+	_ = os.MkdirAll(filepath.Join(tempDir, "scripts"), 0755)
+
+	argsCode := "mod gArgs\nglobal arg mode: string = \"default\"\nglobal arg cdn: bool = true\n"
+	_ = os.WriteFile(filepath.Join(tempDir, "scripts", "args.xru"), []byte(argsCode), 0644)
+
+	mainCode := `mod main
+use std
+from "dll" use gArgs::mode
+from "dll" use gArgs::cdn
+
+if mode == "default" && cdn == true {
+    std.println("OK")
+}
+`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(mainCode), 0644)
+
+	pkg := packager.New(tempDir, "")
+	prog, err := pkg.BuildBundledProgramWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("Expected bundling to succeed without undefined variable errors, got: %v", err)
+	}
+	if prog == nil {
+		t.Fatalf("Expected non-nil program")
+	}
+
+	bundled, err := pkg.BundleAndMinifyWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("Expected minification to succeed, got: %v", err)
+	}
+	if !strings.Contains(bundled, "arg mode") {
+		t.Errorf("Expected bundled code to contain 'arg mode', got: %s", bundled)
 	}
 }

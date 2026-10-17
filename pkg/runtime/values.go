@@ -89,13 +89,14 @@ func (r RangeValue) String() string  { return fmt.Sprintf("%d..%d", r.Start, r.E
 
 // UnitInstance représente une instance vivante d'une #UNIT
 type UnitInstance struct {
-	UnitName    string
-	WorkingDir  string
-	Properties  map[string]Value
-	Methods     map[string]NativeMethod
-	Directives  map[string]NativeDirective
-	MethodDefs  []*ast.FuncStatement
-	IsPrototype bool
+	UnitName     string
+	WorkingDir   string
+	Properties   map[string]Value
+	PrivateProps map[string]bool
+	Methods      map[string]NativeMethod
+	Directives   map[string]NativeDirective
+	MethodDefs   []*ast.FuncStatement
+	IsPrototype  bool
 }
 
 func (u *UnitInstance) Type() ValueType { return ValUnit }

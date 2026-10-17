@@ -1217,6 +1217,78 @@ func TestUnitSelfScopeAccess(t *testing.T) {
 			`,
 			wantErr: "ERR_INVALID_UNIT_SELF_REF",
 		},
+		{
+			name: "prohibited direct method call via &methodName()",
+			input: `
+			unit Worker {
+				func ping() -> string { return "pong" }
+				func execute() -> string {
+					return &ping()
+				}
+			}
+			`,
+			wantErr: "ERR_INVALID_PROP_ACCESS",
+		},
+		{
+			name: "prohibited method access via &methodName property",
+			input: `
+			unit Worker {
+				func ping() -> string { return "pong" }
+				func execute() -> string {
+					let p = &ping
+					return "done"
+				}
+			}
+			`,
+			wantErr: "ERR_INVALID_PROP_ACCESS",
+		},
+		{
+			name: "prohibited bare method call without &self:: or &Unit::",
+			input: `
+			unit Worker {
+				func ping() -> string { return "pong" }
+				func execute() -> string {
+					return ping()
+				}
+			}
+			`,
+			wantErr: "ERR_INVALID_METHOD_CALL",
+		},
+		{
+			name: "valid declare public and private properties",
+			input: `
+			unit Worker {
+				declare public a: string = "hello"
+				declare private b: number = 42
+				declare c, public: bool = true
+				declare d, private: string = "secret"
+				declare e: number = 100, private
+
+				func test() -> string {
+					if &b > 0 && &c == true {
+						return &a + &d
+					}
+					return "none"
+				}
+			}
+
+			let w = @Worker()
+			let pub = w.a
+			`,
+			wantErr: "",
+		},
+		{
+			name: "prohibited access to private property outside unit",
+			input: `
+			unit Worker {
+				declare private secret: string = "topsecret"
+			}
+
+			let w = @Worker()
+			let s = w.secret
+			`,
+			wantErr: "ERR_PRIVATE_PROPERTY",
+		},
 	}
 
 	for _, tt := range tests {

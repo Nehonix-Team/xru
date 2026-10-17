@@ -80,6 +80,9 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 			if env.unitRef == nil {
 				return nil, fmt.Errorf("internal unit reference '&%s::%s' cannot be called outside a unit definition", c.Scope, c.Member)
 			}
+			if c.Scope != "self" && !strings.EqualFold(c.Scope, env.unitRef.UnitName) {
+				return nil, fmt.Errorf("cannot reference '&%s::%s' inside unit '%s'; use '&%s::%s' or '&self::%s'", c.Scope, c.Member, env.unitRef.UnitName, env.unitRef.UnitName, c.Member, c.Member)
+			}
 			method, ok := env.unitRef.Methods[c.Member]
 			if !ok {
 				for mName, mFn := range env.unitRef.Methods {
@@ -143,37 +146,19 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		}
 		return method(args)
 	case *ast.PropAccess:
-		if env.unitRef == nil {
-			return nil, fmt.Errorf("method '&%s' cannot be called outside a unit definition", c.Name)
+		unitName := "Unit"
+		if env.unitRef != nil {
+			unitName = env.unitRef.UnitName
 		}
-		method, ok := env.unitRef.Methods[c.Name]
-		if !ok {
-			for mName, mFn := range env.unitRef.Methods {
-				if strings.EqualFold(mName, c.Name) {
-					method = mFn
-					ok = true
-					break
-				}
-			}
-		}
-		if !ok {
-			return nil, fmt.Errorf("method '&%s' not found on unit '%s'", c.Name, env.unitRef.UnitName)
-		}
-		var args []Value
-		for _, arg := range call.Arguments {
-			a, err := ev.Eval(arg, env)
-			if err != nil {
-				return nil, err
-			}
-			args = append(args, a)
-		}
-		if env.unitRef.UnitName == "Fs" && env != nil && env.CurrentDir() != "" {
-			resolveFsPathArgs(c.Name, args, env.CurrentDir())
-		}
-		return method(args)
+		return nil, fmt.Errorf("cannot call '&%s()' directly. The '&' symbol is strictly reserved for accessing variables declared via 'declare'. To call unit methods, use '&%s::%s()' or '&self::%s()'", c.Name, unitName, c.Name, c.Name)
 	case *ast.Identifier:
 		val, ok := env.GetLocal(c.Value)
 		if !ok {
+			if env.unitRef != nil {
+				if _, isMethod := env.unitRef.Methods[c.Value]; isMethod {
+					return nil, fmt.Errorf("cannot call unit method '%s' directly: use '&%s::%s()' or '&self::%s()'", c.Value, env.unitRef.UnitName, c.Value, c.Value)
+				}
+			}
 			if _, isGlobal := env.GetGlobal(c.Value); isGlobal {
 				return nil, fmt.Errorf("cannot call global function '%s' as local; use '::%s(...)' or 'global::%s(...)'", c.Value, c.Value, c.Value)
 			}

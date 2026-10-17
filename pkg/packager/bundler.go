@@ -89,10 +89,32 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 
 	seenUses := make(map[string]bool)
 	seenArgs := make(map[string]bool)
+	knownArgs := make(map[string]bool)
 	visitedFiles := make(map[string]bool)
 
 	moduleAliases := make(map[string]string)
 	importedMembers := make(map[string]string)
+
+	for _, st := range mainProg.Statements {
+		if s, ok := st.(*ast.ArgStatement); ok {
+			knownArgs[s.Name] = true
+			if s.Alias != "" {
+				knownArgs[s.Alias] = true
+			}
+		}
+	}
+
+	registerImportedMember := func(mod, member, alias string) {
+		target := member
+		if alias != "" {
+			target = alias
+		}
+		if knownArgs[member] {
+			importedMembers[target] = member
+		} else {
+			importedMembers[target] = mod + "__" + member
+		}
+	}
 
 	var inlineModule func(source, modName, alias string) error
 	inlineModule = func(source, modName, alias string) error {
@@ -125,6 +147,15 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 			return fmt.Errorf("syntax error in module '%s': %s", modDetails.FilePath, subParser.Errors()[0])
 		}
 
+		for _, st := range subProg.Statements {
+			if s, ok := st.(*ast.ArgStatement); ok {
+				knownArgs[s.Name] = true
+				if s.Alias != "" {
+					knownArgs[s.Alias] = true
+				}
+			}
+		}
+
 		// First, resolve dependencies recursively
 		for _, st := range subProg.Statements {
 			if fus, ok := st.(*ast.FromUseStatement); ok {
@@ -137,6 +168,13 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 				} else if fus.Module != "" {
 					if err := inlineModule(fus.Source, fus.Module, fus.Alias); err != nil {
 						return err
+					}
+					if len(fus.Members) > 0 {
+						for _, member := range fus.Members {
+							registerImportedMember(fus.Module, member, "")
+						}
+					} else if fus.Member != "" {
+						registerImportedMember(fus.Module, fus.Member, fus.Alias)
 					}
 				}
 			}
@@ -175,12 +213,26 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 		for i, st := range subProg.Statements {
 			subProg.Statements[i] = transformStmt(st, func(expr ast.Expression) ast.Expression {
 				if sa, ok := expr.(*ast.ScopeAccessExpression); ok && !sa.IsUnitSelf {
+					if knownArgs[sa.Member] {
+						return &ast.Identifier{Position: sa.Position, Value: sa.Member}
+					}
 					if targetMod, ok := moduleAliases[sa.Scope]; ok {
 						return &ast.Identifier{Position: sa.Position, Value: targetMod + "__" + sa.Member}
 					}
 					return &ast.Identifier{Position: sa.Position, Value: sa.Scope + "__" + sa.Member}
 				}
+				if inst, ok := expr.(*ast.InstantiationExpression); ok {
+					if declNames[inst.UnitName] {
+						inst.UnitName = modName + "__" + inst.UnitName
+					} else if target, ok := importedMembers[inst.UnitName]; ok {
+						inst.UnitName = target
+					}
+					return inst
+				}
 				if id, ok := expr.(*ast.Identifier); ok {
+					if knownArgs[id.Value] {
+						return id
+					}
 					if declNames[id.Value] {
 						return &ast.Identifier{Position: id.Position, Value: modName + "__" + id.Value}
 					}
@@ -232,14 +284,10 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 				}
 				if len(s.Members) > 0 {
 					for _, member := range s.Members {
-						importedMembers[member] = s.Module + "__" + member
+						registerImportedMember(s.Module, member, "")
 					}
 				} else if s.Member != "" {
-					target := s.Member
-					if s.Alias != "" {
-						target = s.Alias
-					}
-					importedMembers[target] = s.Module + "__" + s.Member
+					registerImportedMember(s.Module, s.Member, s.Alias)
 				}
 			}
 		}
@@ -248,18 +296,32 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 	// Second pass on mainProg: rewrite scope accesses and imported identifiers
 	for i, stmt := range mainProg.Statements {
 		if reassign, ok := stmt.(*ast.ReassignStatement); ok {
-			if target, ok := importedMembers[reassign.Name]; ok {
-				reassign.Name = target
+			if !knownArgs[reassign.Name] {
+				if target, ok := importedMembers[reassign.Name]; ok {
+					reassign.Name = target
+				}
 			}
 		}
 		mainProg.Statements[i] = transformStmt(stmt, func(expr ast.Expression) ast.Expression {
 			if sa, ok := expr.(*ast.ScopeAccessExpression); ok && !sa.IsUnitSelf {
+				if knownArgs[sa.Member] {
+					return &ast.Identifier{Position: sa.Position, Value: sa.Member}
+				}
 				if targetMod, ok := moduleAliases[sa.Scope]; ok {
 					return &ast.Identifier{Position: sa.Position, Value: targetMod + "__" + sa.Member}
 				}
 				return &ast.Identifier{Position: sa.Position, Value: sa.Scope + "__" + sa.Member}
 			}
+			if inst, ok := expr.(*ast.InstantiationExpression); ok {
+				if target, ok := importedMembers[inst.UnitName]; ok {
+					inst.UnitName = target
+				}
+				return inst
+			}
 			if id, ok := expr.(*ast.Identifier); ok {
+				if knownArgs[id.Value] {
+					return id
+				}
 				if target, ok := importedMembers[id.Value]; ok {
 					return &ast.Identifier{Position: id.Position, Value: target}
 				}
@@ -314,9 +376,9 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 	var finalStmts []ast.Statement
 	finalStmts = append(finalStmts, useStmts...)
 	finalStmts = append(finalStmts, argStmts...)
+	finalStmts = append(finalStmts, unitStmts...)
 	finalStmts = append(finalStmts, varStmts...)
 	finalStmts = append(finalStmts, funcStmts...)
-	finalStmts = append(finalStmts, unitStmts...)
 	finalStmts = append(finalStmts, mainStmts...)
 
 	mainProg.Statements = finalStmts
@@ -349,6 +411,10 @@ func transformExpr(expr ast.Expression, fn func(ast.Expression) ast.Expression) 
 		e.Right = transformExpr(e.Right, fn)
 	case *ast.CallExpression:
 		e.Caller = transformExpr(e.Caller, fn)
+		for i, a := range e.Arguments {
+			e.Arguments[i] = transformExpr(a, fn)
+		}
+	case *ast.InstantiationExpression:
 		for i, a := range e.Arguments {
 			e.Arguments[i] = transformExpr(a, fn)
 		}
@@ -504,6 +570,19 @@ func (p *Packager) inlineSubdescriptors(targetDir, pattern string) ([]ast.Statem
 			return nil, fmt.Errorf("syntax error in %s: %s", path, subParser.Errors()[0])
 		}
 
+		// Validation sémantique stricte du descripteur dispatché
+		subChk := checker.New()
+		subChk.SetCurrentFile(path)
+		subChk.SetupDescriptorScope()
+		subChk.Check(subProg)
+		if len(subChk.Errors()) > 0 {
+			var errMsgs []string
+			for _, e := range subChk.Errors() {
+				errMsgs = append(errMsgs, fmt.Sprintf("  • %s", e))
+			}
+			return nil, fmt.Errorf("validation error in %s:\n%s", path, strings.Join(errMsgs, "\n"))
+		}
+
 		var bodyStmts []ast.Statement
 		for _, st := range subProg.Statements {
 			if _, ok := st.(*ast.FromUseStatement); ok {
@@ -518,7 +597,14 @@ func (p *Packager) inlineSubdescriptors(targetDir, pattern string) ([]ast.Statem
 			if _, ok := st.(*ast.ArgStatement); ok {
 				continue
 			}
-			st = rewriteScopeCalls(st, "main")
+			st = transformStmt(st, func(expr ast.Expression) ast.Expression {
+				if sa, ok := expr.(*ast.ScopeAccessExpression); ok {
+					if sa.Scope == "main" || sa.Scope == "root" {
+						return &ast.Identifier{Position: sa.Position, Value: sa.Member}
+					}
+				}
+				return expr
+			})
 			bodyStmts = append(bodyStmts, st)
 		}
 
@@ -651,19 +737,20 @@ func (m *Mangler) resolveName(name string) string {
 func (m *Mangler) nextName() string {
 	n := m.counter
 	m.counter++
-	var name string
-	if n < 26 {
-		name = fmt.Sprintf("%c", 'a'+n)
-	} else {
-		letter := 'a' + ((n - 26) % 26)
-		num := ((n - 26) / 26) + 1
-		name = fmt.Sprintf("%c%d", letter, num)
+	res := ""
+	for {
+		rem := n % 26
+		res = string(rune('a'+rem)) + res
+		n = n/26 - 1
+		if n < 0 {
+			break
+		}
 	}
 	// Avoid collisions with reserved words
-	if m.reserved[name] {
+	if m.reserved[res] {
 		return m.nextName()
 	}
-	return name
+	return res
 }
 
 func (m *Mangler) getMangledName(orig string) string {
@@ -686,11 +773,16 @@ func (m *Mangler) Minify(prog *ast.Program) string {
 		}
 	}
 
-	// Pass 1.1: register all top-level user function, arg, and variable names so calls and refs resolve properly
+	// Pass 1.1: register all top-level user function, arg, variable, and unit names so calls and refs resolve properly
 	for _, stmt := range prog.Statements {
 		if fn, ok := stmt.(*ast.FuncStatement); ok {
 			if !m.reserved[fn.Name] {
 				_ = m.getMangledName(fn.Name)
+			}
+		}
+		if u, ok := stmt.(*ast.UnitStatement); ok {
+			if !m.reserved[u.Name] {
+				_ = m.getMangledName(u.Name)
 			}
 		}
 		if v, ok := stmt.(*ast.VarStatement); ok {
@@ -773,22 +865,63 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 
 	case *ast.UnitStatement:
 		unitName := s.Name
+		if !m.reserved[unitName] {
+			unitName = m.getMangledName(unitName)
+		}
 		inc := ""
 		if s.Includes != "" {
-			inc = " extends " + s.Includes
+			incTarget := s.Includes
+			if resolved := m.resolveName(incTarget); resolved != "" {
+				incTarget = resolved
+			}
+			inc = " extends " + incTarget
 		}
 		var parts []string
 		for _, p := range s.Properties {
-			parts = append(parts, p.String())
+			valStr := ""
+			if p.Value != nil {
+				valStr = " = " + m.minifyExpression(p.Value)
+			}
+			typeStr := ""
+			if p.Type != "" {
+				typeStr = ": " + p.Type
+			}
+			vis := ""
+			if p.IsPrivate {
+				vis = "private "
+			}
+			parts = append(parts, fmt.Sprintf("declare %s%s%s%s", vis, p.Name, typeStr, valStr))
 		}
 		for _, d := range s.Directives {
-			parts = append(parts, d.String())
+			var bodyParts []string
+			for _, st := range d.Body {
+				ms := m.minifyStatement(st)
+				if ms != "" {
+					bodyParts = append(bodyParts, ms)
+				}
+			}
+			var params []string
+			for _, param := range d.Parameters {
+				params = append(params, param.Name)
+			}
+			parts = append(parts, fmt.Sprintf("directive %s(%s){%s}", d.Name, strings.Join(params, ","), strings.Join(bodyParts, ";")))
 		}
 		for _, mth := range s.Methods {
-			ms := m.minifyStatement(mth)
-			if ms != "" {
-				parts = append(parts, ms)
+			m.pushScope()
+			var params []string
+			for _, p := range mth.Parameters {
+				pName := m.defineLocal(p.Name)
+				params = append(params, pName)
 			}
+			var bodyParts []string
+			for _, st := range mth.Body {
+				ms := m.minifyStatement(st)
+				if ms != "" {
+					bodyParts = append(bodyParts, ms)
+				}
+			}
+			m.popScope()
+			parts = append(parts, fmt.Sprintf("func %s(%s){%s}", mth.Name, strings.Join(params, ","), strings.Join(bodyParts, ";")))
 		}
 		return fmt.Sprintf("unit %s%s{%s}", unitName, inc, strings.Join(parts, ";"))
 
@@ -825,7 +958,11 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		}
 		varName := s.Name
 		if !m.reserved[varName] {
-			varName = m.getMangledName(varName)
+			if len(m.localScopes) > 0 {
+				varName = m.defineLocal(varName)
+			} else {
+				varName = m.getMangledName(varName)
+			}
 		}
 		return fmt.Sprintf("%s %s = %s", kw, varName, m.minifyExpression(s.Value))
 
@@ -1094,6 +1231,9 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 		return fmt.Sprintf("{%s}", strings.Join(parts, ";"))
 
 	case *ast.ScopeAccessExpression:
+		if e.IsUnitSelf {
+			return fmt.Sprintf("&%s::%s", e.Scope, e.Member)
+		}
 		member := e.Member
 		if !m.reserved[member] {
 			member = m.getMangledName(member)
@@ -1130,7 +1270,11 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 		if e.ErrVar != "" {
 			errVar := e.ErrVar
 			if !m.reserved[errVar] {
-				errVar = m.getMangledName(errVar)
+				if len(m.localScopes) > 0 {
+					errVar = m.defineLocal(errVar)
+				} else {
+					errVar = m.getMangledName(errVar)
+				}
 			}
 			res += " " + errVar
 		}
@@ -1152,7 +1296,15 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 		return fmt.Sprintf("%s..%s", m.minifyExpression(e.Start), m.minifyExpression(e.End))
 
 	case *ast.InstantiationExpression:
-		return fmt.Sprintf("@%s()", e.UnitName)
+		unitName := e.UnitName
+		if resolved := m.resolveName(unitName); resolved != "" {
+			unitName = resolved
+		}
+		var args []string
+		for _, a := range e.Arguments {
+			args = append(args, m.minifyExpression(a))
+		}
+		return fmt.Sprintf("@%s(%s)", unitName, strings.Join(args, ","))
 
 	case *ast.MapLiteral:
 		var pairs []string

@@ -85,17 +85,30 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		fileDir = filepath.Dir(c.currentFile)
 	}
 	modFilePath := modules.FindModConfigFile(fileDir)
+	var modCfg *modules.ModConfig
 	if modFilePath == "" {
-		c.addError(s.Pos(), "ERR_MISSING_MOD_FILE", "No '_mod.xru' configuration file found in workspace for module resolution")
-		return
-	}
-
-	modCfg, modErrs := modules.LoadModConfig(modFilePath)
-	if len(modErrs) > 0 {
-		for _, errStr := range modErrs {
-			c.addError(s.Pos(), "ERR_INVALID_MOD_CONFIG", errStr)
+		if s.Source == "root" {
+			// Implicit fallback: resolve root from project root
+			wsRoot := findWorkspaceRootDir(fileDir)
+			modCfg = &modules.ModConfig{
+				Dir: wsRoot,
+				Mappings: map[string]string{
+					"root": "./",
+				},
+			}
+		} else {
+			c.addError(s.Pos(), "ERR_MISSING_MOD_FILE", "No '_mod.xru' configuration file found in workspace for module resolution")
+			return
 		}
-		return
+	} else {
+		cfg, modErrs := modules.LoadModConfig(modFilePath)
+		if len(modErrs) > 0 {
+			for _, errStr := range modErrs {
+				c.addError(s.Pos(), "ERR_INVALID_MOD_CONFIG", errStr)
+			}
+			return
+		}
+		modCfg = cfg
 	}
 
 	if _, ok := modCfg.Mappings[s.Source]; !ok {
@@ -191,6 +204,39 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		}
 		exp, ok := modDetails.Exports[s.Member]
 		if !ok {
+			if parentSym, hasParent := c.scope.Resolve(s.Member); hasParent {
+				targetName := s.Member
+				if s.Alias != "" {
+					targetName = s.Alias
+				}
+				memberSym := &Symbol{
+					Name:   targetName,
+					Kind:   parentSym.Kind,
+					Type:   parentSym.Type,
+					Params: parentSym.Params,
+					Pos:    s.Pos(),
+				}
+				_ = c.scope.Define(memberSym)
+				c.importedSyms = append(c.importedSyms, memberSym)
+				return
+			}
+			if s.Source == "root" || s.Module == "main" {
+				if argExp := findExportedArg(modCfg, s.Member); argExp != nil {
+					targetName := s.Member
+					if s.Alias != "" {
+						targetName = s.Alias
+					}
+					memberSym := &Symbol{
+						Name: targetName,
+						Kind: SymVar,
+						Type: argExp.Type,
+						Pos:  s.Pos(),
+					}
+					_ = c.scope.Define(memberSym)
+					c.importedSyms = append(c.importedSyms, memberSym)
+					return
+				}
+			}
 			if s.CatchVar == "" {
 				c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", s.Member, s.Module))
 			} else {
@@ -255,6 +301,21 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		}
 		for _, memName := range s.Members {
 			exp, ok := modDetails.Exports[memName]
+			if !ok {
+				if parentSym, hasParent := c.scope.Resolve(memName); hasParent {
+					exp = &modules.ExportedMember{
+						Name: memName,
+						Kind: "var",
+						Type: parentSym.Type,
+					}
+					ok = true
+				} else if s.Source == "root" || s.Module == "main" {
+					if argExp := findExportedArg(modCfg, memName); argExp != nil {
+						exp = argExp
+						ok = true
+					}
+				}
+			}
 			if !ok {
 				c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", memName, s.Module))
 				continue
@@ -379,6 +440,18 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		Pos:     s.Pos(),
 		Methods: methods,
 	}
+	if existing, ok := c.scope.Resolve(alias); ok {
+		if existing.Kind == SymUnit {
+			if existing.Methods == nil {
+				existing.Methods = make(map[string]*Symbol)
+			}
+			for k, v := range methods {
+				existing.Methods[k] = v
+			}
+			c.importedSyms = append(c.importedSyms, existing)
+			return
+		}
+	}
 	if err := c.scope.Define(modSym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 	} else {
@@ -430,4 +503,43 @@ func (c *Checker) hasCircularImport(targetFilePath, currentFilePath string, modC
 		}
 	}
 	return false
+}
+
+func findExportedArg(cfg *modules.ModConfig, argName string) *modules.ExportedMember {
+	if cfg == nil {
+		return nil
+	}
+	for ns := range cfg.Mappings {
+		mods, err := cfg.GetNamespaceModules(ns)
+		if err != nil {
+			continue
+		}
+		for _, m := range mods {
+			if exp, ok := m.Exports[argName]; ok && exp.Kind == "arg" {
+				return exp
+			}
+		}
+	}
+	return nil
+}
+
+func findWorkspaceRootDir(startDir string) string {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return startDir
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "_mod.xru")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, "main.xru")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return startDir
 }

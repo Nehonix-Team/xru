@@ -248,18 +248,26 @@ func (s *UnitStatement) String() string {
 	return fmt.Sprintf("#UNIT %s (%d props, %d directives, %d methods)", s.Name, len(s.Properties), len(s.Directives), len(s.Methods))
 }
 
-// DeclareStatement : #DECLARE prop: type = expr
+// DeclareStatement : #DECLARE prop: type = expr (with optional public/private modifier)
 type DeclareStatement struct {
-	Position lexer.Position
-	Name     string
-	Type     string
-	Value    Expression
+	Position  lexer.Position
+	Name      string
+	Type      string
+	Value     Expression
+	IsPrivate bool
 }
 
 func (s *DeclareStatement) statementNode()      {}
 func (s *DeclareStatement) Pos() lexer.Position { return s.Position }
 func (s *DeclareStatement) String() string {
-	return fmt.Sprintf("#DECLARE %s: %s = %s", s.Name, s.Type, s.Value.String())
+	vis := ""
+	if s.IsPrivate {
+		vis = "private "
+	}
+	if s.Value != nil {
+		return fmt.Sprintf("declare %s%s: %s = %s", vis, s.Name, s.Type, s.Value.String())
+	}
+	return fmt.Sprintf("declare %s%s: %s", vis, s.Name, s.Type)
 }
 
 // DirectiveDefStatement : #DIRECTIVE Name(params...) ... #END
@@ -273,7 +281,7 @@ type DirectiveDefStatement struct {
 func (s *DirectiveDefStatement) statementNode()      {}
 func (s *DirectiveDefStatement) Pos() lexer.Position { return s.Position }
 func (s *DirectiveDefStatement) String() string {
-	return fmt.Sprintf("#DIRECTIVE %s(%d params)", s.Name, len(s.Parameters))
+	return fmt.Sprintf("directive %s(%d params)", s.Name, len(s.Parameters))
 }
 
 // FuncStatement : #FUNC Name(params...) -> ReturnType ... #END

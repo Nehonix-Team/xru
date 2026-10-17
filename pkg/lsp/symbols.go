@@ -74,6 +74,14 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 					if propInfo := findPropertyDeclaration(lines, targetType, memberName, uri); propInfo != nil {
 						return formatPropertyHover(propInfo)
 					}
+					if vInfo.interfaceName != "" {
+						return nil
+					}
+					if c != nil {
+						if iface, ok := c.AllInterfaces()[targetType]; ok && (len(iface.Fields) > 0 || iface.Pos().Filename != "") {
+							return nil
+						}
+					}
 				}
 				if vInfo.isString {
 					if doc, ok := StringMethodsDocs[memberName]; ok {
@@ -115,6 +123,9 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 		} else if c != nil {
 			for _, d := range c.AllDeclaredVars() {
 				if d.Name == objectName && d.Type != "" {
+					if iface, ok := c.AllInterfaces()[d.Type]; ok && (len(iface.Fields) > 0 || iface.Pos().Filename != "") {
+						return nil
+					}
 					lookupExpr = d.Type + "." + methodName
 					break
 				}

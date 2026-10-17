@@ -69,6 +69,7 @@ func (s *UseStatement) String() string {
 // ArgStatement : [global/export] arg NAME [as ALIAS]: type = default  /  #ARG NAME: type or default
 type ArgStatement struct {
 	Position     lexer.Position
+	TypePos      lexer.Position
 	Name         string
 	Alias        string // Optional alias for the internal variable name (e.g. arg mode as _e)
 	Type         string // "string", "number", "bool", "duration", etc.
@@ -193,6 +194,7 @@ func (s *InterfaceStatement) String() string {
 type VarStatement struct {
 	Position lexer.Position
 	NamePos  lexer.Position
+	TypePos  lexer.Position
 	IsConst  bool
 	IsGlobal bool
 	Name     string

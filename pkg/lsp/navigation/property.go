@@ -32,8 +32,21 @@ func (n *Navigator) FindPropertyDeclaration(lines []string, targetType, propName
 	}
 
 	// 2. Scan active file
+	localTypeFound := false
+	reIface := regexp.MustCompile(fmt.Sprintf(`(?mi)^\s*(?:interface|type|unit)\s+(?:%s|%sNative)\b`, regexp.QuoteMeta(cleanType), regexp.QuoteMeta(cleanType)))
+	for _, l := range lines {
+		if reIface.MatchString(l) {
+			localTypeFound = true
+			break
+		}
+	}
+
 	if info := ScanLinesForPropertyDeclaration(lines, cleanType, propName, uri); info != nil {
 		return info
+	}
+
+	if localTypeFound {
+		return nil
 	}
 
 	// 3. Scan workspace files in current directory
@@ -50,12 +63,22 @@ func (n *Navigator) FindPropertyDeclaration(lines []string, targetType, propName
 					}
 					if content, rErr := os.ReadFile(fp); rErr == nil {
 						fLines := strings.Split(string(content), "\n")
+						for _, fl := range fLines {
+							if reIface.MatchString(fl) {
+								localTypeFound = true
+								break
+							}
+						}
 						if info := ScanLinesForPropertyDeclaration(fLines, cleanType, propName, pathToURI(fp)); info != nil {
 							return info
 						}
 					}
 				}
 			}
+		}
+
+		if localTypeFound {
+			return nil
 		}
 
 		// 4. Scan stdlib files

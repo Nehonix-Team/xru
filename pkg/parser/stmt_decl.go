@@ -54,6 +54,7 @@ func (p *Parser) parseArgStatement() *ast.ArgStatement {
 
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // mange ':'
+		stmt.TypePos = p.peekToken.Pos
 		stmt.Type = p.parseTypeAnnotation()
 	}
 
@@ -83,6 +84,7 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // mange ':'
+		stmt.TypePos = p.peekToken.Pos
 		stmt.Type = p.parseTypeAnnotation()
 	}
 
@@ -375,6 +377,10 @@ func (p *Parser) parseInterfaceFields() []*ast.InterfaceField {
 		}
 		if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
 			p.nextToken()
+		} else if !p.peekTokenIs(lexer.RBRACE) && !p.peekTokenIs(lexer.EOF) {
+			if p.peekToken.Pos.Line == p.curToken.Pos.Line {
+				p.addError(p.peekToken.Pos, fmt.Sprintf("unexpected token '%s' in interface: expected newline, ',' or ';' between fields", p.peekToken.Literal))
+			}
 		}
 		p.nextToken()
 	}

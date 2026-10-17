@@ -293,7 +293,11 @@ func (c *Checker) checkArg(s *ast.ArgStatement) {
 	}
 
 	if s.Type != "" {
-		c.validateTypeAnnotation(s.Pos(), s.Type)
+		pos := s.Pos()
+		if s.TypePos.Line > 0 {
+			pos = s.TypePos
+		}
+		c.validateTypeAnnotation(pos, s.Type)
 	}
 
 	if s.DefaultValue != nil {
@@ -333,7 +337,11 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 	}
 	inferredType := s.Type
 	if s.Type != "" {
-		c.validateTypeAnnotation(s.Pos(), s.Type)
+		pos := s.Pos()
+		if s.TypePos.Line > 0 {
+			pos = s.TypePos
+		}
+		c.validateTypeAnnotation(pos, s.Type)
 	}
 	if inferredType == "" && s.Value != nil {
 		inferredType = c.inferType(s.Value)

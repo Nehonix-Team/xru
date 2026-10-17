@@ -2109,7 +2109,82 @@ Sys.require("<= 2.0.0", @map{
 	}
 }
 
+func TestUnionAssignmentCompletion(t *testing.T) {
+	uri := "file:///test_union_comp.xru"
+	code := `interface S {
+    mode "dev" or "prod"
+}
 
+arg env: S["mode"] = "
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
 
+	// Completion after '=' on line 4, col 23
+	compReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 4, "character": 23},
+	})
 
+	testInput := bytes.NewBufferString(didOpenReq + compReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	if !strings.Contains(outStr, `"label":"\"dev\""`) {
+		t.Errorf("Expected '\"dev\"' in union completion, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"\"prod\""`) {
+		t.Errorf("Expected '\"prod\"' in union completion, got: %s", outStr)
+	}
+	if strings.Contains(outStr, `"label":"mode"`) {
+		t.Errorf("Should NOT propose property 'mode' after '=' assignment, got: %s", outStr)
+	}
+}
+
+func TestLocalInterfaceHoverDoesNotFallbackToBuiltin(t *testing.T) {
+	uri := "file:///test_local_doc_hover.xru"
+	code := `interface Document {
+    test string
+}
+
+file "tests.html" (e, d: Document) -> {
+    d.replace("a", "b")
+}
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
+
+	// Hover on "replace" in d.replace on line 5, col 6
+	hoverReq := formatLSPMessage("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 5, "character": 6},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + hoverReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	// Must NOT contain "(method) Document.replace" or "Replaces all occurrences"
+	if strings.Contains(outStr, "Replaces all occurrences") {
+		t.Errorf("Expected NO builtin replace doc on local Document, but got: %s", outStr)
+	}
+}
 

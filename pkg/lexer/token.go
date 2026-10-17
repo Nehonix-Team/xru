@@ -54,6 +54,9 @@ const (
 	IN            TokenType = "in"
 	WHILE         TokenType = "while"
 	CATCH         TokenType = "catch"
+	INTERFACE     TokenType = "interface"
+	TYPE          TokenType = "type"
+	INCLUDES      TokenType = "includes"
 
 	// Operators & Symbols
 	ASSIGN     TokenType = "="
@@ -68,6 +71,7 @@ const (
 	SLASH     TokenType = "/"
 	PERCENT   TokenType = "%"
 	RANGE     TokenType = ".."
+	ELLIPSIS  TokenType = "..."
 
 	// Comparaisons
 	EQ         TokenType = "=="
@@ -92,6 +96,7 @@ const (
 	DOUBLE_COLON TokenType = "::"
 	DOT          TokenType = "."
 	SEMICOLON    TokenType = ";"
+	QUESTION     TokenType = "?"
 )
 
 type Position struct {
@@ -151,6 +156,9 @@ var keywords = map[string]TokenType{
 	"in":            IN,
 	"while":         WHILE,
 	"catch":         CATCH,
+	"interface":     INTERFACE,
+	"type":          TYPE,
+	"includes":      INCLUDES,
 }
 
 func LookupIdent(ident string) TokenType {

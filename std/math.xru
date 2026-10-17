@@ -1,0 +1,41 @@
+// Package math provides basic constants and mathematical functions.
+unit math {
+	/// Returns the absolute value of x.
+	func abs(x: number) -> number {
+		if x < 0 {
+			return -x
+		}
+		return x
+	}
+
+	/// Returns the smaller of two numbers.
+	func min(a: number, b: number) -> number {
+		if a < b {
+			return a
+		}
+		return b
+	}
+
+	/// Returns the larger of two numbers.
+	func max(a: number, b: number) -> number {
+		if a > b {
+			return a
+		}
+		return b
+	}
+
+	/// Returns the greatest integer value less than or equal to x.
+	func floor(x: number) -> number {
+		return x.floor()
+	}
+
+	/// Returns the least integer value greater than or equal to x.
+	func ceil(x: number) -> number {
+		return x.ceil()
+	}
+
+	/// Returns the nearest integer, rounding half away from zero.
+	func round(x: number) -> number {
+		return x.round()
+	}
+}

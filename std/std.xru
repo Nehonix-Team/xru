@@ -1,0 +1,44 @@
+// Package std provides standard I/O console output and diagnostic logging utilities.
+
+/// Native console and process control primitives.
+interface StdNative {
+	/// Prints a line to standard output with rich ANSI markup rendering (e.g. <green>, <cyan>, etc.).
+	func println(message: any) -> void
+
+	/// Prints text to standard output without adding a trailing newline.
+	func print(message: any) -> void
+
+	/// Terminates the process immediately with the specified exit code.
+	func exit(code: number = 0) -> never
+
+	/// Pauses current execution for the given duration.
+	func sleep(duration: any) -> void
+}
+
+unit std includes StdNative {
+	/// Prints an informational message with a blue [INFO] tag.
+	func info(message: any) -> void {
+		&std::println("<blue>[INFO]</> " + message.toString())
+	}
+
+	/// Prints a success confirmation message with a green [DONE] tag.
+	func success(message: any) -> void {
+		&std::println("<green>[DONE]</> " + message.toString())
+	}
+
+	/// Prints a warning notification with a yellow [WARN] tag.
+	func warn(message: any) -> void {
+		&std::println("<yellow>[WARN]</> " + message.toString())
+	}
+
+	/// Prints an error message with a red [ERROR] tag.
+	func error(message: any) -> void {
+		&std::println("<red>[ERROR]</> " + message.toString())
+	}
+
+	/// Prints a red [FATAL] message and terminates the process immediately with the specified exit code (1 by default).
+	func fatal(message: any, code: number = 1) -> never {
+		&std::println("<red>[FATAL]</> " + message.toString())
+		&std::exit(code)
+	}
+}

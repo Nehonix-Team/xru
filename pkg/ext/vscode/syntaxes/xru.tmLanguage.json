@@ -14,6 +14,7 @@
     { "include": "#loops" },
     { "include": "#keywords_control" },
     { "include": "#keywords_declaration" },
+    { "include": "#type_annotations" },
     { "include": "#types" },
     { "include": "#builtins" },
     { "include": "#functions_call" },
@@ -24,6 +25,7 @@
     { "include": "#global_access" },
     { "include": "#prop_access" },
     { "include": "#unit_instantiation" },
+    { "include": "#pascal_types" },
     { "include": "#identifiers" }
   ],
   "repository": {
@@ -163,8 +165,25 @@
     "keywords_declaration": {
       "patterns": [
         {
+          "match": "\\b(interface)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(@map)?",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "entity.name.type.class.xru" },
+            "3": { "name": "storage.type.map.xru" }
+          }
+        },
+        {
+          "match": "\\b(unit)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(includes|extends)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "entity.name.type.class.xru" },
+            "3": { "name": "keyword.other.xru" },
+            "4": { "name": "entity.name.type.class.xru" }
+          }
+        },
+        {
           "name": "keyword.declaration.xru",
-          "match": "\\b(let|const|arg|declare|unit|func|directive|global)\\b"
+          "match": "\\b(let|const|arg|declare|unit|func|directive|global|interface|type|includes|extends)\\b"
         }
       ]
     },
@@ -201,11 +220,45 @@
         }
       ]
     },
+    "type_annotations": {
+      "patterns": [
+        {
+          "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "punctuation.separator.type.annotation.xru" },
+            "2": { "name": "entity.name.type.xru" }
+          }
+        },
+        {
+          "match": "(->)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.arrow.xru" },
+            "2": { "name": "entity.name.type.xru" }
+          }
+        },
+        {
+          "match": "\\b(includes|extends)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.xru" },
+            "2": { "name": "entity.name.type.class.xru" }
+          }
+        },
+        {
+          "match": "\\b(type)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "entity.name.type.alias.xru" },
+            "3": { "name": "keyword.operator.assignment.xru" },
+            "4": { "name": "entity.name.type.xru" }
+          }
+        }
+      ]
+    },
     "types": {
       "patterns": [
         {
           "name": "entity.name.type.xru",
-          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task)\\b"
+          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task|range|function|unit|document)\\b|@map"
         }
       ]
     },
@@ -213,7 +266,7 @@
       "patterns": [
         {
           "name": "support.class.builtin.xru",
-          "match": "\\b(std|Std|Fs|Net|Crypto|Local|Sys|Path|Json|Math)\\b"
+          "match": "\\b(std|Std|Fs|Net|Crypto|Local|Sys|Path|Json|Math|date|Date)\\b"
         },
         {
           "name": "support.function.builtin.xru",
@@ -233,6 +286,10 @@
     },
     "constants": {
       "patterns": [
+        {
+          "name": "variable.language.this.xru",
+          "match": "\\b(self)\\b"
+        },
         {
           "name": "constant.language.boolean.xru",
           "match": "\\b(true|false)\\b"
@@ -288,6 +345,10 @@
         {
           "name": "keyword.operator.logical.xru",
           "match": "!|&&|\\|\\||\\bor\\b"
+        },
+        {
+          "name": "keyword.operator.optional.xru",
+          "match": "\\?"
         }
       ]
     },
@@ -305,6 +366,15 @@
     "prop_access": {
       "patterns": [
         {
+          "match": "(&)([a-zA-Z_][a-zA-Z0-9_]*)(::)([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.property.xru punctuation.definition.variable.prop.xru" },
+            "2": { "name": "variable.language.this.xru entity.name.class.unit.xru" },
+            "3": { "name": "punctuation.accessor.scope.xru" },
+            "4": { "name": "entity.name.function.unit.xru" }
+          }
+        },
+        {
           "match": "(&)([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
             "1": { "name": "keyword.operator.property.xru punctuation.definition.variable.prop.xru" },
@@ -316,11 +386,25 @@
     "unit_instantiation": {
       "patterns": [
         {
+          "match": "(@map)\\b",
+          "captures": {
+            "1": { "name": "storage.type.map.xru entity.name.type.xru" }
+          }
+        },
+        {
           "match": "(@)([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
             "1": { "name": "punctuation.definition.unit.at.xru" },
             "2": { "name": "entity.name.class.unit.xru" }
           }
+        }
+      ]
+    },
+    "pascal_types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.class.xru",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
         }
       ]
     },

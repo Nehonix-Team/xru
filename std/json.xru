@@ -1,0 +1,12 @@
+// Package json provides JSON encoding and decoding primitives.
+
+/// Native JSON encoding and decoding primitives.
+interface JsonNative {
+	/// Parses a valid JSON string into native XRU maps, lists, or primitive values.
+	func parse(text: string) -> any
+
+	/// Converts an XRU value (map, list, primitive) into a formatted JSON string.
+	func stringify(val: any, indent: string = "") -> string
+}
+
+unit json includes JsonNative {}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -91,6 +92,8 @@ func TestLSPAutoImportCompletion(t *testing.T) {
 	testInput := new(bytes.Buffer)
 	testOutput := new(bytes.Buffer)
 
+	tmpDir := setupServicesWorkspace(t)
+
 	// 1. Initialize
 	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
 	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
@@ -99,12 +102,13 @@ func TestLSPAutoImportCompletion(t *testing.T) {
 	content := `use std
 
 `
+	uri := "file://" + filepath.Join(tmpDir, "test_auto.xru")
 	didOpenPayload := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "textDocument/didOpen",
 		"params": map[string]any{
 			"textDocument": map[string]any{
-				"uri":        "file:///home/idevo/Documents/projects/XTemplates/test_auto.xru",
+				"uri":        uri,
 				"languageId": "xru",
 				"version":    1,
 				"text":       content,
@@ -121,7 +125,7 @@ func TestLSPAutoImportCompletion(t *testing.T) {
 		"method":  "textDocument/completion",
 		"params": map[string]any{
 			"textDocument": map[string]any{
-				"uri": "file:///home/idevo/Documents/projects/XTemplates/test_auto.xru",
+				"uri": uri,
 			},
 			"position": map[string]any{
 				"line":      1,
@@ -148,9 +152,46 @@ func TestLSPAutoImportCompletion(t *testing.T) {
 	}
 }
 
+func setupServicesWorkspace(t *testing.T) string {
+	tmp := t.TempDir()
+	modContent := "map {\n    services -> \"./services/*\"\n}\n"
+	if err := os.WriteFile(filepath.Join(tmp, "_mod.xru"), []byte(modContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	servicesDir := filepath.Join(tmp, "services")
+	if err := os.MkdirAll(servicesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	authContent := `mod auth
+use std
+
+global func login(user: string, password: string) {
+    return true
+}
+`
+	if err := os.WriteFile(filepath.Join(servicesDir, "auth.xru"), []byte(authContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cdnContent := `mod cdn
+use std
+
+global let cacheDir = "/var/cache"
+global func deploy() {
+}
+`
+	if err := os.WriteFile(filepath.Join(servicesDir, "cdn.xru"), []byte(cdnContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return tmp
+}
+
 func TestLSPFromCompletion(t *testing.T) {
 	testInput := new(bytes.Buffer)
 	testOutput := new(bytes.Buffer)
+
+	tmpDir := setupServicesWorkspace(t)
 
 	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
 	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
@@ -159,7 +200,7 @@ func TestLSPFromCompletion(t *testing.T) {
 from "services" use 
 from "services" use auth::
 `
-	uri := "file:///home/idevo/Documents/projects/XTemplates/test_from.xru"
+	uri := "file://" + filepath.Join(tmpDir, "test_from.xru")
 	didOpenPayload := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "textDocument/didOpen",
@@ -294,10 +335,12 @@ func TestLSPGoToDefinitionModule(t *testing.T) {
 	testInput := new(bytes.Buffer)
 	testOutput := new(bytes.Buffer)
 
+	tmpDir := setupServicesWorkspace(t)
+
 	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
 	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
 
-	uri := "file:///home/idevo/Documents/projects/XTemplates/test_nav.xru"
+	uri := "file://" + filepath.Join(tmpDir, "test_nav.xru")
 	content := `from "services" use auth
 from "services" use "auth"
 `
@@ -344,10 +387,12 @@ func TestLSPModuleDotCompletionStrict(t *testing.T) {
 	testInput := new(bytes.Buffer)
 	testOutput := new(bytes.Buffer)
 
+	tmpDir := setupServicesWorkspace(t)
+
 	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
 	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
 
-	uri := "file:///home/idevo/Documents/projects/XTemplates/test_dot.xru"
+	uri := "file://" + filepath.Join(tmpDir, "test_dot.xru")
 	content := `from "services" use cdn
 cdn.
 `
@@ -851,5 +896,1220 @@ file "package.json", (doc, err) -> {
 		t.Errorf("Expected unknownSymbol definition result to be null, got: %s", unknownResp)
 	}
 }
+
+func TestLSPTypeBasedCompletion(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	code := `interface TServerConfig @map {
+    host string
+    port? number
+    start func() -> void
+}
+
+let cfg: TServerConfig = @map{}
+cfg.
+
+let options: @map{ silent?: bool, retries: number } = @map{}
+options.
+
+let literal = { name: "xypriss", version: "2.0.0" }
+literal.
+`
+	uri := "file:///test_types.xru"
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       code,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// 1. Completion on `cfg.` (line 7, char 4)
+	comp1 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 7, "character": 4},
+		},
+	}
+	c1Data, _ := json.Marshal(comp1)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c1Data), string(c1Data)))
+
+	// 2. Completion on `options.` (line 10, char 8)
+	comp2 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 10, "character": 8},
+		},
+	}
+	c2Data, _ := json.Marshal(comp2)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c2Data), string(c2Data)))
+
+	// 3. Completion on `literal.` (line 13, char 8)
+	comp3 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 13, "character": 8},
+		},
+	}
+	c3Data, _ := json.Marshal(comp3)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c3Data), string(c3Data)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Verify interface fields in response 2
+	if !strings.Contains(outStr, `"label":"host"`) || !strings.Contains(outStr, `"label":"port"`) || !strings.Contains(outStr, `"label":"start"`) {
+		t.Errorf("Expected host, port, start for cfg., got: %s", outStr)
+	}
+
+	// Verify inline map fields in response 3
+	if !strings.Contains(outStr, `"label":"silent"`) || !strings.Contains(outStr, `"label":"retries"`) {
+		t.Errorf("Expected silent and retries for options., got: %s", outStr)
+	}
+
+	// Verify map literal fields in response 4
+	if !strings.Contains(outStr, `"label":"name"`) || !strings.Contains(outStr, `"label":"version"`) {
+		t.Errorf("Expected name and version for literal., got: %s", outStr)
+	}
+}
+
+func TestLSPModuleImportedAsMapCompletion(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	tmpDir := setupServicesWorkspace(t)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	uri := "file://" + filepath.Join(tmpDir, "test_as_map.xru")
+	code := `from "services" use auth::@map as myAuth
+myAuth.
+`
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       code,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// Completion right after `myAuth.` (line 1, col 7)
+	compPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 1, "character": 7},
+		},
+	}
+	compData, _ := json.Marshal(compPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(compData), string(compData)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	if !strings.Contains(outStr, `"label":"login"`) {
+		t.Errorf("Expected login completion for myAuth., got: %s", outStr)
+	}
+}
+
+func TestInterpolationAndMemberCompletionAndDefinition(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	uri := "file:///test_syntax.xru"
+	code := `use std
+
+type TExample = @map{
+    a: string,
+    b: number,
+    c: func(id: string?) -> void or number,
+}
+
+func retryOperation(url: string, opts: @map{ silent?: "bool", retries: number }) -> void {
+    std.println("Retrying $f{opts.} times...")
+}
+
+let validExample: TExample = @map{}
+validExample.c()
+
+func testIndexed() -> TExample[""] {
+}
+`
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       code,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// 1. Completion inside $f{opts.} at line 9, col 34
+	compPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 9, "character": 34},
+		},
+	}
+	compData, _ := json.Marshal(compPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(compData), string(compData)))
+
+	// 2. Completion inside indexed interface TExample[" at line 15, col 31
+	compIdxPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 15, "character": 31},
+		},
+	}
+	compIdxData, _ := json.Marshal(compIdxPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(compIdxData), string(compIdxData)))
+
+	// 3. Definition on validExample.c at line 13, col 13
+	defPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 13, "character": 13},
+		},
+	}
+	defData, _ := json.Marshal(defPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(defData), string(defData)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// 1. Must offer "silent" and "retries"
+	if !strings.Contains(outStr, `"label":"silent"`) || !strings.Contains(outStr, `"label":"retries"`) {
+		t.Errorf("Expected opts properties 'silent' and 'retries' in interpolation completions, got: %s", outStr)
+	}
+
+	// 2. Must offer indexed properties "a", "b", "c"
+	if !strings.Contains(outStr, `"label":"a"`) || !strings.Contains(outStr, `"label":"c"`) {
+		t.Errorf("Expected indexed properties 'a' and 'c' in completions, got: %s", outStr)
+	}
+
+	// 3. Definition must point to line of `c:` in TExample (line 5, 0-indexed)
+	if !strings.Contains(outStr, `"line":5`) {
+		t.Errorf("Expected definition of validExample.c to point to line 5 in TExample, got: %s", outStr)
+	}
+}
+
+func TestMapLiteralFieldCompletionWithDeduplication(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	uri := "file:///test_map_dedup.xru"
+	code := `type TSample = @map{
+    a: string,
+    b: number,
+    c: bool,
+}
+
+let ex: TSample = @map{
+    c: true,
+    
+}
+`
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       code,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// Completion on line 8, col 4 (inside @map{ after `c: true,`):
+	// Should suggest `a` and `b`, but NOT `c`!
+	compPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 8, "character": 4},
+		},
+	}
+	compData, _ := json.Marshal(compPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(compData), string(compData)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Must contain `a` and `b`
+	if !strings.Contains(outStr, `"label":"a"`) || !strings.Contains(outStr, `"label":"b"`) {
+		t.Errorf("Expected 'a' and 'b' in map literal completions, got: %s", outStr)
+	}
+
+	// Must NOT contain `c` because `c` is already declared in this map literal!
+	if strings.Contains(outStr, `"label":"c"`) {
+		t.Errorf("Map literal completions should NOT contain 'c' since it is already declared, got: %s", outStr)
+	}
+}
+
+func TestPropertyHoverAndDefinitionAndTypeActions(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	uri := "file:///test_hover_def.xru"
+	code := `interface TExample {
+    /**
+     * Voilà un bon a bien propre
+     */
+    a string
+    c func(id: string?) -> void or number // Signature de fonction
+}
+
+const data: TExample = {
+    a: "hello"
+}
+
+const test = "Howdy"
+let count = 42
+let cur = date.now()
+
+func name(params: TExample) -> void {
+    std.println("Test: $f{params.a}")
+}
+
+data.a
+test.
+count.
+cur.
+`
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       code,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// 1. Hover on property `a` inside map literal `a: "hello"` (line 9, col 4)
+	hover1 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/hover",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 9, "character": 4},
+		},
+	}
+	h1Data, _ := json.Marshal(hover1)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(h1Data), string(h1Data)))
+
+	// 2. Definition on `a` inside map literal `a: "hello"` (line 9, col 4)
+	def1 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 9, "character": 4},
+		},
+	}
+	d1Data, _ := json.Marshal(def1)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d1Data), string(d1Data)))
+
+	// 3. Hover on `data.a` (line 20, col 6)
+	hover2 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "textDocument/hover",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 20, "character": 6},
+		},
+	}
+	h2Data, _ := json.Marshal(hover2)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(h2Data), string(h2Data)))
+
+	// 4. Definition on `data.a` (line 20, col 6)
+	def2 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      5,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 20, "character": 6},
+		},
+	}
+	d2Data, _ := json.Marshal(def2)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d2Data), string(d2Data)))
+
+	// 5. Completion on `test.` (line 21, col 5) -> string methods
+	comp1 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      6,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 21, "character": 5},
+		},
+	}
+	c1Data, _ := json.Marshal(comp1)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c1Data), string(c1Data)))
+
+	// 6. Completion on `cur.` (line 23, col 4) -> date fields (iso, timestamp, year, etc.)
+	comp2 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      7,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 23, "character": 4},
+		},
+	}
+	c2Data, _ := json.Marshal(comp2)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c2Data), string(c2Data)))
+
+	// 7. Definition on `$f{params.a}` (line 17, col 33)
+	def3 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      8,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 17, "character": 33},
+		},
+	}
+	d3Data, _ := json.Marshal(def3)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d3Data), string(d3Data)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// 1. Hover on `a` in map literal must show (property) TExample.a: string and doc comment
+	if !strings.Contains(outStr, `(property) TExample.a: string`) || !strings.Contains(outStr, `Voilà un bon a bien propre`) {
+		t.Errorf("Expected TS-like property hover with doc on map literal field, got: %s", outStr)
+	}
+
+	// 2. Definition of `a` must point to line 4 (0-indexed line where `a: string` is declared)
+	if !strings.Contains(outStr, `"id":3,"result":{"uri":"file:///test_hover_def.xru","range":{"start":{"line":4`) {
+		t.Errorf("Expected definition of a in map literal to point to line 4, got: %s", outStr)
+	}
+
+	// 3. Definition of `data.a` must point to line 4
+	if !strings.Contains(outStr, `"id":5,"result":{"uri":"file:///test_hover_def.xru","range":{"start":{"line":4`) {
+		t.Errorf("Expected definition of data.a to point to line 4, got: %s", outStr)
+	}
+
+	// 4. Definition of `$f{params.a}` must point to line 4
+	if !strings.Contains(outStr, `"id":8,"result":{"uri":"file:///test_hover_def.xru","range":{"start":{"line":4`) {
+		t.Errorf("Expected definition of params.a in string interpolation to point to line 4, got: %s", outStr)
+	}
+
+	// 5. Completion on `test.` must contain `trim` and `len`
+	if !strings.Contains(outStr, `"label":"trim"`) || !strings.Contains(outStr, `"label":"toupper"`) {
+		t.Errorf("Expected string methods for test., got: %s", outStr)
+	}
+
+	// 6. Completion on `cur.` (date.now()) must contain `iso`, `timestamp`, `year`, `month`
+	if !strings.Contains(outStr, `"label":"iso"`) || !strings.Contains(outStr, `"label":"timestamp"`) || !strings.Contains(outStr, `"label":"weekday"`) {
+		t.Errorf("Expected date fields for cur., got: %s", outStr)
+	}
+}
+
+func TestChainedAndInferredMemberCompletions(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	// 1. Initialize
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	// 2. didOpen file with variables, trailing dot, calls, chained accesses
+	content := `const test = "Howdy".
+test.
+date.now().
+date.now().iso.
+let d = date.now()
+d.
+let s = test.trim()
+s.
+func getMsg() -> string { return "hi" }
+let m = getMsg()
+m.
+getMsg().
+`
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        "file:///test_inference.xru",
+				"languageId": "xru",
+				"version":    1,
+				"text":       content,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// 3. Completion on `test.` (line 1, col 5)
+	c1 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_inference.xru"},
+			"position":     map[string]any{"line": 1, "character": 5},
+		},
+	}
+	c1Data, _ := json.Marshal(c1)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c1Data), string(c1Data)))
+
+	// 4. Completion on `date.now().` (line 2, col 11)
+	c2 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_inference.xru"},
+			"position":     map[string]any{"line": 2, "character": 11},
+		},
+	}
+	c2Data, _ := json.Marshal(c2)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c2Data), string(c2Data)))
+
+	// 5. Completion on `date.now().iso.` (line 3, col 15)
+	c3 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_inference.xru"},
+			"position":     map[string]any{"line": 3, "character": 15},
+		},
+	}
+	c3Data, _ := json.Marshal(c3)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c3Data), string(c3Data)))
+
+	// 6. Completion on `d.` (line 5, col 2)
+	c4 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      5,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_inference.xru"},
+			"position":     map[string]any{"line": 5, "character": 2},
+		},
+	}
+	c4Data, _ := json.Marshal(c4)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c4Data), string(c4Data)))
+
+	// 7. Completion on `s.` (line 7, col 2)
+	c5 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      6,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_inference.xru"},
+			"position":     map[string]any{"line": 7, "character": 2},
+		},
+	}
+	c5Data, _ := json.Marshal(c5)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c5Data), string(c5Data)))
+
+	// 8. Completion on `m.` (line 10, col 2)
+	c6 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      7,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_inference.xru"},
+			"position":     map[string]any{"line": 10, "character": 2},
+		},
+	}
+	c6Data, _ := json.Marshal(c6)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c6Data), string(c6Data)))
+
+	// 9. Completion on `getMsg().` (line 11, col 9)
+	c7 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      8,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_inference.xru"},
+			"position":     map[string]any{"line": 11, "character": 9},
+		},
+	}
+	c7Data, _ := json.Marshal(c7)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c7Data), string(c7Data)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Parse responses by id
+	getResp := func(id int) string {
+		needle := fmt.Sprintf(`"id":%d,`, id)
+		idx := strings.Index(outStr, needle)
+		if idx == -1 {
+			needle = fmt.Sprintf(`"id":%d}`, id)
+			idx = strings.Index(outStr, needle)
+		}
+		if idx == -1 {
+			return ""
+		}
+		start := strings.LastIndex(outStr[:idx], "{")
+		if start == -1 {
+			return ""
+		}
+		depth := 0
+		for i := start; i < len(outStr); i++ {
+			if outStr[i] == '{' {
+				depth++
+			} else if outStr[i] == '}' {
+				depth--
+				if depth == 0 {
+					return outStr[start : i+1]
+				}
+			}
+		}
+		return ""
+	}
+
+	// 1. Response for `test.` (id: 2): must contain string methods, must NOT contain downloadTask
+	r1 := getResp(2)
+	if !strings.Contains(r1, `"label":"trim"`) || !strings.Contains(r1, `"label":"toupper"`) {
+		t.Errorf("Expected string methods for test., got: %s", r1)
+	}
+	if strings.Contains(r1, `"label":"downloadTask"`) {
+		t.Errorf("Did not expect downloadTask for test., got: %s", r1)
+	}
+
+	// 2. Response for `date.now().` (id: 3): must contain date fields and map methods, must NOT contain global vars
+	r2 := getResp(3)
+	if !strings.Contains(r2, `"label":"iso"`) || !strings.Contains(r2, `"label":"timestamp"`) || !strings.Contains(r2, `"label":"weekday"`) || !strings.Contains(r2, `"label":"year"`) {
+		t.Errorf("Expected date fields for date.now()., got: %s", r2)
+	}
+	if strings.Contains(r2, `"label":"getMsg"`) || strings.Contains(r2, `"label":"downloadTask"`) {
+		t.Errorf("Did not expect global symbols for date.now()., got: %s", r2)
+	}
+
+	// 3. Response for `date.now().iso.` (id: 4): must contain string methods
+	r3 := getResp(4)
+	if !strings.Contains(r3, `"label":"trim"`) || !strings.Contains(r3, `"label":"startswith"`) {
+		t.Errorf("Expected string methods for date.now().iso., got: %s", r3)
+	}
+
+	// 4. Response for `d.` (id: 5): must contain date fields
+	r4 := getResp(5)
+	if !strings.Contains(r4, `"label":"iso"`) || !strings.Contains(r4, `"label":"month"`) {
+		t.Errorf("Expected date fields for d., got: %s", r4)
+	}
+
+	// 5. Response for `s.` (id: 6): must contain string methods
+	r5 := getResp(6)
+	if !strings.Contains(r5, `"label":"trim"`) || !strings.Contains(r5, `"label":"len"`) {
+		t.Errorf("Expected string methods for s., got: %s", r5)
+	}
+
+	// 6. Response for `m.` (id: 7): must contain string methods
+	r6 := getResp(7)
+	if !strings.Contains(r6, `"label":"trim"`) || !strings.Contains(r6, `"label":"slice"`) {
+		t.Errorf("Expected string methods for m., got: %s", r6)
+	}
+
+	// 7. Response for `getMsg().` (id: 8): must contain string methods
+	r7 := getResp(8)
+	if !strings.Contains(r7, `"label":"trim"`) || !strings.Contains(r7, `"label":"toupper"`) {
+		t.Errorf("Expected string methods for getMsg()., got: %s", r7)
+	}
+}
+
+func TestCompletionInsideCallAndAssignment(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	// 1. Initialize
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	// 2. didOpen file matching user's exact draft
+	content := `use std
+use date
+
+const dObj = date.now()
+const d1 = date.
+std.println(dObj.)
+std.println(date.)
+`
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        "file:///test_call_assign.xru",
+				"languageId": "xru",
+				"version":    1,
+				"text":       content,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// 3. Completion on `const d1 = date.` (line 4, col 16)
+	c1 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_call_assign.xru"},
+			"position":     map[string]any{"line": 4, "character": 16},
+		},
+	}
+	c1Data, _ := json.Marshal(c1)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c1Data), string(c1Data)))
+
+	// 4. Completion on `std.println(dObj.)` (line 5, col 17)
+	c2 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_call_assign.xru"},
+			"position":     map[string]any{"line": 5, "character": 17},
+		},
+	}
+	c2Data, _ := json.Marshal(c2)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c2Data), string(c2Data)))
+
+	// 5. Completion on `std.println(date.)` (line 6, col 17)
+	c3 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": "file:///test_call_assign.xru"},
+			"position":     map[string]any{"line": 6, "character": 17},
+		},
+	}
+	c3Data, _ := json.Marshal(c3)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(c3Data), string(c3Data)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	getResp := func(id int) string {
+		needle := fmt.Sprintf(`"id":%d,`, id)
+		idx := strings.Index(outStr, needle)
+		if idx == -1 {
+			needle = fmt.Sprintf(`"id":%d}`, id)
+			idx = strings.Index(outStr, needle)
+		}
+		if idx == -1 {
+			return ""
+		}
+		start := strings.LastIndex(outStr[:idx], "{")
+		if start == -1 {
+			return ""
+		}
+		depth := 0
+		for i := start; i < len(outStr); i++ {
+			if outStr[i] == '{' {
+				depth++
+			} else if outStr[i] == '}' {
+				depth--
+				if depth == 0 {
+					return outStr[start : i+1]
+				}
+			}
+		}
+		return ""
+	}
+
+	// 1. In assignment: `const d1 = date.` must contain date methods (`now`, `format`, `parse`, etc.)
+	r1 := getResp(2)
+	if !strings.Contains(r1, `"label":"now"`) || !strings.Contains(r1, `"label":"format"`) {
+		t.Errorf("Expected date methods on 'const d1 = date.', got: %s", r1)
+	}
+
+	// 2. In call argument: `std.println(dObj.)` must contain date map fields (`iso`, `timestamp`, `weekday`, etc.)
+	r2 := getResp(3)
+	if !strings.Contains(r2, `"label":"iso"`) || !strings.Contains(r2, `"label":"timestamp"`) || !strings.Contains(r2, `"label":"weekday"`) {
+		t.Errorf("Expected date map fields on 'std.println(dObj.)', got: %s", r2)
+	}
+
+	// 3. In call argument: `std.println(date.)` must contain date methods (`now`, `format`, `parse`, etc.)
+	r3 := getResp(4)
+	if !strings.Contains(r3, `"label":"now"`) || !strings.Contains(r3, `"label":"format"`) {
+		t.Errorf("Expected date methods on 'std.println(date.)', got: %s", r3)
+	}
+}
+
+func TestLSPStdNavigation(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	code := `from path use { clean }
+let name: string = "  world  "
+let t = name.trim()
+let info: DateInfo = {}
+let p = path::clean("foo/bar")
+`
+	testDir := t.TempDir()
+	testFilePath := filepath.Join(testDir, "main.xru")
+	testURI := "file://" + filepath.ToSlash(testFilePath)
+
+	openPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        testURI,
+				"languageId": "xru",
+				"version":    1,
+				"text":       code,
+			},
+		},
+	}
+	openData, _ := json.Marshal(openPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// 1. Definition on 'clean' in 'from path use { clean }' (line 0, char 18)
+	defReq1 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": testURI},
+			"position":     map[string]any{"line": 0, "character": 18},
+		},
+	}
+	d1, _ := json.Marshal(defReq1)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d1), string(d1)))
+
+	// 2. Definition on 'string' in 'let name: string' (line 1, char 12)
+	defReq2 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": testURI},
+			"position":     map[string]any{"line": 1, "character": 12},
+		},
+	}
+	d2, _ := json.Marshal(defReq2)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d2), string(d2)))
+
+	// 3. Definition on 'trim' in 'name.trim()' (line 2, char 14)
+	defReq3 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": testURI},
+			"position":     map[string]any{"line": 2, "character": 14},
+		},
+	}
+	d3, _ := json.Marshal(defReq3)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d3), string(d3)))
+
+	// 4. Definition on 'DateInfo' in 'let info: DateInfo' (line 3, char 13)
+	defReq4 := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      5,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": testURI},
+			"position":     map[string]any{"line": 3, "character": 13},
+		},
+	}
+	d4, _ := json.Marshal(defReq4)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(d4), string(d4)))
+
+	server := lsp.NewServer(testInput, testOutput)
+	server.Run()
+
+	outStr := testOutput.String()
+
+	getResp := func(id int) string {
+		needle := fmt.Sprintf(`"id":%d,`, id)
+		idx := strings.Index(outStr, needle)
+		if idx == -1 {
+			needle = fmt.Sprintf(`"id": %d,`, id)
+			idx = strings.Index(outStr, needle)
+		}
+		if idx == -1 {
+			return ""
+		}
+		for s := idx; s >= 0; s-- {
+			if outStr[s] == '{' {
+				end := strings.Index(outStr[s:], "\r\n")
+				if end != -1 {
+					return outStr[s : s+end]
+				}
+				return outStr[s:]
+			}
+		}
+		return ""
+	}
+
+	rClean := getResp(2)
+	if !strings.Contains(rClean, "path.xru") {
+		t.Errorf("Expected definition of 'clean' to point to path.xru, got: %s", rClean)
+	}
+
+	rString := getResp(3)
+	if !strings.Contains(rString, "builtin.xru") {
+		t.Errorf("Expected definition of 'string' to point to builtin.xru, got: %s", rString)
+	}
+
+	rTrim := getResp(4)
+	if !strings.Contains(rTrim, "builtin.xru") {
+		t.Errorf("Expected definition of 'trim' to point to builtin.xru, got: %s", rTrim)
+	}
+
+	rDateInfo := getResp(5)
+	if !strings.Contains(rDateInfo, "date.xru") {
+		t.Errorf("Expected definition of 'DateInfo' to point to date.xru, got: %s", rDateInfo)
+	}
+}
+
+func TestCompletionMultilineAndChaining(t *testing.T) {
+	// 1. Multiline map literal completion after }.
+	uri1 := "file:///test_multiline_map.xru"
+	codeMultilineMap := "func test() {\n    let m = @map {\n        foo: \"bar\"\n    }.\n}\n"
+	didOpen1 := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{"uri": uri1, "languageId": "xru", "version": 1, "text": codeMultilineMap},
+	})
+	comp1 := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri1},
+		"position":     map[string]any{"line": 3, "character": 6},
+	})
+	testInput1 := bytes.NewBufferString(didOpen1 + comp1)
+	testOutput1 := &bytes.Buffer{}
+	srv1 := lsp.NewServer(testInput1, testOutput1)
+	_ = srv1.Run()
+	out1 := testOutput1.String()
+	if !strings.Contains(out1, `"label":"clear"`) || !strings.Contains(out1, `"label":"foo"`) {
+		t.Errorf("Expected multiline map literal completion to contain 'clear' and 'foo', got: %s", out1)
+	}
+
+	// 2. Chained method completion on string.split("/"). (returns list methods)
+	uri2 := "file:///test_chaining.xru"
+	codeChained := "func test(s: string) {\n    let parts = s.split(\"/\").\n}\n"
+	didOpen2 := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{"uri": uri2, "languageId": "xru", "version": 1, "text": codeChained},
+	})
+	comp2 := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri2},
+		"position":     map[string]any{"line": 1, "character": 29},
+	})
+	testInput2 := bytes.NewBufferString(didOpen2 + comp2)
+	testOutput2 := &bytes.Buffer{}
+	srv2 := lsp.NewServer(testInput2, testOutput2)
+	_ = srv2.Run()
+	out2 := testOutput2.String()
+	if !strings.Contains(out2, `"label":"get"`) || !strings.Contains(out2, `"label":"join"`) {
+		t.Errorf("Expected chained list completion to contain 'get' and 'join', got: %s", out2)
+	}
+
+	// 3. Double colon unit self completion on &date::
+	uri3 := "file:///test_unit_scope.xru"
+	codeSelfScope := "unit date {\n    func now() -> string { return \"\" }\n    func today() {\n        let x = &date::\n    }\n}\n"
+	didOpen3 := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{"uri": uri3, "languageId": "xru", "version": 1, "text": codeSelfScope},
+	})
+	comp3 := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri3},
+		"position":     map[string]any{"line": 3, "character": 23},
+	})
+	testInput3 := bytes.NewBufferString(didOpen3 + comp3)
+	testOutput3 := &bytes.Buffer{}
+	srv3 := lsp.NewServer(testInput3, testOutput3)
+	_ = srv3.Run()
+	out3 := testOutput3.String()
+	if !strings.Contains(out3, `"label":"now"`) {
+		t.Errorf("Expected &date:: completion to contain 'now', got: %s", out3)
+	}
+}
+
+func TestDynamicStdDocsLoading(t *testing.T) {
+	// Verify that documentation is dynamically resolved from std/*.xru definitions
+	docToday := lsp.GetDocForWord("date.today", "today")
+	if docToday == nil {
+		t.Fatalf("Expected documentation for date.today, got nil")
+	}
+	if !strings.Contains(docToday.Doc, "today's date") {
+		t.Errorf("Expected doc comment from std/date.xru, got: %s", docToday.Doc)
+	}
+
+	docPrintln := lsp.GetDocForWord("std.println", "println")
+	if docPrintln == nil {
+		t.Fatalf("Expected documentation for std.println, got nil")
+	}
+	if !strings.Contains(docPrintln.Doc, "standard output with rich ANSI") {
+		t.Errorf("Expected doc comment from std/std.xru, got: %s", docPrintln.Doc)
+	}
+
+	docTrim := lsp.GetDocForWord("str.trim", "trim")
+	if docTrim == nil {
+		t.Fatalf("Expected documentation for string.trim, got nil")
+	}
+	if !strings.Contains(docTrim.Doc, "whitespace removed") {
+		t.Errorf("Expected doc comment from std/builtin.xru, got: %s", docTrim.Doc)
+	}
+
+	docGetLine := lsp.GetDocForWord("doc.getLine", "getLine")
+	if docGetLine == nil {
+		t.Fatalf("Expected documentation for doc.getLine, got nil")
+	}
+	if !strings.Contains(docGetLine.Doc, "1-based index") {
+		t.Errorf("Expected doc comment from std/builtin.xru, got: %s", docGetLine.Doc)
+	}
+}
+
+func TestTypeAutocompletionInLSP(t *testing.T) {
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	uri := "file:///test_types.xru"
+	code := `interface ROpt @map {
+	onMismatch "fatal" or "warn" or "auto-update"
+	mode "log" or "silent"
+}
+
+interface SysNative {
+	func require(constraint: string, options: ) -> bool
+}
+`
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       code,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// Request completion right after "options: " at line 6, character 42
+	compPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 6, "character": 42},
+		},
+	}
+	compData, _ := json.Marshal(compPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(compData), string(compData)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Must propose ROpt (declared interface)
+	if !strings.Contains(outStr, `"label":"ROpt"`) {
+		t.Errorf("Expected 'ROpt' in type autocompletions, got: %s", outStr)
+	}
+	// Must propose string, bool, number
+	if !strings.Contains(outStr, `"label":"string"`) || !strings.Contains(outStr, `"label":"bool"`) {
+		t.Errorf("Expected 'string' and 'bool' in type autocompletions, got: %s", outStr)
+	}
+	// Must propose list[T]
+	if !strings.Contains(outStr, `"label":"list[T]"`) {
+		t.Errorf("Expected 'list[T]' in type autocompletions, got: %s", outStr)
+	}
+}
+
+func TestMapLiteralKeyAndValueDX(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "draft.xru")
+	content := `use std
+use sys as Sys
+
+Sys.require("<= 2.0.0", @map{
+	mode: "log"
+})
+`
+	_ = os.WriteFile(filePath, []byte(content), 0644)
+	uri := "file://" + filePath
+
+	testInput := new(bytes.Buffer)
+	testOutput := new(bytes.Buffer)
+
+	// 1. Initialize
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(initReq), initReq))
+
+	// 2. didOpen
+	didOpenPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/didOpen",
+		"params": map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": "xru",
+				"version":    1,
+				"text":       content,
+			},
+		},
+	}
+	openData, _ := json.Marshal(didOpenPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(openData), string(openData)))
+
+	// 3. Hover on 'mode' at line 4, character 2
+	hoverPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "textDocument/hover",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 4, "character": 2},
+		},
+	}
+	hoverData, _ := json.Marshal(hoverPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(hoverData), string(hoverData)))
+
+	// 4. Definition on 'mode' at line 4, character 2
+	defPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "textDocument/definition",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 4, "character": 2},
+		},
+	}
+	defData, _ := json.Marshal(defPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(defData), string(defData)))
+
+	// 5. Completion after 'mode: ' at line 4, character 7
+	compValPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "textDocument/completion",
+		"params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": 4, "character": 7},
+		},
+	}
+	compValData, _ := json.Marshal(compValPayload)
+	testInput.WriteString(fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(compValData), string(compValData)))
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Hover response must contain ROpt.mode and MUST NOT contain gArgs::mode
+	if !strings.Contains(outStr, "ROpt.mode") {
+		t.Errorf("Expected 'ROpt.mode' in hover, got output: %s", outStr)
+	}
+	if strings.Contains(outStr, "gArgs::mode") {
+		t.Errorf("Map property key 'mode' erroneously resolved to external workspace symbol 'gArgs::mode'!")
+	}
+
+	// Definition response must jump to sys.xru
+	if !strings.Contains(outStr, "sys.xru") {
+		t.Errorf("Expected definition on 'mode' to jump to sys.xru, got: %s", outStr)
+	}
+
+	// Value completion response must propose "log" and "silent"
+	if !strings.Contains(outStr, `"label":"\"log\""`) || !strings.Contains(outStr, `"label":"\"silent\""`) {
+		t.Errorf("Expected value autocompletions '\"log\"' and '\"silent\"', got: %s", outStr)
+	}
+}
+
+
+
 
 

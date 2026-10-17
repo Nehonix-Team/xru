@@ -1,0 +1,9 @@
+// Package cmd provides process execution and shell command runner primitives.
+
+/// Native shell command runner primitives.
+interface CmdNative {
+	/// Executes a system shell command and returns its standard output as a string.
+	func exec(command: string) -> string
+}
+
+unit cmd includes CmdNative {}

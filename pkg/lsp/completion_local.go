@@ -49,14 +49,16 @@ func findCurrentFunctionParams(lines []string, currentLine int) []paramInfo {
 					if m := reFunc.FindStringSubmatch(lines[i]); len(m) > 1 {
 						paramStr := strings.TrimSpace(m[1])
 						if paramStr != "" {
-							for _, p := range strings.Split(paramStr, ",") {
+							for _, p := range splitParamsRespectingBraces(paramStr) {
 								p = strings.TrimSpace(p)
-								parts := strings.Split(p, ":")
-								pName := strings.TrimSpace(parts[0])
+								colonIdx := strings.Index(p, ":")
+								pName := p
 								pType := "any"
-								if len(parts) > 1 {
-									pType = strings.TrimSpace(parts[1])
+								if colonIdx != -1 {
+									pName = strings.TrimSpace(p[:colonIdx])
+									pType = strings.TrimSpace(p[colonIdx+1:])
 								}
+								pName = strings.TrimSuffix(pName, "?")
 								if pName != "" {
 									params = append(params, paramInfo{name: pName, paramType: pType})
 								}
@@ -69,14 +71,16 @@ func findCurrentFunctionParams(lines []string, currentLine int) []paramInfo {
 					if m := reLambda.FindStringSubmatch(lines[i]); len(m) > 1 {
 						paramStr := strings.TrimSpace(m[1])
 						if paramStr != "" {
-							for _, p := range strings.Split(paramStr, ",") {
+							for _, p := range splitParamsRespectingBraces(paramStr) {
 								p = strings.TrimSpace(p)
-								parts := strings.Split(p, ":")
-								pName := strings.TrimSpace(parts[0])
+								colonIdx := strings.Index(p, ":")
+								pName := p
 								pType := "any"
-								if len(parts) > 1 {
-									pType = strings.TrimSpace(parts[1])
+								if colonIdx != -1 {
+									pName = strings.TrimSpace(p[:colonIdx])
+									pType = strings.TrimSpace(p[colonIdx+1:])
 								}
+								pName = strings.TrimSuffix(pName, "?")
 								if pName != "" {
 									params = append(params, paramInfo{name: pName, paramType: pType})
 								}
@@ -286,6 +290,36 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 					InsertText:       ampName,
 					InsertTextFormat: InsertTextFormatPlainText,
 					SortText:         fmt.Sprintf("01_%s", name),
+				})
+			}
+		}
+
+		// 6b. unit definition -> &Unit:: and &self::
+		if m := reUnit.FindStringSubmatch(line); len(m) > 1 {
+			uName := m[1]
+			unitScopeLabel := "&" + uName + "::"
+			if !seen[unitScopeLabel] {
+				seen[unitScopeLabel] = true
+				items = append(items, CompletionItem{
+					Label:            unitScopeLabel,
+					Kind:             CompletionItemKindModule,
+					Detail:           fmt.Sprintf("(&self) %s internal method reference", uName),
+					Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Access internal methods of unit `%s`", uName)},
+					InsertText:       unitScopeLabel,
+					InsertTextFormat: InsertTextFormatPlainText,
+					SortText:         "00_self_unit",
+				})
+			}
+			if !seen["&self::"] {
+				seen["&self::"] = true
+				items = append(items, CompletionItem{
+					Label:            "&self::",
+					Kind:             CompletionItemKindModule,
+					Detail:           "(&self) internal method reference",
+					Documentation:    MarkupContent{Kind: "markdown", Value: "Access internal methods of current unit"},
+					InsertText:       "&self::",
+					InsertTextFormat: InsertTextFormatPlainText,
+					SortText:         "00_self_generic",
 				})
 			}
 		}

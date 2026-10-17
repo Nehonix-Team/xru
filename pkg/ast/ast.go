@@ -127,9 +127,10 @@ type FromUseStatement struct {
 	Source   string   // e.g. "services"
 	Module   string   // e.g. "auth"
 	Member   string   // e.g. "b" (when from "services" use auth::b)
-	Members  []string // e.g. ["name", "xems"] (when from "services" use auth::{name, xems})
-	Alias    string   // e.g. "a" (when from "services" use auth as a)
+	Members  []string // e.g. ["name", "xems"] (when from "services" use auth::@map{name, xems})
+	Alias    string   // e.g. "a" (when from "services" use auth as a or auth::@map as a)
 	Modules  []string // e.g. ["auth", "cdn", "db"] (when from "services" use (auth, cdn, db))
+	AsMap    bool     // true when module::@map or module::@map{ ... }
 }
 
 func (s *FromUseStatement) statementNode()      {}
@@ -138,8 +139,17 @@ func (s *FromUseStatement) String() string {
 	if len(s.Modules) > 0 {
 		return fmt.Sprintf("from %q use (%s)", s.Source, strings.Join(s.Modules, ", "))
 	}
+	if s.AsMap {
+		if len(s.Members) > 0 {
+			return fmt.Sprintf("from %q use %s::@map{%s}", s.Source, s.Module, strings.Join(s.Members, ", "))
+		}
+		if s.Alias != "" {
+			return fmt.Sprintf("from %q use %s::@map as %s", s.Source, s.Module, s.Alias)
+		}
+		return fmt.Sprintf("from %q use %s::@map", s.Source, s.Module)
+	}
 	if len(s.Members) > 0 {
-		return fmt.Sprintf("from %q use %s::(%s)", s.Source, s.Module, strings.Join(s.Members, ", "))
+		return fmt.Sprintf("from %q use %s::@map{%s}", s.Source, s.Module, strings.Join(s.Members, ", "))
 	}
 	if s.Member != "" {
 		return fmt.Sprintf("from %q use %s::%s", s.Source, s.Module, s.Member)
@@ -148,6 +158,33 @@ func (s *FromUseStatement) String() string {
 		return fmt.Sprintf("from %q use %s as %s", s.Source, s.Module, s.Alias)
 	}
 	return fmt.Sprintf("from %q use %s", s.Source, s.Module)
+}
+
+// InterfaceStatement : interface Name @map { field: type, ... }
+type InterfaceStatement struct {
+	Position lexer.Position
+	Name     string
+	IsMap    bool
+	Fields   []*InterfaceField
+}
+
+type InterfaceField struct {
+	Position   lexer.Position
+	Name       string
+	Type       string
+	Optional   bool
+	Nested     *InterfaceStatement
+	Params     []*Parameter
+	ReturnType string
+}
+
+func (s *InterfaceStatement) statementNode()      {}
+func (s *InterfaceStatement) Pos() lexer.Position { return s.Position }
+func (s *InterfaceStatement) String() string {
+	if s.IsMap {
+		return fmt.Sprintf("interface %s @map { ... }", s.Name)
+	}
+	return fmt.Sprintf("interface %s { ... }", s.Name)
 }
 
 // VarStatement : let/const name: type = expr
@@ -195,6 +232,7 @@ func (s *ReassignStatement) String() string {
 type UnitStatement struct {
 	Position   lexer.Position
 	Name       string
+	Includes   string
 	Properties []*DeclareStatement
 	Directives []*DirectiveDefStatement
 	Methods    []*FuncStatement
@@ -242,6 +280,7 @@ type FuncStatement struct {
 	ReturnType string
 	Body       []Statement
 	IsGlobal   bool
+	NativeHook string
 }
 
 func (s *FuncStatement) statementNode()      {}
@@ -251,8 +290,11 @@ func (s *FuncStatement) String() string {
 }
 
 type Parameter struct {
-	Name string
-	Type string
+	Name         string
+	Type         string
+	Optional     bool
+	IsVariadic   bool
+	DefaultValue Expression
 }
 
 // ReturnStatement : #RETURN expr
@@ -696,16 +738,22 @@ func (e *GlobalAccessExpression) expressionNode()      {}
 func (e *GlobalAccessExpression) Pos() lexer.Position { return e.Position }
 func (e *GlobalAccessExpression) String() string      { return fmt.Sprintf("::%s", e.Name) }
 
-// ScopeAccessExpression : Module::Member (ex: auth::b ou a::login)
+// ScopeAccessExpression : Module::Member (ex: auth::b ou a::login) ou &unit::method
 type ScopeAccessExpression struct {
-	Position lexer.Position
-	Scope    string
-	Member   string
+	Position   lexer.Position
+	Scope      string
+	Member     string
+	IsUnitSelf bool
 }
 
 func (e *ScopeAccessExpression) expressionNode()      {}
 func (e *ScopeAccessExpression) Pos() lexer.Position { return e.Position }
-func (e *ScopeAccessExpression) String() string      { return fmt.Sprintf("%s::%s", e.Scope, e.Member) }
+func (e *ScopeAccessExpression) String() string {
+	if e.IsUnitSelf {
+		return fmt.Sprintf("&%s::%s", e.Scope, e.Member)
+	}
+	return fmt.Sprintf("%s::%s", e.Scope, e.Member)
+}
 
 // LambdaExpression : (params...) => Expr ou () => Expr
 type LambdaExpression struct {

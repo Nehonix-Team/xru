@@ -1,6 +1,9 @@
 package lsp
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 	text, ok := s.docs[uri]
@@ -47,6 +50,48 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 		return &CompletionList{Items: withItems}
 	}
 
+	// 1.4 Indexed type property completion: e.g. `TExample["` or `TExample['` or `TExample[`
+	if bracketIdx := strings.LastIndex(prefixLine, "["); bracketIdx != -1 {
+		prefixBeforeBracket := strings.TrimSpace(prefixLine[:bracketIdx])
+		afterBracket := prefixLine[bracketIdx+1:]
+		if strings.HasPrefix(afterBracket, "\"") || strings.HasPrefix(afterBracket, "'") || afterBracket == "" {
+			var typeName string
+			for i := len(prefixBeforeBracket) - 1; i >= 0; i-- {
+				if !isWordChar(prefixBeforeBracket[i]) {
+					typeName = prefixBeforeBracket[i+1:]
+					break
+				}
+				if i == 0 {
+					typeName = prefixBeforeBracket
+				}
+			}
+			if typeName != "" {
+				ifaceMembers := collectInterfaceMembers(lines, typeName, uriToPath(uri))
+				if len(ifaceMembers) > 0 {
+					hasQuote := strings.HasPrefix(afterBracket, "\"") || strings.HasPrefix(afterBracket, "'")
+					var indexedItems []CompletionItem
+					for _, item := range ifaceMembers {
+						insertText := item.Label
+						if !hasQuote {
+							insertText = fmt.Sprintf("\"%s\"]", item.Label)
+						}
+						indexedItems = append(indexedItems, CompletionItem{
+							Label:            item.Label,
+							Kind:             CompletionItemKindField,
+							Detail:           fmt.Sprintf("%s[\"%s\"]: %s", typeName, item.Label, item.Detail),
+							Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Property `%s` of type `%s`", item.Label, typeName)},
+							InsertText:       insertText,
+							FilterText:       item.Label,
+							InsertTextFormat: InsertTextFormatPlainText,
+							SortText:         fmt.Sprintf("00_%s", item.Label),
+						})
+					}
+					return &CompletionList{IsIncomplete: false, Items: indexedItems}
+				}
+			}
+		}
+	}
+
 	// 1.5 Context Check: Inside a string literal
 	quoteCount := 0
 	for i := 0; i < len(prefixLine); i++ {
@@ -61,8 +106,9 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 		if lastOpenBrace != -1 && lastOpenBrace > lastCloseBrace {
 			// Le curseur est à l'intérieur d'un bloc d'interpolation `$f{...}` (ex: `"$f{content."`)
 			subPrefix := prefixLine[lastOpenBrace+3:]
+			subPrefix = strings.TrimSuffix(subPrefix, "}")
 			if strings.Contains(subPrefix, ".") {
-				if memberList, handled := s.handleMemberCompletion(uri, lines, subPrefix); handled {
+				if memberList, handled := s.handleMemberCompletion(uri, lines, pos.Line, subPrefix); handled {
 					return memberList
 				}
 			}
@@ -74,8 +120,28 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 		return &CompletionList{IsIncomplete: false, Items: []CompletionItem{}}
 	}
 
+	// 1.6 Context Check: In a type position (after ':', '->', in interface field, etc.)
+	if isTypeContext(prefixLine, lines, pos.Line) {
+		typeItems := collectTypeCompletions(uri, lines, prefixLine)
+		return &CompletionList{IsIncomplete: false, Items: typeItems}
+	}
+
+	// 1.8 Map Literal Value completion (propose allowed literal values, e.g. "log", "silent" for ROpt.mode)
+	if mapValItems, handled := s.handleMapValueCompletion(uri, lines, pos); handled {
+		localItems := collectLocalSymbols(lines, pos.Line)
+		var combined []CompletionItem
+		combined = append(combined, mapValItems...)
+		combined = append(combined, localItems...)
+		return &CompletionList{IsIncomplete: false, Items: combined}
+	}
+
+	// 1.9 Map Literal Field completion (with duplicate suppression): e.g. inside `let x: TExample = @map{ ... }`
+	if mapItems, handled := s.handleMapLiteralCompletion(uri, lines, pos); handled {
+		return &CompletionList{IsIncomplete: false, Items: mapItems}
+	}
+
 	// 2. Member completion: e.g. "Utils." or "Net." or "Crypto." or "Fs." or "cdn."
-	if memberList, handled := s.handleMemberCompletion(uri, lines, prefixLine); handled {
+	if memberList, handled := s.handleMemberCompletion(uri, lines, pos.Line, prefixLine); handled {
 		return memberList
 	}
 

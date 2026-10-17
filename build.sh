@@ -20,31 +20,47 @@ DIST_DIR="dist"
 BINARY_NAME="xru"
 ENTRY_POINT="./cmd/xru"
 # Extract version from Go source
-VERSION=$(grep "BinVersion =" internal/utils/lib_version.go | cut -d'"' -f2)
+VERSION=$(grep "BinVersion =" internal/utils/lib_version.go | cut -d'"' -f2 | sed 's/^v//')
 
 echo -e "\n${BLUE}${BOLD} XRU BUILD ENGINE ${NC} ${DIM}v${VERSION}${NC}"
 echo -e "${DIM} ──────────────────────────────────────────────────${NC}\n"
 
-# Check for compress flag
+# Check for flags
 COMPRESS=false
-if [[ "$*" == *"--compress"* ]]; then
-    COMPRESS=true
-    if ! command -v upx >/dev/null 2>&1; then
-        echo -e " ${YELLOW}[WARN] UPX not found. Compression will be skipped.${NC}"
-        COMPRESS=false
-    fi
-fi
+CURRENT_ONLY=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --compress)
+            COMPRESS=true
+            if ! command -v upx >/dev/null 2>&1; then
+                echo -e " ${YELLOW}[WARN] UPX not found. Compression will be skipped.${NC}"
+                COMPRESS=false
+            fi
+            ;;
+        --current)
+            CURRENT_ONLY=true
+            ;;
+    esac
+done
 
 # Multi-platform targets
-# format: "os/arch"
-TARGETS=(
-    "linux/amd64"
-    "linux/arm64"
-    "darwin/amd64"
-    "darwin/arm64"
-    "windows/amd64"
-    "windows/arm64"
-)
+if [ "$CURRENT_ONLY" = true ]; then
+    HOST_OS=$(go env GOOS)
+    HOST_ARCH=$(go env GOARCH)
+    TARGETS=("${HOST_OS}/${HOST_ARCH}")
+    echo -e " ${CYAN}[MODE] Single target build for current host: ${HOST_OS}/${HOST_ARCH}${NC}\n"
+else
+    # format: "os/arch"
+    TARGETS=(
+        "linux/amd64"
+        "linux/arm64"
+        "darwin/amd64"
+        "darwin/arm64"
+        "windows/amd64"
+        "windows/arm64"
+    )
+fi
 
 # Initialization
 rm -rf "$DIST_DIR"
@@ -78,6 +94,39 @@ for TARGET in "${TARGETS[@]}"; do
                 echo -e "${YELLOW}[SKIPPED]${NC}"
             fi
         fi
+
+        # Packaging phase (Bundle binary + std library)
+        STAGE_DIR=$(mktemp -d)
+        mkdir -p "${STAGE_DIR}/bin" "${STAGE_DIR}/std"
+        cp "${DIST_DIR}/${OUTPUT}" "${STAGE_DIR}/bin/${BINARY_NAME}$([ "$OS" == "windows" ] && echo ".exe")"
+        cp -r std/*.xru "${STAGE_DIR}/std/"
+
+        ARCHIVE_BASE="${BINARY_NAME}-v${VERSION}-${OS}-${ARCH}"
+        LATEST_BASE="${BINARY_NAME}-${OS}-${ARCH}"
+
+        if [ "$OS" == "windows" ]; then
+            # Windows uses .zip
+            (cd "$STAGE_DIR" && zip -q -r "${OLDPWD}/${DIST_DIR}/${ARCHIVE_BASE}.zip" bin std)
+            cp "${DIST_DIR}/${ARCHIVE_BASE}.zip" "${DIST_DIR}/${LATEST_BASE}.zip"
+        else
+            # Unix/macOS uses standard .tar.gz
+            (cd "$STAGE_DIR" && tar -czf "${OLDPWD}/${DIST_DIR}/${ARCHIVE_BASE}.tar.gz" bin std)
+            cp "${DIST_DIR}/${ARCHIVE_BASE}.tar.gz" "${DIST_DIR}/${LATEST_BASE}.tar.gz"
+        fi
+
+        # If building current platform, update local project binary
+        HOST_OS=$(go env GOOS)
+        HOST_ARCH=$(go env GOARCH)
+        if [ "$OS" == "$HOST_OS" ] && [ "$ARCH" == "$HOST_ARCH" ]; then
+            BIN_TARGET="./${BINARY_NAME}$([ "$OS" == "windows" ] && echo ".exe")"
+            cp "${DIST_DIR}/${OUTPUT}" "${BIN_TARGET}.tmp" 2>/dev/null && mv -f "${BIN_TARGET}.tmp" "$BIN_TARGET" 2>/dev/null || true
+        fi
+
+        # Remove raw uncompressed binary from dist to avoid redundant duplicates
+        rm -f "${DIST_DIR}/${OUTPUT}"
+        rm -rf "$STAGE_DIR"
+
+        printf "  ${YELLOW}%-20s${NC} ${DIM}»${NC} ${GREEN}[BUNDLE PACKED]${NC}\n" "${ARCHIVE_BASE}"
     else
         echo -e "${NC}[FAILED]${NC}"
         exit 1

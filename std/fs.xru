@@ -1,0 +1,39 @@
+// Package fs provides file system inspection and file manipulation operations.
+
+/// Native file system operations provided by the engine.
+interface FsNative {
+	/// Checks whether the specified file or directory path exists.
+	func exists(path: string) -> bool
+
+	/// Returns true if the given path is an existing directory.
+	func isDir(path: string) -> bool
+
+	/// Returns true if the given path is an existing regular file.
+	func isFile(path: string) -> bool
+
+	/// Reads the entire contents of a text file into a string.
+	func read(path: string) -> string
+
+	/// Writes content to the destination file, creating parent directories if necessary.
+	func write(path: string, content: string) -> bool
+
+	/// Deletes a file or directory recursively.
+	func remove(path: string) -> void
+
+	/// Moves or renames a file or folder to a new location.
+	func move(source: string, destination: string) -> void
+
+	/// Ensures that a directory exists, creating all intermediate folders if needed.
+	func ensureDir(path: string) -> void
+
+	/// Returns the file size in bytes.
+	func size(path: string) -> number
+}
+
+unit fs includes FsNative {
+	/// Copies a file by reading its content and writing it to the destination.
+	func copy(source: string, destination: string) -> void {
+		let content = &fs::read(source)
+		&fs::write(destination, content)
+	}
+}

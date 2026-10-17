@@ -215,6 +215,12 @@ func (l *Lexer) NextToken() Token {
 		return Token{Type: COLON, Literal: ":", Pos: startPos}
 	case '.':
 		if l.peekChar() == '.' {
+			if l.peekChar2() == '.' {
+				l.readChar()
+				l.readChar()
+				l.readChar()
+				return Token{Type: ELLIPSIS, Literal: "...", Pos: startPos}
+			}
 			l.readChar()
 			l.readChar()
 			return Token{Type: RANGE, Literal: "..", Pos: startPos}
@@ -224,6 +230,9 @@ func (l *Lexer) NextToken() Token {
 	case ';':
 		l.readChar()
 		return Token{Type: SEMICOLON, Literal: ";", Pos: startPos}
+	case '?':
+		l.readChar()
+		return Token{Type: QUESTION, Literal: "?", Pos: startPos}
 	}
 
 	// 4. Nombres et Durées (ex: 3000, 30s, 500ms)

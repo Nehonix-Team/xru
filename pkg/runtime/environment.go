@@ -14,6 +14,7 @@ type Environment struct {
 	unitRef         *UnitInstance // Pointeur vers l'unité courante si dans #UNIT
 	currentDir      string
 	isBlockScope    bool // Vrai si dans une fonction, un bloc { }, une boucle, etc.
+	varTypes        map[string]string
 }
 
 func NewEnvironment(parent *Environment) *Environment {
@@ -36,6 +37,7 @@ func NewEnvironment(parent *Environment) *Environment {
 		globalConstants: gc,
 		unitRef:         uRef,
 		isBlockScope:    false,
+		varTypes:        make(map[string]string),
 	}
 }
 
@@ -177,4 +179,23 @@ func (e *Environment) GetGlobal(name string) (Value, bool) {
 		return e.parent.GetGlobal(name)
 	}
 	return nil, false
+}
+
+func (e *Environment) SetVariableType(name, typeName string) {
+	if e.varTypes == nil {
+		e.varTypes = make(map[string]string)
+	}
+	e.varTypes[name] = typeName
+}
+
+func (e *Environment) GetVariableType(name string) (string, bool) {
+	if e.varTypes != nil {
+		if t, ok := e.varTypes[name]; ok {
+			return t, true
+		}
+	}
+	if e.parent != nil {
+		return e.parent.GetVariableType(name)
+	}
+	return "", false
 }

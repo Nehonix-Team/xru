@@ -3,6 +3,7 @@ package lsp
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,8 +30,8 @@ func (s *Server) validateAndPublish(uri, text string) {
 		diagnostics = append(diagnostics, diag)
 	}
 
-	// 2. Collect checker semantic errors only if syntax was valid
-	if len(p.Errors()) == 0 && prog != nil {
+	// 2. Collect checker semantic errors
+	if prog != nil {
 		c := checker.New()
 		c.SetCurrentFile(filename)
 		c.Check(prog)
@@ -168,17 +169,32 @@ func parseErrorStringToDiagnostic(errStr string) Diagnostic {
 func uriToPath(uri string) string {
 	if strings.HasPrefix(uri, "file://") {
 		u, err := url.Parse(uri)
+		var p string
 		if err == nil {
-			return u.Path
+			p, _ = url.PathUnescape(u.Path)
+		} else {
+			p = strings.TrimPrefix(uri, "file://")
 		}
-		return strings.TrimPrefix(uri, "file://")
+		// Windows drive letter handling: "/C:/path" -> "C:/path" or "/c:/path" -> "C:/path"
+		if len(p) >= 3 && p[0] == '/' && p[2] == ':' {
+			p = p[1:]
+		}
+		return filepath.Clean(filepath.FromSlash(p))
 	}
-	return uri
+	return filepath.Clean(filepath.FromSlash(uri))
 }
 
 func pathToURI(path string) string {
-	if strings.HasPrefix(path, "file://") {
-		return path
+	p := filepath.ToSlash(filepath.Clean(path))
+	if strings.HasPrefix(p, "file://") {
+		return p
 	}
-	return "file://" + path
+	// Windows drive letter: "C:/foo" -> "file:///C:/foo"
+	if len(p) >= 2 && p[1] == ':' {
+		return "file:///" + p
+	}
+	if !strings.HasPrefix(p, "/") {
+		return "file:///" + p
+	}
+	return "file://" + p
 }

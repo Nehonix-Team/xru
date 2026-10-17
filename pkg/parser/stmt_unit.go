@@ -15,6 +15,14 @@ func (p *Parser) parseUnitStatement() *ast.UnitStatement {
 	}
 	stmt.Name = p.curToken.Literal
 
+	if p.peekTokenIs(lexer.INCLUDES) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "extends") {
+		p.nextToken()
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.Includes = p.curToken.Literal
+	}
+
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}
@@ -36,6 +44,20 @@ func (p *Parser) parseUnitStatement() *ast.UnitStatement {
 			fn := p.parseFuncStatement()
 			if fn != nil {
 				stmt.Methods = append(stmt.Methods, fn)
+			}
+		case lexer.AT:
+			if p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "native" {
+				hookName := p.parseNativeAnnotation()
+				if !p.expectPeek(lexer.FUNC) {
+					return nil
+				}
+				p.currentNativeHook = hookName
+				fn := p.parseFuncStatement()
+				if fn != nil {
+					stmt.Methods = append(stmt.Methods, fn)
+				}
+			} else {
+				p.addError(p.curToken.Pos, fmt.Sprintf("unexpected statement inside unit '%s': %s", stmt.Name, p.curToken.Literal))
 			}
 		default:
 			p.addError(p.curToken.Pos, fmt.Sprintf("unexpected statement inside unit '%s': %s", stmt.Name, p.curToken.Literal))

@@ -1,0 +1,37 @@
+// Package sys provides operating system inspection and process control.
+
+interface ROpt @map {
+	onMismatch? "fatal" or "warn" or "auto-update"
+	mode? "log" or "silent"
+}
+
+
+/// Native operating system inspection and process control primitives.
+interface SysNative {
+	/// Returns the host operating system name (e.g. "linux", "darwin", "windows").
+	func os() -> string
+
+	/// Returns the machine processor architecture (e.g. "amd64", "arm64").
+	func arch() -> string
+
+	/// Retrieves the value of an OS environment variable with an optional fallback.
+	func getEnv(name: string, fallback: string = "") -> string
+
+	/// Terminates the process immediately with the given exit code (0 by default).
+	func exit(code: number = 0) -> never
+
+	/// Pauses current execution for the given duration.
+	func sleep(duration: any) -> void
+
+	/// Returns the current time formatted as an ISO-8601 string.
+	func time() -> string
+
+	/// Validates that the current XRU runtime satisfies the version constraint (e.g. ">= 2.0.67", "<= 2.0.0").
+	/// Options map can configure mismatch handling (onMismatch: "fatal" | "warn" | "auto-update", mode: "log" | "silent").
+	func require(constraint: string, options: ROpt = nil) -> bool
+
+	/// Returns the current active XRU engine semantic version (e.g. "2.0.67").
+	func version() -> string
+}
+
+unit sys includes SysNative {}

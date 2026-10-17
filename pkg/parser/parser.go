@@ -8,10 +8,11 @@ import (
 )
 
 type Parser struct {
-	l         *lexer.Lexer
-	curToken  lexer.Token
-	peekToken lexer.Token
-	errors    []string
+	l                 *lexer.Lexer
+	curToken          lexer.Token
+	peekToken         lexer.Token
+	errors            []string
+	currentNativeHook string
 }
 
 func New(l *lexer.Lexer) *Parser {

@@ -125,11 +125,11 @@ func parseFileImports(text string) []FileImport {
 	var imports []FileImport
 	lines := strings.Split(text, "\n")
 
-	reFromGroup := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)::\(([^)]+)\)`)
-	reFromMember := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)::([a-zA-Z0-9_]+)`)
-	reFromMods := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+\(([^)]+)\)`)
-	reFromAs := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)\s+as\s+([a-zA-Z0-9_]+)`)
-	reFromMod := regexp.MustCompile(`^\s*from\s+["']([^"']+)["']\s+use\s+([a-zA-Z0-9_]+)`)
+	reFromGroup := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+(?:([a-zA-Z0-9_]+)::)?(?:\{|\()([^})]+)(?:\}|\))`)
+	reFromMember := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+([a-zA-Z0-9_]+)::([a-zA-Z0-9_]+)`)
+	reFromMods := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+(?:\{|\()([^})]+)(?:\}|\))`)
+	reFromAs := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+([a-zA-Z0-9_]+)\s+as\s+([a-zA-Z0-9_]+)`)
+	reFromMod := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+["']?([a-zA-Z0-9_]+)["']?`)
 	reUseAs := regexp.MustCompile(`^\s*use\s+([a-zA-Z0-9_]+)\s+as\s+([a-zA-Z0-9_]+)`)
 	reUse := regexp.MustCompile(`^\s*use\s+([a-zA-Z0-9_]+)`)
 
@@ -147,9 +147,15 @@ func parseFileImports(text string) []FileImport {
 					members = append(members, mem)
 				}
 			}
+			src := m[1]
+			mod := m[2]
+			if mod == "" {
+				mod = src
+				src = ""
+			}
 			imports = append(imports, FileImport{
-				Source:  m[1],
-				Module:  m[2],
+				Source:  src,
+				Module:  mod,
 				Members: members,
 				Line:    idx,
 			})
@@ -207,7 +213,7 @@ func findDeclarationInFile(filePath, word string) (line, char int, found bool) {
 		return 0, 0, false
 	}
 	lines := strings.Split(string(content), "\n")
-	reDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare)\s+(%s)\b`, regexp.QuoteMeta(word)))
+	reDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare|interface|type)\s+(%s)\b`, regexp.QuoteMeta(word)))
 	for lIdx, l := range lines {
 		lTrim := strings.TrimSpace(l)
 		if strings.HasPrefix(lTrim, "//") {
@@ -240,6 +246,8 @@ func findDeclarationInFile(filePath, word string) (line, char int, found bool) {
 	return 0, 0, false
 }
 
+// findStdFile is implemented in std_resolver.go with global XFPM and local project paths resolution.
+
 func (s *Server) resolveModuleFilePath(modCfg *modules.ModConfig, sourceNs, modName, curFileDir string) string {
 	if modCfg != nil {
 		if sourceNs != "" {
@@ -257,6 +265,9 @@ func (s *Server) resolveModuleFilePath(modCfg *modules.ModConfig, sourceNs, modN
 	localPath := filepath.Join(curFileDir, modName+".xru")
 	if info, err := os.Stat(localPath); err == nil && !info.IsDir() {
 		return localPath
+	}
+	if stdPath := findStdFile(curFileDir, modName); stdPath != "" {
+		return stdPath
 	}
 	return ""
 }
@@ -325,6 +336,112 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 			}
 			return nil
 		}
+	}
+
+	// 1.5 Member navigation: obj.member (e.g. validExample.c, opts.silent, params.a, $f{params.a})
+	if dotIdx := strings.LastIndex(fullExpr, "."); dotIdx != -1 {
+		rawObj := strings.TrimSpace(fullExpr[:dotIdx])
+		memberName := strings.TrimSpace(fullExpr[dotIdx+1:])
+		rawObj = strings.TrimPrefix(rawObj, "$f{")
+		rawObj = strings.TrimPrefix(rawObj, "${")
+		rawObj = strings.TrimPrefix(rawObj, "{")
+		objName := rawObj
+
+		if objName != "" && memberName != "" {
+			if word != objName {
+				if varInfo := findVariableTargetInfo(lines, objName); varInfo != nil {
+					targetIface := varInfo.interfaceName
+					if targetIface == "" {
+						targetIface = varInfo.unitType
+					}
+					if targetIface != "" {
+						if loc := findMemberInInterface(lines, targetIface, memberName, uri); loc != nil {
+							return loc
+						}
+					}
+					// Builtin primitive methods: string, list, number, map
+					if varInfo.isString || strings.EqualFold(targetIface, "string") || objName == "string" {
+						if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+							if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, memberName); found {
+								return &Location{
+									URI: pathToURI(stdBuiltin),
+									Range: Range{
+										Start: Position{Line: lIdx, Character: charPos},
+										End:   Position{Line: lIdx, Character: charPos + len(memberName)},
+									},
+								}
+							}
+						}
+					}
+					if varInfo.isList || strings.EqualFold(targetIface, "list") || objName == "list" {
+						if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+							if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, memberName); found {
+								return &Location{
+									URI: pathToURI(stdBuiltin),
+									Range: Range{
+										Start: Position{Line: lIdx, Character: charPos},
+										End:   Position{Line: lIdx, Character: charPos + len(memberName)},
+									},
+								}
+							}
+						}
+					}
+					if varInfo.isNumber || strings.EqualFold(targetIface, "number") || objName == "number" {
+						if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+							if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, memberName); found {
+								return &Location{
+									URI: pathToURI(stdBuiltin),
+									Range: Range{
+										Start: Position{Line: lIdx, Character: charPos},
+										End:   Position{Line: lIdx, Character: charPos + len(memberName)},
+									},
+								}
+							}
+						}
+					}
+					if varInfo.isMap || strings.EqualFold(targetIface, "map") || objName == "map" {
+						if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+							if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, memberName); found {
+								return &Location{
+									URI: pathToURI(stdBuiltin),
+									Range: Range{
+										Start: Position{Line: lIdx, Character: charPos},
+										End:   Position{Line: lIdx, Character: charPos + len(memberName)},
+									},
+								}
+							}
+						}
+					}
+					// Inline map in function or variable
+					reFieldDecl := regexp.MustCompile(fmt.Sprintf(`\b(%s)\s*\??\s*(?::|\s+)`, regexp.QuoteMeta(memberName)))
+					for idx, l := range lines {
+						if strings.Contains(l, "@map") && strings.Contains(l, memberName) {
+							if matchLoc := reFieldDecl.FindStringSubmatchIndex(l); matchLoc != nil && len(matchLoc) >= 4 {
+								return &Location{
+									URI: uri,
+									Range: Range{
+										Start: Position{Line: idx, Character: matchLoc[2]},
+										End:   Position{Line: idx, Character: matchLoc[3]},
+									},
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 1.6 Clicked on a property key inside a typed map literal: e.g. `mode: "log"` in Sys.require("...", @map{ mode: "log" })
+	if isKey, keyWord, mapStartLine := isCursorOnMapKey(lines, pos); isKey {
+		expectedType := resolveExpectedMapType(lines, mapStartLine, curFilePath)
+		if expectedType != "" {
+			if loc := findMemberInInterface(lines, expectedType, keyWord, uri); loc != nil {
+				return loc
+			}
+		}
+		// In a map key context: NEVER fall through to external variables or modules!
+		return nil
 	}
 
 	// 2. Clicked on a namespace name in _mod.xru
@@ -412,8 +529,8 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		}
 	}
 
-	// 4. Search Local Definitions in active file (variables, lambdas, funcs)
-	reLocalDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare)\s+(%s)\b`, regexp.QuoteMeta(word)))
+	// 4. Search Local Definitions in active file (variables, lambdas, funcs, interfaces, types)
+	reLocalDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare|interface|type)\s+(%s)\b`, regexp.QuoteMeta(word)))
 	for idx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") {
@@ -561,15 +678,6 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		}
 
 		if imp.Module == word {
-			if imp.Module == "std" || imp.Module == "fs" || imp.Module == "net" || imp.Module == "crypto" || imp.Module == "cmd" {
-				return &Location{
-					URI: uri,
-					Range: Range{
-						Start: Position{Line: imp.Line, Character: 0},
-						End:   Position{Line: imp.Line, Character: len(lines[imp.Line])},
-					},
-				}
-			}
 			modFile := s.resolveModuleFilePath(modCfg, imp.Source, imp.Module, fileDir)
 			if modFile != "" {
 				lIdx, charPos, _ := findDeclarationInFile(modFile, imp.Module)
@@ -584,17 +692,310 @@ func (s *Server) handleDefinition(uri string, pos Position) *Location {
 		}
 	}
 
-	// 6. Builtin 'std' fallback
-	if word == "std" {
-		return &Location{
-			URI: uri,
-			Range: Range{
-				Start: Position{Line: 0, Character: 0},
-				End:   Position{Line: 0, Character: 0},
-			},
+	// 6. Builtin primitive contracts & types in std/builtin.xru
+	lowerWord := strings.ToLower(word)
+	if lowerWord == "string" || lowerWord == "list" || lowerWord == "number" || lowerWord == "map" {
+		targetIface := strings.ToUpper(lowerWord[:1]) + lowerWord[1:]
+		if stdBuiltin := findStdFile(fileDir, "builtin"); stdBuiltin != "" {
+			if lIdx, charPos, found := findDeclarationInFile(stdBuiltin, targetIface); found {
+				return &Location{
+					URI: pathToURI(stdBuiltin),
+					Range: Range{
+						Start: Position{Line: lIdx, Character: charPos},
+						End:   Position{Line: lIdx, Character: charPos + len(targetIface)},
+					},
+				}
+			}
+		}
+	}
+	if word == "DateInfo" {
+		if stdDate := findStdFile(fileDir, "date"); stdDate != "" {
+			if lIdx, charPos, found := findDeclarationInFile(stdDate, "DateInfo"); found {
+				return &Location{
+					URI: pathToURI(stdDate),
+					Range: Range{
+						Start: Position{Line: lIdx, Character: charPos},
+						End:   Position{Line: lIdx, Character: charPos + len(word)},
+					},
+				}
+			}
 		}
 	}
 
+	// 7. Standard library modules: std, path, fs, crypto, date, math, sys, cmd, json, net
+	for _, m := range []string{"std", "path", "fs", "crypto", "date", "math", "sys", "cmd", "json", "net"} {
+		if word == m {
+			if stdFile := findStdFile(fileDir, word); stdFile != "" {
+				return &Location{
+					URI: pathToURI(stdFile),
+					Range: Range{
+						Start: Position{Line: 0, Character: 0},
+						End:   Position{Line: 0, Character: len(word)},
+					},
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+type PropertyInfo struct {
+	TypeName   string
+	PropName   string
+	PropType   string
+	IsOptional bool
+	IsMethod   bool
+	Doc        string
+	Line       int
+	CharStart  int
+	CharEnd    int
+	URI        string
+}
+
+func findPropertyDeclaration(lines []string, targetType, propName string, uri string) *PropertyInfo {
+	if targetType == "" || propName == "" {
+		return nil
+	}
+	cleanType := strings.TrimSpace(strings.TrimSuffix(targetType, "?"))
+
+	// 1. If targetType is an inline map type: @map{ a: string, ... }
+	if strings.HasPrefix(cleanType, "@map") && strings.Contains(cleanType, "{") {
+		reField := regexp.MustCompile(fmt.Sprintf(`\b(%s)(\??)(?:\s*:\s*|\s+)([^,\n}]+)`, regexp.QuoteMeta(propName)))
+		if m := reField.FindStringSubmatch(cleanType); len(m) > 3 {
+			pType := strings.TrimSpace(m[3])
+			return &PropertyInfo{
+				TypeName:   "@map",
+				PropName:   propName,
+				PropType:   pType,
+				IsOptional: m[2] == "?",
+				IsMethod:   strings.HasPrefix(pType, "func(") || strings.HasPrefix(pType, "func "),
+				URI:        uri,
+			}
+		}
+	}
+
+	// 2. Scan active file
+	if info := scanLinesForPropertyDeclaration(lines, cleanType, propName, uri); info != nil {
+		return info
+	}
+
+	// 3. Scan workspace files in current directory
+	curFilePath := uriToPath(uri)
+	if curFilePath != "" {
+		fileDir := filepath.Dir(curFilePath)
+		entries, err := os.ReadDir(fileDir)
+		if err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".xru") {
+					fp := filepath.Join(fileDir, entry.Name())
+					if fp == curFilePath {
+						continue
+					}
+					if content, rErr := os.ReadFile(fp); rErr == nil {
+						fLines := strings.Split(string(content), "\n")
+						if info := scanLinesForPropertyDeclaration(fLines, cleanType, propName, pathToURI(fp)); info != nil {
+							return info
+						}
+					}
+				}
+			}
+		}
+
+		// 4. Scan stdlib files
+		if stdDir := FindStdDir(fileDir); stdDir != "" {
+			stdEntries, sErr := os.ReadDir(stdDir)
+			if sErr == nil {
+				for _, entry := range stdEntries {
+					if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".xru") {
+						fp := filepath.Join(stdDir, entry.Name())
+						if content, rErr := os.ReadFile(fp); rErr == nil {
+							fLines := strings.Split(string(content), "\n")
+							if info := scanLinesForPropertyDeclaration(fLines, cleanType, propName, pathToURI(fp)); info != nil {
+								return info
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func scanLinesForPropertyDeclaration(lines []string, cleanType, propName, uri string) *PropertyInfo {
+	reIfaceStart := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:interface|type)\s+%s\b`, regexp.QuoteMeta(cleanType)))
+	reField := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:func\s+)?(%s)(\??)(?:\s*:\s*|\s+)([^/\n\r;]+?)(?:;|\s*//(.*))?$`, regexp.QuoteMeta(propName)))
+
+	inTargetIface := false
+	braceDepth := 0
+
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+			continue
+		}
+
+		if !inTargetIface {
+			if reIfaceStart.MatchString(line) {
+				inTargetIface = true
+				braceDepth = strings.Count(line, "{") - strings.Count(line, "}")
+				if matchLoc := reField.FindStringSubmatchIndex(line); matchLoc != nil && len(matchLoc) >= 4 {
+					m := reField.FindStringSubmatch(line)
+					propType := strings.TrimSpace(m[3])
+					trailingDoc := ""
+					if len(m) > 4 {
+						trailingDoc = strings.TrimSpace(m[4])
+					}
+					aboveDoc := extractDocCommentForLine(lines, idx)
+					doc := aboveDoc
+					if trailingDoc != "" {
+						if doc != "" {
+							doc += "\n\n" + trailingDoc
+						} else {
+							doc = trailingDoc
+						}
+					}
+					return &PropertyInfo{
+						TypeName:   cleanType,
+						PropName:   propName,
+						PropType:   propType,
+						IsOptional: m[2] == "?",
+						IsMethod:   strings.HasPrefix(propType, "func(") || strings.HasPrefix(propType, "func "),
+						Doc:        doc,
+						Line:       idx,
+						CharStart:  matchLoc[2],
+						CharEnd:    matchLoc[3],
+						URI:        uri,
+					}
+				}
+				if braceDepth == 0 && strings.Contains(line, "{") {
+					inTargetIface = false
+				}
+			}
+		} else {
+			braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+			if matchLoc := reField.FindStringSubmatchIndex(line); matchLoc != nil && len(matchLoc) >= 4 {
+				m := reField.FindStringSubmatch(line)
+				propType := strings.TrimSpace(m[3])
+				trailingDoc := ""
+				if len(m) > 4 {
+					trailingDoc = strings.TrimSpace(m[4])
+				}
+				aboveDoc := extractDocCommentForLine(lines, idx)
+				doc := aboveDoc
+				if trailingDoc != "" {
+					if doc != "" {
+						doc += "\n\n" + trailingDoc
+					} else {
+						doc = trailingDoc
+					}
+				}
+				return &PropertyInfo{
+					TypeName:   cleanType,
+					PropName:   propName,
+					PropType:   propType,
+					IsOptional: m[2] == "?",
+					IsMethod:   strings.HasPrefix(propType, "func(") || strings.HasPrefix(propType, "func "),
+					Doc:        doc,
+					Line:       idx,
+					CharStart:  matchLoc[2],
+					CharEnd:    matchLoc[3],
+					URI:        uri,
+				}
+			}
+			if braceDepth <= 0 {
+				inTargetIface = false
+			}
+		}
+	}
+	return nil
+}
+
+// isCursorOnMapKey checks whether pos is on a key identifier inside a @map { ... } or object literal block.
+func isCursorOnMapKey(lines []string, pos Position) (bool, string, int) {
+	if pos.Line < 0 || pos.Line >= len(lines) {
+		return false, "", -1
+	}
+	curLine := lines[pos.Line]
+	trimmed := strings.TrimSpace(curLine)
+	if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") {
+		return false, "", -1
+	}
+
+	// 1. Must have a key-value colon on this line (excluding ::)
+	colonIdx := -1
+	for i := 0; i < len(curLine); i++ {
+		if curLine[i] == ':' {
+			if (i > 0 && curLine[i-1] == ':') || (i+1 < len(curLine) && curLine[i+1] == ':') {
+				continue
+			}
+			colonIdx = i
+			break
+		}
+	}
+	if colonIdx == -1 {
+		return false, "", -1
+	}
+
+	// 2. Cursor MUST be before or on the colon (key position)
+	if pos.Character > colonIdx {
+		return false, "", -1
+	}
+
+	// 3. Extract the key before colon
+	reKey := regexp.MustCompile(`^\s*([a-zA-Z_][a-zA-Z0-9_]*|"(?:[^"\\]|\\.)*")\s*:`)
+	matchLoc := reKey.FindStringSubmatchIndex(curLine[:colonIdx+1])
+	if matchLoc == nil || len(matchLoc) < 4 {
+		return false, "", -1
+	}
+	keyStart := matchLoc[2]
+	keyEnd := matchLoc[3]
+	if pos.Character < keyStart || pos.Character > keyEnd {
+		return false, "", -1
+	}
+	keyWord := strings.Trim(curLine[keyStart:keyEnd], "\"")
+
+	// 4. Verify we are inside a map literal block @map { ... } or { ... }
+	depth := 0
+	mapStartLine := -1
+	for l := pos.Line; l >= 0; l-- {
+		line := lines[l]
+		for _, r := range line {
+			if r == '{' {
+				depth++
+			} else if r == '}' {
+				depth--
+			}
+		}
+		if depth > 0 && (strings.Contains(line, "@map") || strings.Contains(line, "=") || strings.Contains(line, "(")) {
+			trimmedL := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmedL, "interface ") || strings.HasPrefix(trimmedL, "type ") || strings.HasPrefix(trimmedL, "unit ") {
+				return false, "", -1
+			}
+			mapStartLine = l
+			break
+		}
+	}
+
+	if mapStartLine == -1 {
+		return false, "", -1
+	}
+
+	return true, keyWord, mapStartLine
+}
+
+func findMemberInInterface(lines []string, ifaceName, memberName string, uri string) *Location {
+	if info := findPropertyDeclaration(lines, ifaceName, memberName, uri); info != nil {
+		return &Location{
+			URI: info.URI,
+			Range: Range{
+				Start: Position{Line: info.Line, Character: info.CharStart},
+				End:   Position{Line: info.Line, Character: info.CharEnd},
+			},
+		}
+	}
 	return nil
 }
 

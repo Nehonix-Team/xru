@@ -1,0 +1,180 @@
+// Package builtin documents and formalizes the fundamental types and their fluid methods in XRU 2.0.
+// This file serves as the core type contract reference for the compiler, static type checker, and LSP.
+
+/// Immutable UTF-8 text string type.
+interface String {
+	/// Returns the length (number of characters) of the string.
+	func len() -> number
+
+	/// Returns the string with leading and trailing whitespace removed.
+	func trim() -> string
+
+	/// Returns the string with leading whitespace removed.
+	func trimLeft() -> string
+
+	/// Returns the string with trailing whitespace removed.
+	func trimRight() -> string
+
+	/// Returns the string with all characters converted to uppercase.
+	func toUpper() -> string
+
+	/// Returns the string with all characters converted to lowercase.
+	func toLower() -> string
+
+	/// Reports whether the specified substring is within the string.
+	func contains(substr: string) -> bool
+
+	/// Tests whether the string begins with the specified prefix.
+	func startsWith(prefix: string) -> bool
+
+	/// Tests whether the string ends with the specified suffix.
+	func endsWith(suffix: string) -> bool
+
+	/// Slices the string into all substrings separated by separator and returns a list of them.
+	func split(separator: string) -> list[string]
+
+	/// Returns a copy of the string with all occurrences of old replaced by new.
+	func replace(old: string, new: string) -> string
+
+	/// Returns a substring starting from index start up to optional index end.
+	func slice(start: number, end: number = -1) -> string
+}
+
+/// Dynamically sized ordered list collection.
+interface List {
+	/// Returns the number of elements in the list.
+	func len() -> number
+
+	/// Concatenates the elements of the list to create a single string, using separator between elements.
+	func join(separator: string) -> string
+
+	/// Reports whether the specified item is present in the list.
+	func contains(item: any) -> bool
+
+	/// Appends a new element to the end of the list in place.
+	func push(item: any) -> void
+
+	/// Removes and returns the last element of the list.
+	func pop() -> any
+
+	/// Returns a new list with elements in reverse order.
+	func reverse() -> list
+
+	/// Returns a new list containing a portion of the list from index start up to optional index end.
+	func slice(start: number, end: number = -1) -> list
+
+	/// Returns the element at the specified zero-based index. Negative indices count back from the end.
+	func get(index: number) -> any
+}
+
+/// Numeric value type (IEEE 754 64-bit floating point or integer).
+interface Number {
+	/// Returns the absolute value of the number.
+	func abs() -> number
+
+	/// Returns the greatest integer less than or equal to the number.
+	func floor() -> number
+
+	/// Returns the least integer greater than or equal to the number.
+	func ceil() -> number
+
+	/// Returns the nearest integer, rounding half away from zero.
+	func round() -> number
+
+	/// Formats the number using fixed-point notation with specified decimal digits.
+	func fixed(digits: number) -> string
+
+	/// Truncates the number to an integer by dropping the fractional part.
+	func int() -> number
+
+	/// Converts the number to its string representation.
+	func toString() -> string
+}
+
+/// Key-value dictionary associative collection.
+interface Map {
+	/// Returns a list containing all the keys in the map.
+	func keys() -> list[string]
+
+	/// Returns a list containing all the values in the map.
+	func values() -> list[any]
+
+	/// Returns a list of [key, value] pairs from the map.
+	func entries() -> list[any]
+
+	/// Returns true if the map contains the specified key.
+	func has(key: string) -> bool
+
+	/// Returns the number of entries in the map.
+	func len() -> number
+
+	/// Removes the entry with the specified key from the map.
+	func delete(key: string) -> void
+
+	/// Removes all entries from the map.
+	func clear() -> void
+}
+
+/// Multi-view surgical file manipulation document providing raw, linewise, JSON, and fuzzy editing capabilities.
+interface Document {
+	/// Returns the entire raw content of the document as a string.
+	func getContent() -> string
+
+	/// Replaces the entire content of the document with the provided string.
+	func setContent(newContent: string) -> bool
+
+	/// Appends the specified text to the end of the document.
+	func append(content: string) -> bool
+
+	/// Prepends the specified text to the beginning of the document.
+	func prepend(content: string) -> bool
+
+	/// Checks whether the document contains the specified pattern.
+	func contains(pattern: string) -> bool
+
+	/// Returns the total number of lines in the document.
+	func size() -> number
+
+	/// Returns all lines of the document as a list of strings.
+	func getLines() -> list[string]
+
+	/// Replaces all lines of the document with the provided list of strings.
+	func setLines(lines: list[string]) -> bool
+
+	/// Returns the content of the line at 1-based index lineNum.
+	func getLine(lineNum: number) -> string
+
+	/// Updates the content of the line at 1-based index lineNum.
+	func setLine(lineNum: number, text: string) -> bool
+
+	/// Deletes the line at 1-based index lineNum, or deletes the first line containing the given pattern.
+	func removeLine(lineNumOrPattern: any) -> bool
+
+	/// Deletes all lines containing pattern, or deletes lines in the 1-based range [startLine, endLine].
+	func removeLines(patternOrStart: any, endLine: number = -1) -> bool
+
+	/// Parses the document as JSON and retrieves the value at dot-separated keyPath (e.g. 'scripts.build').
+	func getJson(keyPath: string) -> any
+
+	/// Sets or updates a field at dot-separated keyPath with formatted JSON indentation.
+	func setJson(keyPath: string, value: any) -> bool
+
+	/// Removes a field at dot-separated keyPath from the JSON structure.
+	func removeJson(keyPath: string) -> bool
+
+	/// Replaces target with whitespace-insensitive fuzzy token matching.
+	func replaceFuzzy(target: string, replacement: string) -> bool
+
+	/// Deletes target using whitespace-insensitive fuzzy token matching.
+	func removeFuzzy(target: string) -> bool
+
+	/// Removes content between start and end delimiters.
+	func removeBetween(start: string, end: string, includeBounds: bool = false) -> bool
+
+	/// Surgically removes a block starting at anchor by counting matched bracket depth, safely ignoring strings and comments.
+	func removeBalanced(anchor: string, openChar: string = "{", closeChar: string = "}") -> bool
+
+	/// Manually flushes document modifications to disk immediately.
+	func save() -> bool
+}
+

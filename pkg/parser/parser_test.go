@@ -282,7 +282,7 @@ func TestMultiModuleFromUseStatement(t *testing.T) {
 }
 
 func TestGroupedMemberFromUseStatement(t *testing.T) {
-	input := `from "dll" use gArgs::(author, description, version, name, plugin)`
+	input := `from "dll" use gArgs::@map{author, description, version, name, plugin}`
 	l := lexer.New("test.xru", input)
 	p := parser.New(l)
 	prog := p.ParseProgram()

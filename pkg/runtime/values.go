@@ -60,7 +60,10 @@ func (v ListValue) String() string {
 	return "[" + strings.Join(s, ", ") + "]"
 }
 
-type MapValue struct{ Pairs map[string]Value }
+type MapValue struct {
+	Pairs         map[string]Value
+	InterfaceName string
+}
 
 func (v MapValue) Type() ValueType { return ValMap }
 func (v MapValue) String() string {

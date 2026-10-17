@@ -15,6 +15,7 @@ const (
 	SymUnit      SymbolKind = "unit"
 	SymFunc      SymbolKind = "function"
 	SymDirective SymbolKind = "directive"
+	SymInterface SymbolKind = "interface"
 )
 
 type Symbol struct {
@@ -31,12 +32,15 @@ type Symbol struct {
 	MinArgs     int                // Nombre minimum d'arguments obligatoires
 	HasOptional bool               // Les paramètres au-delà de MinArgs sont optionnels (non variadique)
 	IsVariadic  bool               // Vrai si accepte des arguments supplémentaires
+	Optional    bool               // Propriété optionnelle d'interface ou paramètre optionnel
+	IfaceDef    *ast.InterfaceStatement
 }
 
 type Scope struct {
 	parent  *Scope
 	symbols map[string]*Symbol
 	isUnit  bool
+	unitSym *Symbol
 }
 
 func NewScope(parent *Scope, isUnit bool) *Scope {
@@ -45,6 +49,16 @@ func NewScope(parent *Scope, isUnit bool) *Scope {
 		symbols: make(map[string]*Symbol),
 		isUnit:  isUnit,
 	}
+}
+
+func (s *Scope) GetEnclosingUnit() *Symbol {
+	if s.unitSym != nil {
+		return s.unitSym
+	}
+	if s.parent != nil {
+		return s.parent.GetEnclosingUnit()
+	}
+	return nil
 }
 
 func (s *Scope) Define(sym *Symbol) error {

@@ -126,16 +126,30 @@ func (cfg *ModConfig) GetNamespaceModules(namespace string) (map[string]*ModuleD
 	}
 
 	info, err := os.Stat(targetDir)
-	if err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("mapped path '%s' (for namespace '%s') does not exist or is not a directory", cleanPath, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("mapped path '%s' (for namespace '%s') does not exist: %v", cleanPath, namespace, err)
+	}
+
+	modules := make(map[string]*ModuleDetails)
+
+	if !info.IsDir() {
+		if strings.HasSuffix(targetDir, ".xru") && filepath.Base(targetDir) != ModConfigFileName {
+			modDetails, err := parseModuleFile(targetDir, namespace)
+			if err == nil && modDetails != nil {
+				modules[modDetails.Name] = modDetails
+				fileBase := strings.TrimSuffix(filepath.Base(targetDir), ".xru")
+				if fileBase != modDetails.Name {
+					modules[fileBase] = modDetails
+				}
+			}
+		}
+		return modules, nil
 	}
 
 	entries, err := os.ReadDir(targetDir)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read mapped directory '%s': %v", targetDir, err)
 	}
-
-	modules := make(map[string]*ModuleDetails)
 
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".xru") {

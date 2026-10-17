@@ -168,6 +168,12 @@ interface Document {
 	/// Deletes target using whitespace-insensitive fuzzy token matching.
 	func removeFuzzy(target: string) -> bool
 
+	/// Replaces all occurrences of target string with replacement.
+	func replace(target: string, replacement: string) -> bool
+
+	/// Deletes all occurrences of target string.
+	func remove(target: string) -> bool
+
 	/// Removes content between start and end delimiters.
 	func removeBetween(start: string, end: string, includeBounds: bool = false) -> bool
 
@@ -176,5 +182,17 @@ interface Document {
 
 	/// Manually flushes document modifications to disk immediately.
 	func save() -> bool
+}
+
+/// Local sandbox orchestration scope providing directory-scoped file pruning and variant control.
+interface LocalScope {
+	/// Drops files or directories matching the glob patterns.
+	func Drop(patterns: list[string]) -> void
+
+	/// Retains only the files or directories matching the specified patterns, deleting all others.
+	func Keep(patterns: list[string]) -> void
+
+	/// Selects and executes a configuration variant block.
+	func UseVariant(name: string) -> void
 }
 

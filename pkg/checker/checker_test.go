@@ -1457,5 +1457,69 @@ func TestSysRequireOptionValidation(t *testing.T) {
 	}
 }
 
+func TestIndexedArgTypeAndUnionValidation(t *testing.T) {
+	code := `
+interface ServerConfig @map {
+    host string
+    port number
+    mode "development" or "production"
+}
+
+interface S {
+    mode "dev" | "prod"
+}
+
+arg env: ServerConfig["mode"] = "production"
+arg port: number = 8080
+arg appName: string
+
+const config: ServerConfig = @map {
+    host: "127.0.0.1",
+    port: port,
+    mode: env
+}
+`
+	l := lexer.New("test_indexed_args.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Checker errors: %v", c.Errors())
+	}
+}
+
+func TestLocalInterfaceOverridesBuiltinDocument(t *testing.T) {
+	code := `
+interface Document {
+    test string
+}
+
+file "tests.html" (e, d: Document) -> {
+    d.test
+    d.replace("a", "b")
+}
+`
+	l := lexer.New("test_local_doc.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+
+	foundErr := false
+	for _, err := range c.Errors() {
+		if strings.Contains(err, "ERR_NO_SUCH_PROPERTY") && strings.Contains(err, "replace") {
+			foundErr = true
+			break
+		}
+	}
+	if !foundErr {
+		t.Errorf("Expected ERR_NO_SUCH_PROPERTY for d.replace with local Document interface, got: %v", c.Errors())
+	}
+}
+
 
 

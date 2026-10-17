@@ -1802,5 +1802,92 @@ let total = c.compute(5, 7)
 	}
 }
 
+func TestFileStatementErrorFirst(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_file_err_first_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	samplePath := filepath.Join(tempDir, "test.html")
+	_ = os.WriteFile(samplePath, []byte("<h1>HelixGear</h1>"), 0644)
+
+	code := fmt.Sprintf(`
+file "%s" (e, d) -> {
+    if e == nil {
+        d.replace("HelixGear", "HelixGear Test")
+    }
+}
+`, samplePath)
+
+	p := parser.New(lexer.New("test_err_first.xru", code))
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	content, err := os.ReadFile(samplePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "<h1>HelixGear Test</h1>" {
+		t.Errorf("Expected '<h1>HelixGear Test</h1>', got '%s'", string(content))
+	}
+}
+
+func TestFromUseCatch(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_catch_test_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	modPath := filepath.Join(tempDir, "_mod.xru")
+	_ = os.WriteFile(modPath, []byte(`map { r -> "./arg.xru" }`), 0644)
+
+	argPath := filepath.Join(tempDir, "arg.xru")
+	_ = os.WriteFile(argPath, []byte(`
+mod cArg
+global let existingVal = "hello"
+`), 0644)
+
+	mainPath := filepath.Join(tempDir, "main.xru")
+	mainCode := `
+from "r" use cArg::existingVal as v
+from "r" use cArg::missingVal catch e
+
+let hasErr = (e != nil)
+let val = v
+`
+	_ = os.WriteFile(mainPath, []byte(mainCode), 0644)
+
+	p := parser.New(lexer.New(mainPath, mainCode))
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	env.SetCurrentDir(tempDir)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	hasErrVal, ok := env.Get("hasErr")
+	if !ok || hasErrVal.String() != "true" {
+		t.Errorf("Expected hasErr to be true, got %v", hasErrVal)
+	}
+
+	valVal, ok := env.Get("val")
+	if !ok || valVal.String() != "hello" {
+		t.Errorf("Expected val to be 'hello', got %v", valVal)
+	}
+}
+
 
 

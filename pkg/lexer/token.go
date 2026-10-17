@@ -83,6 +83,7 @@ const (
 	BANG       TokenType = "!"
 	AND        TokenType = "&&"
 	OR_LOGICAL TokenType = "||"
+	PIPE       TokenType = "|"
 
 	// Delimiters
 	LPAREN       TokenType = "("

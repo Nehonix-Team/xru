@@ -293,6 +293,23 @@ func (c *Checker) inferType(expr ast.Expression) string {
 	}
 }
 
+func splitUnionTypes(t string) []string {
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return nil
+	}
+	var parts []string
+	for _, p1 := range strings.Split(t, " or ") {
+		for _, p2 := range strings.Split(p1, "|") {
+			trimmed := strings.TrimSpace(p2)
+			if trimmed != "" {
+				parts = append(parts, trimmed)
+			}
+		}
+	}
+	return parts
+}
+
 func (c *Checker) resolveType(typeName string) string {
 	typeName = strings.TrimSpace(typeName)
 	if typeName == "" {
@@ -309,14 +326,14 @@ func (c *Checker) resolveType(typeName string) string {
 			if iface, ok := c.interfaces[baseName]; ok {
 				for _, f := range iface.Fields {
 					if f.Name == key {
-						return f.Type
+						return c.resolveType(f.Type)
 					}
 				}
 			}
 		}
 		if sym, ok := c.scope.Resolve(baseName); ok && sym.Methods != nil {
 			if m, ok := sym.Methods[key]; ok && m.Type != "" {
-				return m.Type
+				return c.resolveType(m.Type)
 			}
 		}
 	}
@@ -330,9 +347,10 @@ func (c *Checker) validateTypeAnnotation(pos lexer.Position, typeName string) {
 	}
 	typeName = strings.TrimSuffix(typeName, "?")
 
-	if strings.Contains(typeName, " or ") {
-		for _, part := range strings.Split(typeName, " or ") {
-			c.validateTypeAnnotation(pos, strings.TrimSpace(part))
+	unionParts := splitUnionTypes(typeName)
+	if len(unionParts) > 1 {
+		for _, part := range unionParts {
+			c.validateTypeAnnotation(pos, part)
 		}
 		return
 	}
@@ -587,13 +605,33 @@ func (c *Checker) isTypeCompatible(expected, actual string) bool {
 		tActual := strings.TrimSuffix(strings.TrimPrefix(cleanActual, "list["), "]")
 		return c.isTypeCompatible(tExpected, tActual)
 	}
-	if strings.Contains(cleanExpected, " or ") {
-		for _, part := range strings.Split(cleanExpected, " or ") {
-			if c.isTypeCompatible(strings.TrimSpace(part), actual) {
+	expectedUnion := splitUnionTypes(cleanExpected)
+	if len(expectedUnion) > 1 {
+		actualUnion := splitUnionTypes(cleanActual)
+		if len(actualUnion) > 1 {
+			for _, act := range actualUnion {
+				if !c.isTypeCompatible(cleanExpected, act) {
+					return false
+				}
+			}
+			return true
+		}
+		for _, part := range expectedUnion {
+			if c.isTypeCompatible(part, actual) {
 				return true
 			}
 		}
 		return false
+	}
+
+	actualUnion := splitUnionTypes(cleanActual)
+	if len(actualUnion) > 1 {
+		for _, act := range actualUnion {
+			if !c.isTypeCompatible(cleanExpected, act) {
+				return false
+			}
+		}
+		return true
 	}
 	if strings.HasPrefix(cleanExpected, "\"") && strings.HasSuffix(cleanExpected, "\"") {
 		if strings.HasPrefix(cleanActual, "\"") && strings.HasSuffix(cleanActual, "\"") {

@@ -28,6 +28,17 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 			break
 		}
 	}
+	if s.CatchVar != "" {
+		catchSym := &Symbol{
+			Name: s.CatchVar,
+			Kind: SymVar,
+			Type: "any",
+			Pos:  s.Pos(),
+		}
+		_ = c.scope.Define(catchSym)
+		c.declaredVars = append(c.declaredVars, catchSym)
+	}
+
 	if sourceSym != nil {
 		aliasSym := &Symbol{
 			Name:       alias,
@@ -43,7 +54,17 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 			c.importedSyms = append(c.importedSyms, aliasSym)
 		}
 	} else {
-		c.addError(s.Pos(), "ERR_UNKNOWN_MODULE", fmt.Sprintf("Module '%s' does not exist", s.Module))
+		if s.CatchVar == "" {
+			c.addError(s.Pos(), "ERR_UNKNOWN_MODULE", fmt.Sprintf("Module '%s' does not exist", s.Module))
+		} else {
+			aliasSym := &Symbol{
+				Name: alias,
+				Kind: SymUnit,
+				Pos:  s.Pos(),
+			}
+			_ = c.scope.Define(aliasSym)
+			c.importedSyms = append(c.importedSyms, aliasSym)
+		}
 	}
 }
 
@@ -134,9 +155,34 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 
 	// Cas 2 : membre individuel from "services" use auth::b
 	if s.Member != "" {
+		if s.CatchVar != "" {
+			catchSym := &Symbol{
+				Name: s.CatchVar,
+				Kind: SymVar,
+				Type: "any",
+				Pos:  s.Pos(),
+			}
+			_ = c.scope.Define(catchSym)
+			c.declaredVars = append(c.declaredVars, catchSym)
+		}
 		modDetails, err := modCfg.ResolveModule(s.Source, s.Module)
 		if err != nil {
-			c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
+			if s.CatchVar == "" {
+				c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
+			} else {
+				targetName := s.Member
+				if s.Alias != "" {
+					targetName = s.Alias
+				}
+				memberSym := &Symbol{
+					Name: targetName,
+					Kind: SymVar,
+					Type: "any",
+					Pos:  s.Pos(),
+				}
+				_ = c.scope.Define(memberSym)
+				c.importedSyms = append(c.importedSyms, memberSym)
+			}
 			return
 		}
 		if c.hasCircularImport(modDetails.FilePath, c.currentFile, modCfg) {
@@ -145,7 +191,22 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		}
 		exp, ok := modDetails.Exports[s.Member]
 		if !ok {
-			c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", s.Member, s.Module))
+			if s.CatchVar == "" {
+				c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", s.Member, s.Module))
+			} else {
+				targetName := s.Member
+				if s.Alias != "" {
+					targetName = s.Alias
+				}
+				memberSym := &Symbol{
+					Name: targetName,
+					Kind: SymVar,
+					Type: "any",
+					Pos:  s.Pos(),
+				}
+				_ = c.scope.Define(memberSym)
+				c.importedSyms = append(c.importedSyms, memberSym)
+			}
 			return
 		}
 		symKind := SymVar

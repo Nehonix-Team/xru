@@ -11,13 +11,15 @@ import (
 	"sync"
 
 	"github.com/Nehonix-Team/xru/internal/utils"
+	"github.com/Nehonix-Team/xru/pkg/lsp/navigation"
 )
 
 type Server struct {
-	reader *bufio.Reader
-	writer io.Writer
-	mu     sync.Mutex
-	docs   map[string]string // URI -> Content
+	reader    *bufio.Reader
+	writer    io.Writer
+	mu        sync.Mutex
+	docs      map[string]string // URI -> Content
+	navigator *navigation.Navigator
 }
 
 func NewServer(in io.Reader, out io.Writer) *Server {

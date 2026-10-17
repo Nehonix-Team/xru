@@ -13,6 +13,7 @@ import (
 	"github.com/Nehonix-Team/xru/pkg/dispatcher"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 	"github.com/Nehonix-Team/xru/pkg/lsp"
+	"github.com/Nehonix-Team/xru/pkg/modules"
 	"github.com/Nehonix-Team/xru/pkg/packager"
 	"github.com/Nehonix-Team/xru/pkg/parser"
 	"github.com/Nehonix-Team/xru/pkg/runtime"
@@ -157,11 +158,81 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 	env := runtime.NewEnvironment(nil)
 	env.SetCurrentDir(ruleDir)
 
-	// Extraction des #ARG déclarés dans le fichier pour validation stricte
+	// Extraction des #ARG déclarés dans le fichier racine et les modules importés pour validation stricte
 	declaredArgs := make(map[string]*ast.ArgStatement)
+	rootArgs := make(map[string]bool)
+	collectArgsFromProg := func(p *ast.Program) {
+		if p == nil {
+			return
+		}
+		for _, stmt := range p.Statements {
+			if argStmt, ok := stmt.(*ast.ArgStatement); ok {
+				declaredArgs[strings.ToUpper(argStmt.Name)] = argStmt
+				if argStmt.Alias != "" {
+					declaredArgs[strings.ToUpper(argStmt.Alias)] = argStmt
+				}
+			}
+		}
+	}
+	collectArgsFromProg(prog)
 	for _, stmt := range prog.Statements {
 		if argStmt, ok := stmt.(*ast.ArgStatement); ok {
-			declaredArgs[strings.ToUpper(argStmt.Name)] = argStmt
+			rootArgs[strings.ToUpper(argStmt.Name)] = true
+			if argStmt.Alias != "" {
+				rootArgs[strings.ToUpper(argStmt.Alias)] = true
+			}
+		}
+	}
+
+	// Collecter les arguments dans les modules résolus via _mod.xru ou les imports
+	modFilePath := modules.FindModConfigFile(ruleDir)
+	var modCfg *modules.ModConfig
+	if modFilePath != "" {
+		if cfg, errs := modules.LoadModConfig(modFilePath); len(errs) == 0 && cfg != nil {
+			modCfg = cfg
+		}
+	}
+
+	scannedFiles := make(map[string]bool)
+	scanFileForArgs := func(fPath string) {
+		absPath, err := filepath.Abs(fPath)
+		if err != nil || scannedFiles[absPath] {
+			return
+		}
+		scannedFiles[absPath] = true
+		content, err := os.ReadFile(absPath)
+		if err != nil {
+			return
+		}
+		pParser := parser.New(lexer.New(absPath, string(content)))
+		pProg := pParser.ParseProgram()
+		collectArgsFromProg(pProg)
+	}
+
+	for _, stmt := range prog.Statements {
+		if fromStmt, ok := stmt.(*ast.FromUseStatement); ok && modCfg != nil {
+			if fromStmt.Module != "" {
+				if modDetails, err := modCfg.ResolveModule(fromStmt.Source, fromStmt.Module); err == nil && modDetails != nil {
+					scanFileForArgs(modDetails.FilePath)
+				}
+			}
+			for _, m := range fromStmt.Modules {
+				if modDetails, err := modCfg.ResolveModule(fromStmt.Source, m); err == nil && modDetails != nil {
+					scanFileForArgs(modDetails.FilePath)
+				}
+			}
+		}
+	}
+
+	if modCfg != nil {
+		for _, targetPattern := range modCfg.Mappings {
+			if strings.HasSuffix(targetPattern, ".xru") {
+				cleanPath := targetPattern
+				if !filepath.IsAbs(cleanPath) {
+					cleanPath = filepath.Join(modCfg.Dir, cleanPath)
+				}
+				scanFileForArgs(cleanPath)
+			}
 		}
 	}
 
@@ -220,14 +291,16 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 		} else {
 			assignedVal = runtime.BoolValue{Val: true}
 		}
-		env.Set(declArg.Name, assignedVal, false)
-		env.Set(actualKey, assignedVal, false)
-		env.Set(targetKey, assignedVal, false)
-		if declArg.IsGlobal {
-			env.SetGlobal(declArg.Name, assignedVal)
-			env.SetGlobal(actualKey, assignedVal)
-			env.SetGlobal(targetKey, assignedVal)
+		// Si l'argument est déclaré dans le fichier racine, on le définit dans son scope local
+		if rootArgs[targetKey] {
+			env.Set(declArg.Name, assignedVal, false)
+			env.Set(actualKey, assignedVal, false)
+			env.Set(targetKey, assignedVal, false)
 		}
+		// Enregistrement global pour les modules importés
+		env.SetGlobal(declArg.Name, assignedVal)
+		env.SetGlobal(actualKey, assignedVal)
+		env.SetGlobal(targetKey, assignedVal)
 	}
 
 	if verbose {

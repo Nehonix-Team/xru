@@ -23,6 +23,13 @@ func (p *Parser) parseUseStatement() *ast.UseStatement {
 		}
 		stmt.Alias = p.curToken.Literal
 	}
+	if p.peekTokenIs(lexer.CATCH) || (p.peekTokenIs(lexer.IDENT) && strings.ToLower(p.peekToken.Literal) == "catch") {
+		p.nextToken() // mange 'catch'
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.CatchVar = p.curToken.Literal
+	}
 	if p.peekTokenIs(lexer.SEMICOLON) {
 		p.nextToken()
 	}
@@ -257,6 +264,14 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 			return nil
 		}
 		stmt.Alias = p.curToken.Literal
+	}
+
+	if p.peekTokenIs(lexer.CATCH) || (p.peekTokenIs(lexer.IDENT) && strings.ToLower(p.peekToken.Literal) == "catch") {
+		p.nextToken() // saute 'catch'
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.CatchVar = p.curToken.Literal
 	}
 	return stmt
 }

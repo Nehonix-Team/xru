@@ -1,6 +1,10 @@
 package lsp
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/Nehonix-Team/xru/pkg/lsp/navigation"
+)
 
 // JSON-RPC 2.0 Basic types
 type Request struct {
@@ -29,20 +33,9 @@ type RPCError struct {
 }
 
 // LSP Position & Range
-type Position struct {
-	Line      int `json:"line"`      // 0-indexed
-	Character int `json:"character"` // 0-indexed
-}
-
-type Range struct {
-	Start Position `json:"start"`
-	End   Position `json:"end"`
-}
-
-type Location struct {
-	URI   string `json:"uri"`
-	Range Range  `json:"range"`
-}
+type Position = navigation.Position
+type Range = navigation.Range
+type Location = navigation.Location
 
 // Diagnostic
 type DiagnosticSeverity int
@@ -253,18 +246,15 @@ type DocumentHighlightParams struct {
 	Position     Position               `json:"position"`
 }
 
-type DocumentHighlightKind int
+type DocumentHighlightKind = navigation.DocumentHighlightKind
 
 const (
-	HighlightKindText  DocumentHighlightKind = 1
-	HighlightKindRead  DocumentHighlightKind = 2
-	HighlightKindWrite DocumentHighlightKind = 3
+	HighlightKindText  = navigation.HighlightKindText
+	HighlightKindRead  = navigation.HighlightKindRead
+	HighlightKindWrite = navigation.HighlightKindWrite
 )
 
-type DocumentHighlight struct {
-	Range Range                 `json:"range"`
-	Kind  DocumentHighlightKind `json:"kind,omitempty"`
-}
+type DocumentHighlight = navigation.DocumentHighlight
 
 // References
 type ReferenceContext struct {

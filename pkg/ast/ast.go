@@ -54,6 +54,7 @@ type UseStatement struct {
 	Position lexer.Position
 	Module   string
 	Alias    string
+	CatchVar string
 }
 
 func (s *UseStatement) statementNode()      {}
@@ -131,6 +132,7 @@ type FromUseStatement struct {
 	Alias    string   // e.g. "a" (when from "services" use auth as a or auth::@map as a)
 	Modules  []string // e.g. ["auth", "cdn", "db"] (when from "services" use (auth, cdn, db))
 	AsMap    bool     // true when module::@map or module::@map{ ... }
+	CatchVar string   // e.g. "e" (when from "services" use auth::b catch e)
 }
 
 func (s *FromUseStatement) statementNode()      {}

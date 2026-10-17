@@ -197,7 +197,14 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			}
 		}
 		if !found {
+			if n.CatchVar != "" {
+				_ = env.Set(n.CatchVar, StringValue{Val: fmt.Sprintf("module '%s' does not exist", unitName)}, false)
+				return NilValue{}, nil
+			}
 			return nil, fmt.Errorf("module '%s' does not exist", unitName)
+		}
+		if n.CatchVar != "" {
+			_ = env.Set(n.CatchVar, NilValue{}, false)
 		}
 		return NilValue{}, nil
 	case *ast.InterfaceStatement:
@@ -578,26 +585,43 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 
 		// Cas 2: membre individuel (auth::b)
 		if n.Member != "" {
-			unit, err := loadModuleInstance(n.Module)
-			if err != nil {
-				return nil, err
-			}
 			targetName := n.Member
 			if n.Alias != "" {
 				targetName = n.Alias
 			}
+			unit, err := loadModuleInstance(n.Module)
+			if err != nil {
+				if n.CatchVar != "" {
+					_ = env.Set(n.CatchVar, StringValue{Val: err.Error()}, false)
+					_ = env.Set(targetName, NilValue{}, false)
+					return NilValue{}, nil
+				}
+				return nil, err
+			}
 			if prop, ok := unit.Properties[n.Member]; ok {
+				if n.CatchVar != "" {
+					_ = env.Set(n.CatchVar, NilValue{}, false)
+				}
 				if err := env.Set(targetName, prop, false); err != nil {
 					return nil, err
 				}
 				return prop, nil
 			}
 			if method, ok := unit.Methods[n.Member]; ok {
+				if n.CatchVar != "" {
+					_ = env.Set(n.CatchVar, NilValue{}, false)
+				}
 				fnVal := FunctionValue{Name: targetName, Fn: method}
 				if err := env.Set(targetName, fnVal, false); err != nil {
 					return nil, err
 				}
 				return fnVal, nil
+			}
+			if n.CatchVar != "" {
+				errMsg := fmt.Sprintf("member '%s' not found on module '%s'", n.Member, n.Module)
+				_ = env.Set(n.CatchVar, StringValue{Val: errMsg}, false)
+				_ = env.Set(targetName, NilValue{}, false)
+				return NilValue{}, nil
 			}
 			return nil, fmt.Errorf("member '%s' not found on module '%s'", n.Member, n.Module)
 		}

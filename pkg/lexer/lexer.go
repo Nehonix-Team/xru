@@ -181,9 +181,8 @@ func (l *Lexer) NextToken() Token {
 			l.readChar()
 			return Token{Type: OR_LOGICAL, Literal: "||", Pos: startPos}
 		}
-		illegalChar := string(l.ch)
 		l.readChar()
-		return Token{Type: ILLEGAL, Literal: illegalChar, Pos: startPos}
+		return Token{Type: PIPE, Literal: "|", Pos: startPos}
 	case '(':
 		l.readChar()
 		return Token{Type: LPAREN, Literal: "(", Pos: startPos}

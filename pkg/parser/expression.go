@@ -554,9 +554,22 @@ func (p *Parser) isAheadLambda() bool {
 		}
 		if p.peekTokenIs(lexer.COLON) {
 			p.nextToken() // ':'
-			p.nextToken() // type
-			if p.peekTokenIs(lexer.QUESTION) {
+			bracketDepth := 0
+			braceDepth := 0
+			for !p.peekTokenIs(lexer.EOF) {
+				if bracketDepth == 0 && braceDepth == 0 && (p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.RPAREN)) {
+					break
+				}
 				p.nextToken()
+				if p.curTokenIs(lexer.LBRACKET) {
+					bracketDepth++
+				} else if p.curTokenIs(lexer.RBRACKET) && bracketDepth > 0 {
+					bracketDepth--
+				} else if p.curTokenIs(lexer.LBRACE) {
+					braceDepth++
+				} else if p.curTokenIs(lexer.RBRACE) && braceDepth > 0 {
+					braceDepth--
+				}
 			}
 		}
 		if p.peekTokenIs(lexer.COMMA) {

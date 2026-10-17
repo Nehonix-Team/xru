@@ -555,10 +555,35 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 			if err != nil {
 				return nil, err
 			}
-			callArgs := []Value{docUnit}
+
+			isErrFirst := false
 			if len(lambda.Parameters) >= 2 {
-				callArgs = append(callArgs, errVal)
+				p0Name := strings.ToLower(lambda.Parameters[0].Name)
+				p1Name := strings.ToLower(lambda.Parameters[1].Name)
+				p1Type := lambda.Parameters[1].Type
+				if p1Type == "Document" || ((p0Name == "e" || p0Name == "err" || p0Name == "error") && (p1Name == "data" || p1Name == "d" || p1Name == "doc" || p1Name == "content" || p1Type == "Document")) {
+					isErrFirst = true
+				}
 			}
+
+			var callArgs []Value
+			if len(lambda.Parameters) == 1 {
+				p0Name := strings.ToLower(lambda.Parameters[0].Name)
+				if p0Name == "e" || p0Name == "err" || p0Name == "error" {
+					callArgs = append(callArgs, errVal)
+				} else {
+					callArgs = append(callArgs, docUnit)
+				}
+			} else if len(lambda.Parameters) >= 2 {
+				if isErrFirst {
+					callArgs = append(callArgs, errVal, docUnit)
+				} else {
+					callArgs = append(callArgs, docUnit, errVal)
+				}
+			} else {
+				callArgs = append(callArgs, docUnit)
+			}
+
 			if err := executeHandler(fnVal, callArgs); err != nil {
 				return nil, err
 			}
@@ -567,7 +592,7 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 			if err != nil {
 				return nil, err
 			}
-			if err := executeHandler(fnVal, []Value{docUnit, errVal}); err != nil {
+			if err := executeHandler(fnVal, []Value{errVal, docUnit}); err != nil {
 				return nil, err
 			}
 		}

@@ -53,6 +53,17 @@ func (c *Checker) AllDeclaredVars() []*Symbol {
 	return c.declaredVars
 }
 
+func (c *Checker) GetInterface(name string) *ast.InterfaceStatement {
+	if c.interfaces == nil {
+		return nil
+	}
+	return c.interfaces[name]
+}
+
+func (c *Checker) AllInterfaces() map[string]*ast.InterfaceStatement {
+	return c.interfaces
+}
+
 func (c *Checker) UnusedSymbols() []*Symbol {
 	var unused []*Symbol
 	for _, sym := range c.declaredVars {

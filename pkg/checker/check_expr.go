@@ -189,6 +189,18 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 							} else if targetMethod.Kind == SymFunc {
 								c.validateCallArgs(e, member.Property, targetMethod)
 							}
+						} else if iface, ok := c.interfaces[sym.Type]; ok {
+							found := false
+							for _, f := range iface.Fields {
+								if f.Name == member.Property {
+									found = true
+									break
+								}
+							}
+							if !found {
+								c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
+									fmt.Sprintf("Property or method '%s' does not exist on type '%s'", member.Property, sym.Type))
+							}
 						}
 					}
 				}

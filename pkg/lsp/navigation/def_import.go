@@ -10,7 +10,7 @@ import (
 )
 
 // resolveQualifiedDefinition resolves explicit "module::member" qualified expressions.
-func (n *Navigator) resolveQualifiedDefinition(modCfg *modules.ModConfig, fileImports []FileImport, fullExpr, fileDir string) *Location {
+func (n *Navigator) resolveQualifiedDefinition(modCfg *modules.ModConfig, fileImports []FileImport, fullExpr, word, fileDir string) *Location {
 	parts := strings.Split(fullExpr, "::")
 	if len(parts) != 2 {
 		return nil
@@ -30,6 +30,17 @@ func (n *Navigator) resolveQualifiedDefinition(modCfg *modules.ModConfig, fileIm
 	}
 
 	modFile := n.ResolveModuleFilePath(modCfg, targetNs, targetMod, fileDir)
+	if word == targetMod && modFile != "" {
+		lIdx, charPos, _ := FindDeclarationInFile(modFile, targetMod)
+		return &Location{
+			URI: pathToURI(modFile),
+			Range: Range{
+				Start: Position{Line: lIdx, Character: charPos},
+				End:   Position{Line: lIdx, Character: charPos + len(targetMod)},
+			},
+		}
+	}
+
 	if modFile != "" {
 		lIdx, charPos, found := FindDeclarationInFile(modFile, targetWord)
 		if found {
@@ -43,6 +54,15 @@ func (n *Navigator) resolveQualifiedDefinition(modCfg *modules.ModConfig, fileIm
 		}
 	}
 	if stdFile := n.findStdFile(fileDir, strings.ToLower(targetMod)); stdFile != "" {
+		if word == targetMod {
+			return &Location{
+				URI: pathToURI(stdFile),
+				Range: Range{
+					Start: Position{Line: 0, Character: 0},
+					End:   Position{Line: 0, Character: len(targetMod)},
+				},
+			}
+		}
 		lIdx, charPos, found := FindDeclarationInFile(stdFile, targetWord)
 		if found {
 			return &Location{
@@ -59,10 +79,11 @@ func (n *Navigator) resolveQualifiedDefinition(modCfg *modules.ModConfig, fileIm
 
 // resolveNamespaceDefinition resolves definitions for namespace identifiers declared in _mod.xru.
 func resolveNamespaceDefinition(modCfg *modules.ModConfig, modFilePath, word string) *Location {
+	cleanWord := strings.Trim(word, "\"'")
 	if modCfg == nil || modFilePath == "" {
 		return nil
 	}
-	if _, ok := modCfg.Mappings[word]; !ok {
+	if _, ok := modCfg.Mappings[cleanWord]; !ok {
 		return nil
 	}
 	if modContent, err := os.ReadFile(modFilePath); err == nil {

@@ -2188,3 +2188,114 @@ file "tests.html" (e, d: Document) -> {
 	}
 }
 
+func TestNamespaceModuleDefinitionAndTypeChecking(t *testing.T) {
+	tempDir := t.TempDir()
+
+	modFilePath := filepath.Join(tempDir, "_mod.xru")
+	modContent := `map {
+    "rt" -> "./"
+}
+`
+	_ = os.WriteFile(modFilePath, []byte(modContent), 0644)
+
+	cArgPath := filepath.Join(tempDir, "cArg.xru")
+	cArgContent := `mod cArg
+
+global const dArgVal: string = "default"
+global func run(x: number) -> bool {
+    return true
+}
+`
+	_ = os.WriteFile(cArgPath, []byte(cArgContent), 0644)
+
+	mainPath := filepath.Join(tempDir, "main.xru")
+	mainContent := `use std
+from "rt" use (cArg, mainb)
+from "rt" use cArg::(dArgVal, run)
+
+const a = cArg::dArgVal
+const b: number = cArg::dArgVal
+`
+	_ = os.WriteFile(mainPath, []byte(mainContent), 0644)
+	mainURI := "file://" + mainPath
+
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        mainURI,
+			"languageId": "xru",
+			"version":    1,
+			"text":       mainContent,
+		},
+	})
+
+	formatReqWithID := func(id int, method string, params any) string {
+		payloadMap := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      id,
+			"method":  method,
+			"params":  params,
+		}
+		data, _ := json.Marshal(payloadMap)
+		return fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(data), string(data))
+	}
+
+	// 1. Definition on "cArg" in 'from "rt" use (cArg, mainb)' (line 1, col 16)
+	defModReq := formatReqWithID(1, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": mainURI},
+		"position":     map[string]any{"line": 1, "character": 16},
+	})
+
+	// 2. Definition on "dArgVal" in 'from "rt" use cArg::(dArgVal, run)' (line 2, col 23)
+	defMemberReq := formatReqWithID(2, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": mainURI},
+		"position":     map[string]any{"line": 2, "character": 23},
+	})
+
+	// 3. Definition on "cArg" in 'const a = cArg::dArgVal' (line 4, col 11)
+	defQualModReq := formatReqWithID(3, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": mainURI},
+		"position":     map[string]any{"line": 4, "character": 11},
+	})
+
+	// 4. Hover on "dArgVal" in 'const a = cArg::dArgVal' (line 4, col 18)
+	hoverReq := formatReqWithID(4, "textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": mainURI},
+		"position":     map[string]any{"line": 4, "character": 18},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + defModReq + defMemberReq + defQualModReq + hoverReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Diagnostics: must flag line 5 (const b: number = cArg::dArgVal) because dArgVal is string!
+	if !strings.Contains(outStr, "ERR_TYPE_MISMATCH") {
+		t.Errorf("Expected ERR_TYPE_MISMATCH for const b: number = cArg::dArgVal, got: %s", outStr)
+	}
+
+	// ID 1: Definition on cArg must point to cArg.xru
+	if !strings.Contains(outStr, `"id":1`) || !strings.Contains(outStr, "cArg.xru") {
+		t.Errorf("Expected definition of cArg to point to cArg.xru, got: %s", outStr)
+	}
+
+	// ID 2: Definition on dArgVal must point to cArg.xru
+	if !strings.Contains(outStr, `"id":2`) || !strings.Contains(outStr, "cArg.xru") {
+		t.Errorf("Expected definition of dArgVal to point to cArg.xru, got: %s", outStr)
+	}
+
+	// ID 3: Definition on cArg in cArg::dArgVal must point to cArg.xru
+	if !strings.Contains(outStr, `"id":3`) || !strings.Contains(outStr, "cArg.xru") {
+		t.Errorf("Expected definition on module part of cArg::dArgVal to point to cArg.xru, got: %s", outStr)
+	}
+
+	// ID 4: Hover on dArgVal must show constant/property and NOT '(method) cArg::dArgVal(): string'
+	if strings.Contains(outStr, "(method) cArg::dArgVal()") {
+		t.Errorf("Expected hover on dArgVal to NOT be a method, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, "cArg::dArgVal: string") {
+		t.Errorf("Expected hover to show 'cArg::dArgVal: string', got: %s", outStr)
+	}
+}

@@ -14,7 +14,7 @@ func ParseFileImports(text string) []FileImport {
 	var imports []FileImport
 	lines := strings.Split(text, "\n")
 
-	reFromGroup := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+(?:([a-zA-Z0-9_]+)::)?(?:@map\s*)?(?:\{|\()([^})]+)(?:\}|\))`)
+	reFromGroup := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+([a-zA-Z0-9_]+)::(?:@map\s*)?(?:\{|\()([^})]+)(?:\}|\))`)
 	reFromMember := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+([a-zA-Z0-9_]+)::([a-zA-Z0-9_]+)(?:\s+as\s+([a-zA-Z0-9_]+))?(?:\s+catch\s+([a-zA-Z0-9_]+))?`)
 	reFromMods := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+(?:\{|\()([^})]+)(?:\}|\))`)
 	reFromAs := regexp.MustCompile(`^\s*from\s+["']?([^"'\s]+)["']?\s+use\s+([a-zA-Z0-9_]+)\s+as\s+([a-zA-Z0-9_]+)`)
@@ -36,15 +36,9 @@ func ParseFileImports(text string) []FileImport {
 					members = append(members, mem)
 				}
 			}
-			src := m[1]
-			mod := m[2]
-			if mod == "" {
-				mod = src
-				src = ""
-			}
 			imports = append(imports, FileImport{
-				Source:  src,
-				Module:  mod,
+				Source:  m[1],
+				Module:  m[2],
 				Members: members,
 				Line:    idx,
 			})

@@ -226,6 +226,32 @@ func (c *Checker) inferType(expr ast.Expression) string {
 			return sym.Type
 		}
 		return "any"
+	case *ast.ScopeAccessExpression:
+		if e.IsUnitSelf {
+			unitSym := c.scope.GetEnclosingUnit()
+			if unitSym != nil && unitSym.Methods != nil {
+				if mSym, ok := unitSym.Methods[e.Member]; ok && mSym.Type != "" {
+					return mSym.Type
+				}
+				for mName, mSym := range unitSym.Methods {
+					if strings.EqualFold(mName, e.Member) && mSym.Type != "" {
+						return mSym.Type
+					}
+				}
+			}
+		} else if sym, ok := c.scope.Resolve(e.Scope); ok {
+			if sym.Kind == SymUnit && sym.Methods != nil {
+				if mSym, ok := sym.Methods[e.Member]; ok && mSym.Type != "" {
+					return mSym.Type
+				}
+				for mName, mSym := range sym.Methods {
+					if strings.EqualFold(mName, e.Member) && mSym.Type != "" {
+						return mSym.Type
+					}
+				}
+			}
+		}
+		return "any"
 	case *ast.IfExpression:
 		conseqType := c.inferType(e.Consequence)
 		altType := c.inferType(e.Alternative)

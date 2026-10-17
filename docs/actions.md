@@ -34,9 +34,9 @@
 
 ### Modern Syntax (XRU 2.0):
 ```xru
-file "package.json", (doc) -> {
-    doc.setJson("version", "2.0.0")
-    doc.setJson("scripts.build", "xfpm run build")
+file "package.json" (e, d) -> {
+    d.setJson("version", "2.0.0")
+    d.setJson("scripts.build", "xfpm run build")
 }
 ```
 

@@ -168,19 +168,33 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 				if unitSym, exists := c.GetScope().Resolve(scopeName); exists && unitSym.Kind == checker.SymUnit {
 					if method, exists := unitSym.Methods[memberName]; exists {
 						var md strings.Builder
-						var params []string
-						for _, param := range method.Params {
-							pType := param.Type
-							if pType == "" {
-								pType = "any"
+						if method.Kind == checker.SymFunc {
+							var params []string
+							for _, param := range method.Params {
+								pType := param.Type
+								if pType == "" {
+									pType = "any"
+								}
+								params = append(params, fmt.Sprintf("%s: %s", param.Name, pType))
 							}
-							params = append(params, fmt.Sprintf("%s: %s", param.Name, pType))
+							retType := method.Type
+							if retType == "" {
+								retType = "void"
+							}
+							md.WriteString(fmt.Sprintf("```xru\n(method) %s::%s(%s): %s\n```\n", scopeName, memberName, strings.Join(params, ", "), retType))
+						} else {
+							kindStr := "(variable)"
+							if method.Kind == checker.SymConst {
+								kindStr = "(constant)"
+							} else if method.Kind == "arg" {
+								kindStr = "(arg)"
+							}
+							typeStr := method.Type
+							if typeStr == "" {
+								typeStr = "any"
+							}
+							md.WriteString(fmt.Sprintf("```xru\n%s %s::%s: %s\n```\n", kindStr, scopeName, memberName, typeStr))
 						}
-						retType := method.Type
-						if retType == "" {
-							retType = "void"
-						}
-						md.WriteString(fmt.Sprintf("```xru\n(method) %s::%s(%s): %s\n```\n", scopeName, memberName, strings.Join(params, ", "), retType))
 						fileContent := s.getFileContentForPos(uri, method.Pos.Filename)
 						if doc := extractDocComment(fileContent, method.Pos.Line); doc != "" {
 							md.WriteString("\n" + doc + "\n")

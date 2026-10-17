@@ -44,7 +44,7 @@ func (n *Navigator) HandleDefinition(uri string, pos Position) *Location {
 
 	// 1. Explicit qualified expression: module::member (e.g. gArgs::author)
 	if strings.Contains(fullExpr, "::") {
-		return n.resolveQualifiedDefinition(modCfg, fileImports, fullExpr, fileDir)
+		return n.resolveQualifiedDefinition(modCfg, fileImports, fullExpr, word, fileDir)
 	}
 
 	// 1.5 Member navigation: obj.member (e.g. doc.setJson, Fs.exists, std.println, opts.silent, params.a, $f{params.a})

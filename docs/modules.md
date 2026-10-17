@@ -16,16 +16,10 @@ The project root is defined by a hermetic configuration manifest named `_mod.xru
 
 ### Example `_mod.xru`:
 ```xru
-map meta {
-    name: "project-rules",
-    version: "2.0.0",
-    description: "Template and migration rules"
-}
-
-map namespaces {
-    services: "./src/services",
-    utils: "./src/utils",
-    generators: "./templates/generators"
+map {
+    "rt" -> "./"
+    "services" -> "./src/services"
+    "utils" -> "./src/utils"
 }
 ```
 
@@ -46,14 +40,24 @@ use fs
 Used for modules mapped under a namespace declared in `_mod.xru`:
 
 ```xru
+// Import entire module
+from "services" use auth
+
 // Import entire module under an alias
 from "services" use auth as AuthService
 
-// Selectively import exported symbols
-from "utils" use string_helpers::capitalize, string_helpers::slugify
+// Import multiple modules from a mapped namespace
+from "services" use (auth, cdn)
 
-// Import all exported symbols
-from "generators" use all::ScaffoldUnit
+// Selectively import a specific exported symbol from a module
+from "utils" use string_helpers::capitalize
+
+// Selectively import multiple exported symbols from a module
+from "utils" use string_helpers::(capitalize, slugify)
+
+// Import module as map or catch import errors
+from "utils" use string_helpers::@map as helpers
+from "services" use auth::login catch err
 ```
 
 ---

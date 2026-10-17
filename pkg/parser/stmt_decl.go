@@ -253,6 +253,26 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 					p.nextToken()
 				}
 			}
+		} else if p.peekTokenIs(lexer.LPAREN) || p.peekTokenIs(lexer.LBRACE) {
+			closing := lexer.RPAREN
+			if p.peekTokenIs(lexer.LBRACE) {
+				closing = lexer.RBRACE
+			}
+			p.nextToken() // saute '(' ou '{'
+			p.nextToken()
+			for !p.curTokenIs(closing) && !p.curTokenIs(lexer.EOF) {
+				if p.curTokenIs(lexer.IDENT) || p.curTokenIs(lexer.STRING) {
+					cleanMem := p.curToken.Literal
+					if len(cleanMem) >= 2 && cleanMem[0] == '"' && cleanMem[len(cleanMem)-1] == '"' {
+						cleanMem = cleanMem[1 : len(cleanMem)-1]
+					}
+					stmt.Members = append(stmt.Members, cleanMem)
+				}
+				if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
+					p.nextToken()
+				}
+				p.nextToken()
+			}
 		} else if p.expectPeek(lexer.IDENT) {
 			stmt.Member = p.curToken.Literal
 		} else {

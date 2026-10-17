@@ -252,6 +252,9 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 							fmt.Sprintf("Method '%s' not found on module '%s'", scopeAccess.Member, sym.Name))
 					} else if targetMethod.Kind == SymFunc {
 						c.validateCallArgs(e, scopeAccess.Member, targetMethod)
+					} else {
+						c.addError(e.Pos(), "ERR_NOT_A_FUNCTION",
+							fmt.Sprintf("Cannot call '%s::%s' which is of type '%s' (not a function)", sym.Name, scopeAccess.Member, targetMethod.Type))
 					}
 				}
 			} else {

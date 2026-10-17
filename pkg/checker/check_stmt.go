@@ -367,6 +367,14 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 
 	c.checkExpression(s.Value)
 
+	if s.Value != nil {
+		actualValType := c.inferType(s.Value)
+		if actualValType == "void" {
+			c.addError(s.Value.Pos(), "ERR_TYPE_MISMATCH",
+				fmt.Sprintf("Cannot assign expression of type 'void' to variable '%s'", s.Name))
+		}
+	}
+
 	if s.Value != nil && s.Type != "" {
 		if mapLit, isMap := s.Value.(*ast.MapLiteral); isMap {
 			if c.interfaces != nil {

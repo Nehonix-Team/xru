@@ -352,3 +352,39 @@ let h = config.host
 		t.Fatalf("Bundled code has checker errors: %v", c.Errors())
 	}
 }
+
+
+func TestBuildAbortsOnValidationError(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_build_err_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Code with semantic validation error: calling println with 0 arguments or assigning void
+	invalidCode := `use std
+
+const cfg = @map{
+    name: "Seth",
+}
+
+const d = cfg.values().push(@map{test: "ok"})
+
+std.println()
+`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(invalidCode), 0644)
+
+	pkg := packager.New(tempDir, "")
+	_, err = pkg.BundleAndMinifyWithEntry("main.xru")
+	if err == nil {
+		t.Fatalf("Expected build to abort with validation error, but it succeeded")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "validation error in main.xru") {
+		t.Errorf("Expected 'validation error in main.xru', got: %s", errStr)
+	}
+	if !strings.Contains(errStr, "ERR_TYPE_MISMATCH") && !strings.Contains(errStr, "ERR_ARG_COUNT") {
+		t.Errorf("Expected specific checker error in message, got: %s", errStr)
+	}
+}

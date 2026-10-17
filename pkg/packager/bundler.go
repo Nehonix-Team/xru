@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/checker"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 	"github.com/Nehonix-Team/xru/pkg/modules"
 	"github.com/Nehonix-Team/xru/pkg/parser"
@@ -319,6 +320,19 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 	finalStmts = append(finalStmts, mainStmts...)
 
 	mainProg.Statements = finalStmts
+
+	// Semantic validation: abort build or packing if there are validation errors
+	chk := checker.New()
+	chk.SetCurrentFile(entryPath)
+	chk.Check(mainProg)
+	if len(chk.Errors()) > 0 {
+		var errMsgs []string
+		for _, e := range chk.Errors() {
+			errMsgs = append(errMsgs, fmt.Sprintf("  • %s", e))
+		}
+		return nil, fmt.Errorf("validation error in %s:\n%s", filepath.Base(entryPath), strings.Join(errMsgs, "\n"))
+	}
+
 	return mainProg, nil
 }
 

@@ -1521,5 +1521,73 @@ file "tests.html" (e, d: Document) -> {
 	}
 }
 
+func TestIndexedTypeAssignmentCompatibility(t *testing.T) {
+	// Case 1: Compatible indexed type ServerConfig["mode"] -> ServerConfig.mode
+	validCode := `
+interface ServerConfig @map {
+    host string
+    port number
+    mode "development" or "production"
+}
 
+arg env: ServerConfig["mode"] = "production"
+arg port: number = 8080
 
+const config: ServerConfig = @map {
+    host: "127.0.0.1",
+    port: port,
+    mode: env
+}
+`
+	l := lexer.New("test_valid_index.xru", validCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Expected 0 errors for valid indexed type assignment, got: %v", c.Errors())
+	}
+
+	// Case 2: Incompatible indexed type S["mode"] ("dev" or "prod") -> ServerConfig.mode ("development" or "production")
+	invalidCode := `
+interface ServerConfig @map {
+    host string
+    port number
+    mode "development" or "production"
+}
+
+interface S {
+    mode "dev" or "prod"
+}
+
+arg env: S["mode"] = "prod"
+arg port: number = 8080
+
+const config: ServerConfig = @map {
+    host: "127.0.0.1",
+    port: port,
+    mode: env
+}
+`
+	l2 := lexer.New("test_invalid_index.xru", invalidCode)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+
+	if len(c2.Errors()) == 0 {
+		t.Fatalf("Expected ERR_TYPE_MISMATCH for incompatible union values, got 0 errors")
+	}
+
+	foundErr := false
+	for _, err := range c2.Errors() {
+		if strings.Contains(err, "ERR_TYPE_MISMATCH") && strings.Contains(err, "Property 'mode' of 'config'") && strings.Contains(err, `S["mode"]`) {
+			foundErr = true
+			break
+		}
+	}
+	if !foundErr {
+		t.Errorf("Expected explicit error message 'Property \\'mode\\' of \\'config\\' expects type ... got \\'S[\"mode\"]\\'', got: %v", c2.Errors())
+	}
+}

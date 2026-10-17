@@ -645,9 +645,15 @@ func (c *Checker) validateArgAgainstInterface(arg ast.Expression, iface *ast.Int
 			valExpr, exists := keys[f.Name]
 			if !f.Optional && !strings.HasSuffix(f.Type, "?") {
 				if !exists {
-					c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
-						fmt.Sprintf("Argument %d ('%s') of function '%s' expects interface '%s', but map is missing required property '%s'",
-							argIdx, paramName, funcName, iface.Name, f.Name))
+					if funcName == "assignment" {
+						c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Assignment to '%s' expects interface '%s', but map is missing required property '%s'",
+								paramName, iface.Name, f.Name))
+					} else {
+						c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Argument %d ('%s') of function '%s' expects interface '%s', but map is missing required property '%s'",
+								argIdx, paramName, funcName, iface.Name, f.Name))
+					}
 					continue
 				}
 			}
@@ -702,9 +708,20 @@ func (c *Checker) validateArgAgainstInterface(arg ast.Expression, iface *ast.Int
 					}
 				}
 				if !c.isTypeCompatible(expectedFieldType, valType) {
-					c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
-						fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got '%s'",
-							f.Name, argIdx, paramName, f.Type, valType))
+					resolvedValType := c.resolveType(valType)
+					typeDetail := fmt.Sprintf("'%s'", valType)
+					if resolvedValType != valType {
+						typeDetail = fmt.Sprintf("'%s' (%s)", valType, resolvedValType)
+					}
+					if funcName == "assignment" {
+						c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Property '%s' of '%s' expects type '%s', got %s",
+								f.Name, paramName, f.Type, typeDetail))
+					} else {
+						c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got %s",
+								f.Name, argIdx, paramName, f.Type, typeDetail))
+					}
 				}
 			}
 		}
@@ -771,9 +788,15 @@ func (c *Checker) validateArgAgainstInlineMap(arg ast.Expression, typeStr, param
 			valExpr, exists := keys[f.Name]
 			if !f.Optional && !strings.HasSuffix(f.Type, "?") {
 				if !exists {
-					c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
-						fmt.Sprintf("Argument %d ('%s') of function '%s' expects inline map, but map is missing required property '%s'",
-							argIdx, paramName, funcName, f.Name))
+					if funcName == "assignment" {
+						c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Assignment to '%s' expects inline map, but map is missing required property '%s'",
+								paramName, f.Name))
+					} else {
+						c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Argument %d ('%s') of function '%s' expects inline map, but map is missing required property '%s'",
+								argIdx, paramName, funcName, f.Name))
+					}
 					continue
 				}
 			}
@@ -826,9 +849,20 @@ func (c *Checker) validateArgAgainstInlineMap(arg ast.Expression, typeStr, param
 					}
 				}
 				if !c.isTypeCompatible(expectedFieldType, valType) {
-					c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
-						fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got '%s'",
-							f.Name, argIdx, paramName, f.Type, valType))
+					resolvedValType := c.resolveType(valType)
+					typeDetail := fmt.Sprintf("'%s'", valType)
+					if resolvedValType != valType {
+						typeDetail = fmt.Sprintf("'%s' (%s)", valType, resolvedValType)
+					}
+					if funcName == "assignment" {
+						c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Property '%s' of '%s' expects type '%s', got %s",
+								f.Name, paramName, f.Type, typeDetail))
+					} else {
+						c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got %s",
+								f.Name, argIdx, paramName, f.Type, typeDetail))
+					}
 				}
 			}
 		}

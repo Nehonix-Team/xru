@@ -492,3 +492,72 @@ func GetListMethodSpec(name string) (NativeMethodSpec, bool) {
 	spec, ok := ListMethodSpecs[strings.ToLower(name)]
 	return spec, ok
 }
+
+var MapMethodSpecs = map[string]NativeMethodSpec{
+	"get": {
+		Params: []NativeParam{
+			{Name: "key", Type: "string"},
+			{Name: "default", Type: "any", Optional: true},
+		},
+		ReturnType: "any",
+	},
+	"set": {
+		Params: []NativeParam{
+			{Name: "key", Type: "string"},
+			{Name: "value", Type: "any"},
+		},
+		ReturnType: "map",
+	},
+	"merge": {
+		Params: []NativeParam{
+			{Name: "other", Type: "map"},
+		},
+		ReturnType: "map",
+	},
+	"keys": {
+		Params:     []NativeParam{},
+		ReturnType: "list[string]",
+	},
+	"values": {
+		Params:     []NativeParam{},
+		ReturnType: "list",
+	},
+	"entries": {
+		Params:     []NativeParam{},
+		ReturnType: "list",
+	},
+	"has": {
+		Params: []NativeParam{
+			{Name: "key", Type: "string"},
+		},
+		ReturnType: "bool",
+	},
+	"len": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"size": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"delete": {
+		Params: []NativeParam{
+			{Name: "key", Type: "string"},
+		},
+		ReturnType: "void",
+	},
+	"clear": {
+		Params:     []NativeParam{},
+		ReturnType: "void",
+	},
+}
+
+func IsMapMethod(name string) bool {
+	_, ok := MapMethodSpecs[strings.ToLower(name)]
+	return ok
+}
+
+func GetMapMethodSpec(name string) (NativeMethodSpec, bool) {
+	spec, ok := MapMethodSpecs[strings.ToLower(name)]
+	return spec, ok
+}

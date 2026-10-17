@@ -545,18 +545,22 @@ func rewriteScopeExpr(expr ast.Expression, scopeName string) ast.Expression {
 
 // Mangler renames non-reserved identifiers and minifies code
 type Mangler struct {
-	counter     int
-	nameMap     map[string]string
-	reserved    map[string]bool
-	argParams   map[string]bool
-	localScopes []map[string]string
+	counter       int
+	nameMap       map[string]string
+	reserved      map[string]bool
+	argParams     map[string]bool
+	mapVars       map[string]bool
+	mapInterfaces map[string]bool
+	localScopes   []map[string]string
 }
 
 func NewMangler(prog *ast.Program) *Mangler {
 	m := &Mangler{
-		nameMap:   make(map[string]string),
-		reserved:  make(map[string]bool),
-		argParams: make(map[string]bool),
+		nameMap:       make(map[string]string),
+		reserved:      make(map[string]bool),
+		argParams:     make(map[string]bool),
+		mapVars:       make(map[string]bool),
+		mapInterfaces: make(map[string]bool),
 	}
 
 	// Keywords & built-in primitives to never mangle
@@ -567,7 +571,10 @@ func NewMangler(prog *ast.Program) *Mangler {
 		"print", "println", "len", "append", "exit", "std", "fs", "Fs", "cmd", "Cmd",
 		"crypto", "Crypto", "net", "path", "exists", "exec", "getRandomBytes",
 		"replace", "replaceFuzzy", "removeLine", "removeLines", "removeBalanced", "removeBetween",
-		"setJson", "getJson", "content", "save",
+		"setJson", "getJson", "content", "save", "as", "or", "and", "not", "is", "fn",
+		"func", "let", "const", "use", "mod", "from", "to", "by", "unit", "interface",
+		"type", "set", "get", "has", "delete", "clear", "merge", "keys", "values", "entries",
+		"size", "while", "catch", "on", "header", "directive", "global", "pass", "includes",
 	}
 	for _, b := range builtins {
 		m.reserved[b] = true
@@ -632,9 +639,11 @@ func (m *Mangler) nextName() string {
 	m.counter++
 	var name string
 	if n < 26 {
-		name = fmt.Sprintf("_%c", 'a'+n)
+		name = fmt.Sprintf("%c", 'a'+n)
 	} else {
-		name = fmt.Sprintf("_%c%d", 'a'+(n%26), n/26)
+		letter := 'a' + ((n - 26) % 26)
+		num := ((n - 26) / 26) + 1
+		name = fmt.Sprintf("%c%d", letter, num)
 	}
 	// Avoid collisions with reserved words
 	if m.reserved[name] {
@@ -656,7 +665,14 @@ func (m *Mangler) getMangledName(orig string) string {
 }
 
 func (m *Mangler) Minify(prog *ast.Program) string {
-	// Pass 1: register all top-level user function and variable names so calls and refs resolve properly
+	// Pass 1: register map interfaces
+	for _, stmt := range prog.Statements {
+		if iface, ok := stmt.(*ast.InterfaceStatement); ok && iface.IsMap {
+			m.mapInterfaces[iface.Name] = true
+		}
+	}
+
+	// Pass 1.1: register all top-level user function, arg, and variable names so calls and refs resolve properly
 	for _, stmt := range prog.Statements {
 		if fn, ok := stmt.(*ast.FuncStatement); ok {
 			if !m.reserved[fn.Name] {
@@ -664,8 +680,22 @@ func (m *Mangler) Minify(prog *ast.Program) string {
 			}
 		}
 		if v, ok := stmt.(*ast.VarStatement); ok {
+			varName := v.Name
 			if !m.reserved[v.Name] {
-				_ = m.getMangledName(v.Name)
+				varName = m.getMangledName(v.Name)
+			}
+			if _, isMap := v.Value.(*ast.MapLiteral); isMap || v.Type == "map" || v.Type == "@map" || strings.HasPrefix(v.Type, "@map") || m.mapInterfaces[v.Type] {
+				m.mapVars[v.Name] = true
+				m.mapVars[varName] = true
+			}
+		}
+		if arg, ok := stmt.(*ast.ArgStatement); ok {
+			alias := m.nameMap[arg.Name]
+			if arg.Type == "map" || arg.Type == "@map" || strings.HasPrefix(arg.Type, "@map") || m.mapInterfaces[arg.Type] {
+				m.mapVars[arg.Name] = true
+				if alias != "" {
+					m.mapVars[alias] = true
+				}
 			}
 		}
 	}
@@ -713,7 +743,19 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		return "" // Strip from...use statements in bundled package
 
 	case *ast.InterfaceStatement:
-		return "" // Strip interface definitions in bundled package
+		mapKw := ""
+		if s.IsMap {
+			mapKw = " @map"
+		}
+		var fields []string
+		for _, f := range s.Fields {
+			opt := ""
+			if f.Optional {
+				opt = "?"
+			}
+			fields = append(fields, fmt.Sprintf("%s%s %s", f.Name, opt, f.Type))
+		}
+		return fmt.Sprintf("interface %s%s{%s}", s.Name, mapKw, strings.Join(fields, ";"))
 
 	case *ast.UnitStatement:
 		unitName := s.Name
@@ -796,7 +838,10 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		return fmt.Sprintf("%s %s(%s){%s}", prefix, fnName, strings.Join(params, ","), strings.Join(bodyParts, ";"))
 
 	case *ast.InStatement:
-		pathStr := m.minifyExpression(s.Path)
+		var pathStr string
+		if s.Path != nil {
+			pathStr = " " + m.minifyExpression(s.Path)
+		}
 		var bodyParts []string
 		for _, st := range s.Body {
 			ms := m.minifyStatement(st)
@@ -804,7 +849,7 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 				bodyParts = append(bodyParts, ms)
 			}
 		}
-		return fmt.Sprintf("in %s{%s}", pathStr, strings.Join(bodyParts, ";"))
+		return fmt.Sprintf("in%s{%s}", pathStr, strings.Join(bodyParts, ";"))
 
 	case *ast.FileStatement:
 		pathStr := s.Path
@@ -996,6 +1041,10 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 
 	case *ast.MemberExpression:
 		obj := m.minifyExpression(e.Object)
+		// If e.Object is a map, convert property access to .get("prop")
+		if m.isMapExpr(e.Object) && !isBuiltinMapMethod(e.Property) {
+			return fmt.Sprintf("%s.get(\"%s\")", obj, e.Property)
+		}
 		// Property names (methods / fields) are never mangled
 		return fmt.Sprintf("%s.%s", obj, e.Property)
 
@@ -1095,12 +1144,59 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 		var pairs []string
 		for _, p := range e.Pairs {
 			kStr := m.minifyExpression(p.Key)
+			if strLit, ok := p.Key.(*ast.StringLiteral); ok {
+				if isIdentString(strLit.Value) {
+					kStr = strLit.Value
+				}
+			}
 			vStr := m.minifyExpression(p.Value)
 			pairs = append(pairs, fmt.Sprintf("%s:%s", kStr, vStr))
 		}
-		return fmt.Sprintf("{%s}", strings.Join(pairs, ","))
+		return fmt.Sprintf("@map{%s}", strings.Join(pairs, ","))
 
 	default:
 		return e.String()
 	}
+}
+
+
+func (m *Mangler) isMapExpr(expr ast.Expression) bool {
+	switch e := expr.(type) {
+	case *ast.Identifier:
+		return m.mapVars[e.Value] || m.mapVars[m.resolveName(e.Value)]
+	case *ast.MapLiteral:
+		return true
+	case *ast.CallExpression:
+		if member, ok := e.Caller.(*ast.MemberExpression); ok {
+			prop := strings.ToLower(member.Property)
+			return prop == "set" || prop == "merge"
+		}
+	}
+	return false
+}
+
+func isBuiltinMapMethod(prop string) bool {
+	switch strings.ToLower(prop) {
+	case "clear", "delete", "entries", "has", "keys", "len", "size", "values", "get", "set", "merge":
+		return true
+	}
+	return false
+}
+
+func isIdentString(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if i == 0 {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_') {
+				return false
+			}
+		} else {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+				return false
+			}
+		}
+	}
+	return true
 }

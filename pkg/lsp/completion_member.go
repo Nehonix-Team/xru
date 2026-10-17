@@ -123,15 +123,21 @@ func (s *Server) handleMemberCompletion(uri string, lines []string, lineIdx int,
 			}
 		}
 
+		if targetInfo.isMap {
+			var items []CompletionItem
+			if targetInfo.interfaceName != "" {
+				ifaceMembers := collectInterfaceMembers(lines, targetInfo.interfaceName, filePath)
+				items = append(items, ifaceMembers...)
+			}
+			items = append(items, getMapCompletionItems(targetInfo)...)
+			return &CompletionList{IsIncomplete: false, Items: deduplicateCompletionItems(items)}, true
+		}
+
 		if targetInfo.interfaceName != "" {
 			ifaceMembers := collectInterfaceMembers(lines, targetInfo.interfaceName, filePath)
 			if len(ifaceMembers) > 0 {
 				return &CompletionList{IsIncomplete: false, Items: ifaceMembers}, true
 			}
-		}
-
-		if targetInfo.isMap {
-			return &CompletionList{IsIncomplete: false, Items: getMapCompletionItems(targetInfo)}, true
 		}
 
 		if targetInfo.unitType != "" {
@@ -487,3 +493,15 @@ func extractTargetCandidate(rawBefore string) string {
 }
 
 
+
+func deduplicateCompletionItems(items []CompletionItem) []CompletionItem {
+	seen := make(map[string]bool)
+	var result []CompletionItem
+	for _, it := range items {
+		if !seen[it.Label] {
+			seen[it.Label] = true
+			result = append(result, it)
+		}
+	}
+	return result
+}

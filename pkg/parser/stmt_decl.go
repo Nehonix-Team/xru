@@ -343,7 +343,8 @@ func (p *Parser) parseInterfaceFields() []*ast.InterfaceField {
 		}
 		if p.curTokenIs(lexer.FUNC) {
 			fnPos := p.curToken.Pos
-			if p.expectPeek(lexer.IDENT) {
+			if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.SET) || p.peekTokenIs(lexer.DEFAULT) || p.peekTokenIs(lexer.MATCH) || p.peekTokenIs(lexer.TYPE) || p.peekTokenIs(lexer.MAP) {
+				p.nextToken()
 				methodName := p.curToken.Literal
 				params := p.parseParameterList()
 				retType := "void"

@@ -1591,3 +1591,84 @@ const config: ServerConfig = @map {
 		t.Errorf("Expected explicit error message 'Property \\'mode\\' of \\'config\\' expects type ... got \\'S[\"mode\"]\\'', got: %v", c2.Errors())
 	}
 }
+
+
+func TestMapMethodForbiddenRule(t *testing.T) {
+	// 1. Function in map literal
+	code1 := `
+let m = @map {
+    name: "test",
+    run: (x) -> { return x + 1 }
+}
+`
+	l1 := lexer.New("test_map_fn.xru", code1)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	c1 := checker.New()
+	c1.Check(prog1)
+
+	if len(c1.Errors()) == 0 {
+		t.Fatalf("Expected ERR_MAP_METHOD_FORBIDDEN for function in map literal, got 0 errors")
+	}
+	found := false
+	for _, err := range c1.Errors() {
+		if strings.Contains(err, "ERR_MAP_METHOD_FORBIDDEN") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected ERR_MAP_METHOD_FORBIDDEN error, got: %v", c1.Errors())
+	}
+
+	// 2. Method in @map interface
+	code2 := `
+interface IMap @map {
+    name string
+    func doSomething() -> void
+}
+`
+	l2 := lexer.New("test_map_iface_fn.xru", code2)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+
+	if len(c2.Errors()) == 0 {
+		t.Fatalf("Expected ERR_MAP_METHOD_FORBIDDEN for method in @map interface, got 0 errors")
+	}
+	found2 := false
+	for _, err := range c2.Errors() {
+		if strings.Contains(err, "ERR_MAP_METHOD_FORBIDDEN") {
+			found2 = true
+			break
+		}
+	}
+	if !found2 {
+		t.Errorf("Expected ERR_MAP_METHOD_FORBIDDEN error, got: %v", c2.Errors())
+	}
+}
+
+func TestMapBuiltinMethodsTypeChecking(t *testing.T) {
+	code := `
+let m = @map {
+    host: "127.0.0.1",
+    port: 8080
+}
+
+m.set("mode", "production")
+let v = m.get("host")
+let hasH = m.has("host")
+let k = m.keys()
+let l = m.len()
+`
+	l := lexer.New("test_map_methods.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Expected 0 errors for valid map builtin calls, got: %v", c.Errors())
+	}
+}

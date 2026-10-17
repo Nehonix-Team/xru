@@ -80,8 +80,12 @@ func (p *Parser) parseExpressionWithPrimary(expr ast.Expression, precedence int)
 	// Gestion des membres 'Target.Property' ou 'Target.Method()'
 	for p.peekTokenIs(lexer.DOT) {
 		p.nextToken() // saute '.'
-		if !p.expectPeek(lexer.IDENT) {
-			return expr
+		if p.peekTokenIs(lexer.IDENT) || lexer.IsKeyword(p.peekToken.Type) {
+			p.nextToken()
+		} else {
+			if !p.expectPeek(lexer.IDENT) {
+				return expr
+			}
 		}
 		propName := p.curToken.Literal
 		expr = &ast.MemberExpression{

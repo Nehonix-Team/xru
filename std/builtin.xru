@@ -96,6 +96,15 @@ interface Number {
 
 /// Key-value dictionary associative collection.
 interface Map {
+	/// Returns the value associated with the specified key, or an optional default fallback.
+	func get(key: string, fallback?: any) -> any
+
+	/// Sets or updates the specified key with a new value in the map.
+	func set(key: string, value: any) -> map
+
+	/// Merges another map's key-value pairs into this map.
+	func merge(other: map) -> map
+
 	/// Returns a list containing all the keys in the map.
 	func keys() -> list[string]
 

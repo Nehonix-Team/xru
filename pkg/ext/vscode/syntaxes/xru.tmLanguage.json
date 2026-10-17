@@ -169,7 +169,7 @@
           "captures": {
             "1": { "name": "keyword.declaration.xru" },
             "2": { "name": "entity.name.type.class.xru" },
-            "3": { "name": "storage.type.map.xru" }
+            "3": { "name": "keyword.control.map.xru" }
           }
         },
         {
@@ -258,7 +258,7 @@
       "patterns": [
         {
           "name": "entity.name.type.xru",
-          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task|range|function|unit|document)\\b|@map"
+          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task|range|function|unit|document)\\b"
         }
       ]
     },
@@ -388,7 +388,7 @@
         {
           "match": "(@map)\\b",
           "captures": {
-            "1": { "name": "storage.type.map.xru entity.name.type.xru" }
+            "1": { "name": "keyword.control.map.xru" }
           }
         },
         {

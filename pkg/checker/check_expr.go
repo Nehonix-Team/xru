@@ -144,6 +144,17 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 					}
 				}
 				return
+			} else if objType == "map" || objType == "@map" || strings.HasPrefix(objType, "@map") || (c.interfaces != nil && c.interfaces[objType] != nil && c.interfaces[objType].IsMap) {
+				if spec, ok := GetMapMethodSpec(member.Property); ok {
+					c.validateNativeMethodCall(e, "map", member.Property, spec)
+				} else {
+					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+						fmt.Sprintf("Method '%s' not found on map", member.Property))
+					for _, arg := range e.Arguments {
+						c.checkExpression(arg)
+					}
+				}
+				return
 			}
 
 			if ident, ok := member.Object.(*ast.Identifier); ok {
@@ -417,6 +428,21 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		for _, pair := range e.Pairs {
 			c.checkExpression(pair.Key)
 			c.checkExpression(pair.Value)
+			if _, isLambda := pair.Value.(*ast.LambdaExpression); isLambda {
+				c.addError(pair.Value.Pos(), "ERR_MAP_METHOD_FORBIDDEN",
+					"Maps cannot contain methods or functions; declare a unit instead.")
+			} else {
+				valType := c.inferType(pair.Value)
+				if valType == "function" || strings.HasPrefix(valType, "func(") || strings.HasPrefix(valType, "fn(") {
+					c.addError(pair.Value.Pos(), "ERR_MAP_METHOD_FORBIDDEN",
+						"Maps cannot contain methods or functions; declare a unit instead.")
+				} else if ident, ok := pair.Value.(*ast.Identifier); ok {
+					if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Kind == SymFunc {
+						c.addError(pair.Value.Pos(), "ERR_MAP_METHOD_FORBIDDEN",
+							"Maps cannot contain methods or functions; declare a unit instead.")
+					}
+				}
+			}
 		}
 
 	case *ast.BlockStatement:

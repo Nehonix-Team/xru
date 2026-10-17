@@ -757,6 +757,13 @@ func (c *Checker) checkInterface(s *ast.InterfaceStatement) {
 		}
 		seenLower[lower] = f.Name
 
+		if s.IsMap {
+			if f.Params != nil || f.Type == "function" || strings.HasPrefix(f.Type, "func(") || strings.HasPrefix(f.Type, "fn(") || strings.HasPrefix(f.Type, "(") {
+				c.addError(f.Position, "ERR_MAP_METHOD_FORBIDDEN",
+					fmt.Sprintf("Map interface '%s' cannot contain methods or functions (field '%s'); declare a unit instead.", s.Name, f.Name))
+			}
+		}
+
 		if f.Params != nil {
 			if f.ReturnType != "" {
 				c.validateTypeAnnotation(f.Position, f.ReturnType)

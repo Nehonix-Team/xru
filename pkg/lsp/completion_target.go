@@ -41,7 +41,7 @@ func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
 	}
 
 	reVar := regexp.MustCompile(fmt.Sprintf(`^\s*(?:global\s+)?(?:let|const|var)\s+%s(?:\s*:\s*([^=]+?))?(?:\s*=\s*(.*))?$`, regexp.QuoteMeta(varName)))
-	for _, line := range lines {
+	for lineIdx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") {
 			continue
@@ -100,9 +100,18 @@ func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
 				return &varTargetInfo{isMap: true, mapFields: fields}
 			}
 
-			// 6. Inline map literal or @map literal: { a: 1, b: 2 } or @map{ a: 1 }
+			// 6. Inline map literal or @map literal: { a: 1, b: 2 } or @map{ a: 1 } (including multiline)
 			if strings.HasPrefix(valClean, "{") || strings.HasPrefix(valClean, "@map") {
-				fields := extractMapLiteralFields(valClean)
+				multiVal := valClean
+				if !strings.Contains(valClean, "}") {
+					depth := strings.Count(valClean, "{") - strings.Count(valClean, "}")
+					for nextIdx := lineIdx + 1; nextIdx < len(lines) && depth > 0; nextIdx++ {
+						nextL := lines[nextIdx]
+						depth += strings.Count(nextL, "{") - strings.Count(nextL, "}")
+						multiVal += "\n" + nextL
+					}
+				}
+				fields := extractMapLiteralFields(multiVal)
 				if len(fields) > 0 || typeStr == "map" || typeStr == "" {
 					return &varTargetInfo{isMap: true, mapFields: fields}
 				}

@@ -716,6 +716,36 @@ func (ev *Evaluator) evalMapMethod(c *ast.MemberExpression, mapVal MapValue, raw
 		args = append(args, a)
 	}
 	switch strings.ToLower(c.Property) {
+	case "get":
+		if len(args) < 1 {
+			return nil, fmt.Errorf("method 'get' requires at least 1 argument (key: string)")
+		}
+		key := args[0].String()
+		if val, exists := mapVal.Pairs[key]; exists {
+			return val, nil
+		}
+		if len(args) >= 2 {
+			return args[1], nil
+		}
+		return NilValue{}, nil
+	case "set":
+		if len(args) < 2 {
+			return nil, fmt.Errorf("method 'set' requires 2 arguments (key: string, value: any)")
+		}
+		key := args[0].String()
+		mapVal.Pairs[key] = args[1]
+		return mapVal, nil
+	case "merge", "update":
+		if len(args) < 1 {
+			return nil, fmt.Errorf("method 'merge' requires 1 argument (other: map)")
+		}
+		if otherMap, ok := args[0].(MapValue); ok {
+			for k, v := range otherMap.Pairs {
+				mapVal.Pairs[k] = v
+			}
+			return mapVal, nil
+		}
+		return nil, fmt.Errorf("argument to 'merge' must be a map, got %s", args[0].Type())
 	case "keys":
 		var keys []Value
 		for k := range mapVal.Pairs {

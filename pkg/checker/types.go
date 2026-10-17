@@ -30,7 +30,26 @@ func (c *Checker) inferType(expr ast.Expression) string {
 		}
 		return "list[" + c.inferType(e.Elements[0]) + "]"
 	case *ast.MapLiteral:
-		return "map"
+		if len(e.Pairs) == 0 {
+			return "@map"
+		}
+		var fields []string
+		for _, p := range e.Pairs {
+			k := ""
+			if str, ok := p.Key.(*ast.StringLiteral); ok {
+				k = str.Value
+			} else if ident, ok := p.Key.(*ast.Identifier); ok {
+				k = ident.Value
+			}
+			if k != "" {
+				t := c.inferType(p.Value)
+				fields = append(fields, fmt.Sprintf("%s: %s", k, t))
+			}
+		}
+		if len(fields) > 0 {
+			return fmt.Sprintf("@map{ %s }", strings.Join(fields, ", "))
+		}
+		return "@map"
 	case *ast.LambdaExpression:
 		return "function"
 	case *ast.InstantiationExpression:
@@ -311,6 +330,11 @@ func (c *Checker) inferType(expr ast.Expression) string {
 				if f.Name == e.Property {
 					return f.Type
 				}
+			}
+		}
+		if targetType == "map" || targetType == "@map" || strings.HasPrefix(targetType, "@map") || (c.interfaces != nil && c.interfaces[targetType] != nil && c.interfaces[targetType].IsMap) {
+			if spec, ok := GetMapMethodSpec(e.Property); ok {
+				return spec.ReturnType
 			}
 		}
 		return "any"

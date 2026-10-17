@@ -169,3 +169,13 @@ func LookupIdent(ident string) TokenType {
 	}
 	return IDENT
 }
+
+
+func IsKeyword(tok TokenType) bool {
+	for _, kw := range keywords {
+		if kw == tok {
+			return true
+		}
+	}
+	return false
+}

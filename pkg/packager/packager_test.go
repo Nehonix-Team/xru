@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Nehonix-Team/xru/pkg/checker"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 	"github.com/Nehonix-Team/xru/pkg/packager"
 	"github.com/Nehonix-Team/xru/pkg/parser"
@@ -282,3 +283,72 @@ file "output2.txt", (doc, err) -> {
 	}
 }
 
+
+
+func TestBuildMapSyntaxAndPropertyAccess(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_map_build_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	mainContent := `use std
+
+interface ServerConfig @map {
+    host string
+    port number
+    mode string
+}
+
+arg env: string = "prod"
+arg port: number = 8080
+
+const config: ServerConfig = @map {
+    host: "127.0.0.1",
+    port: port,
+    mode: env
+}
+
+let p = config.port
+let h = config.host
+`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(mainContent), 0644)
+
+	pkg := packager.New(tempDir, "")
+	bundled, err := pkg.BundleAndMinifyWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("BundleAndMinifyWithEntry failed: %v", err)
+	}
+	t.Logf("Bundled output:\n%s", bundled)
+
+	// 1. Must use @map{...} syntax, not JS-like raw {...}
+	if !strings.Contains(bundled, "@map{") {
+		t.Errorf("Expected bundled output to contain '@map{', got: %s", bundled)
+	}
+
+	// 2. Must convert config.port to .get("port")
+	if !strings.Contains(bundled, `.get("port")`) {
+		t.Errorf("Expected bundled output to convert map property access to .get(\"port\"), got: %s", bundled)
+	}
+	if !strings.Contains(bundled, `.get("host")`) {
+		t.Errorf("Expected bundled output to convert map property access to .get(\"host\"), got: %s", bundled)
+	}
+
+	// 3. Mangling must use alphanumeric characters (a-z, 1-9) without leading underscore
+	if strings.Contains(bundled, "_a") || strings.Contains(bundled, "_b") {
+		t.Errorf("Expected mangled names to be alphanumeric without underscore, got: %s", bundled)
+	}
+
+	// 4. Bundled code must parse and check with 0 errors
+	l := lexer.New("bundled.xru", bundled)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Bundled code has parse errors: %v", p.Errors())
+	}
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Bundled code has checker errors: %v", c.Errors())
+	}
+}

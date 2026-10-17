@@ -1919,3 +1919,56 @@ std.println("<green><bold>SUCCESS</bold></green>")
 		t.Fatalf("Eval error on color formatting: %v", err)
 	}
 }
+
+
+func TestMapGetSetMergeRuntime(t *testing.T) {
+	code := `
+let m = @map {
+    host: "127.0.0.1",
+    port: 8080
+}
+
+let h = m.get("host")
+let fallback = m.get("missing", "default_val")
+
+m.set("mode", "production")
+let modeVal = m.get("mode")
+
+let extra = @map {
+    active: true
+}
+m.merge(extra)
+let activeVal = m.get("active")
+`
+	l := lexer.New("test_map_runtime.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on map runtime methods: %v", err)
+	}
+
+	hVal, ok := env.Get("h")
+	if !ok || hVal.String() != "127.0.0.1" {
+		t.Errorf("Expected h to be '127.0.0.1', got %v", hVal)
+	}
+
+	fbVal, ok := env.Get("fallback")
+	if !ok || fbVal.String() != "default_val" {
+		t.Errorf("Expected fallback to be 'default_val', got %v", fbVal)
+	}
+
+	modeVal, ok := env.Get("modeVal")
+	if !ok || modeVal.String() != "production" {
+		t.Errorf("Expected modeval to be 'production', got %v", modeVal)
+	}
+
+	actVal, ok := env.Get("activeVal")
+	if !ok || actVal.String() != "true" {
+		t.Errorf("Expected activeval to be 'true', got %v", actVal)
+	}
+}

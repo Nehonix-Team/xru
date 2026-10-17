@@ -274,7 +274,7 @@ func sysRequireFn(args []Value) (Value, error) {
 
 	case "warn":
 		if mode != "silent" {
-			fmt.Fprintf(os.Stderr, "\033[33m[XRU VERSION WARNING]\033[0m This script requires XRU %s, currently running %s.\n", constraint, currentVer)
+			fmt.Fprintf(os.Stderr, "\033[33m[XRU VERSION WARNING]\033[0m !:XRU %s, currently running %s.\n", constraint, currentVer)
 		}
 		return BoolValue{Val: false}, nil
 

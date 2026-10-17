@@ -1672,3 +1672,88 @@ let l = m.len()
 		t.Fatalf("Expected 0 errors for valid map builtin calls, got: %v", c.Errors())
 	}
 }
+
+func TestDispatchTreeScanningAndValidation(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_dispatch_check_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	subDir := filepath.Join(tempDir, "src", "controllers")
+	_ = os.MkdirAll(subDir, 0755)
+
+	// Subdescriptor with an invalid undefined variable
+	badSubCode := `use std
+if unknownVar == true {
+    std.println("Bad")
+}
+`
+	_ = os.WriteFile(filepath.Join(subDir, ".rules.xru"), []byte(badSubCode), 0644)
+
+	mainCode := `mod main
+dispatch "./src"
+`
+	mainPath := filepath.Join(tempDir, "main.xru")
+	_ = os.WriteFile(mainPath, []byte(mainCode), 0644)
+
+	l := lexer.New(mainPath, mainCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	c := checker.New()
+	c.SetCurrentFile(mainPath)
+	c.Check(prog)
+
+	if len(c.Errors()) == 0 {
+		t.Fatalf("Expected validation error from dispatched subdescriptor, got 0 errors")
+	}
+
+	foundErr := false
+	for _, e := range c.Errors() {
+		if strings.Contains(e, "ERR_DISPATCH_VALIDATION") || strings.Contains(e, "unknownVar") {
+			foundErr = true
+			break
+		}
+	}
+	if !foundErr {
+		t.Errorf("Expected ERR_DISPATCH_VALIDATION error, got: %v", c.Errors())
+	}
+}
+
+func TestDispatchTreeWithSubdescriptorImports(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_dispatch_sub_import_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	subDir := filepath.Join(tempDir, "src", "servers")
+	_ = os.MkdirAll(subDir, 0755)
+
+	subRule := `use std
+use fs
+std.info("Hello from subdescriptor")
+`
+	_ = os.WriteFile(filepath.Join(subDir, ".rules.xru"), []byte(subRule), 0644)
+
+	mainCode := `use std
+use fs
+dispatch "./src"
+`
+	mainPath := filepath.Join(tempDir, "main.xru")
+	_ = os.WriteFile(mainPath, []byte(mainCode), 0644)
+
+	l := lexer.New(mainPath, mainCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	c := checker.New()
+	c.SetCurrentFile(mainPath)
+	c.Check(prog)
+
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Expected 0 errors when subdescriptor imports std/fs, got: %v", c.Errors())
+	}
+}
+

@@ -85,11 +85,9 @@ func (s *Scope) Define(sym *Symbol) error {
 	// Do not check parent collision if this is an isolated unit scope (properties accessed via &)
 	if !s.isUnit && s.parent != nil {
 		if existing, exists := s.parent.Resolve(sym.Name); exists {
-			if existing.Kind == SymUnit && sym.Kind == SymUnit {
-				return fmt.Errorf("Module alias '%s' is already imported%s", sym.Name, formatPos(existing.Pos))
-			} else if existing.Kind == SymUnit {
+			if existing.Kind == SymUnit && sym.Kind != SymUnit {
 				return fmt.Errorf("Variable '%s' collides with imported module '%s'%s", sym.Name, existing.Name, formatPos(existing.Pos))
-			} else if sym.Kind == SymUnit {
+			} else if sym.Kind == SymUnit && existing.Kind != SymUnit {
 				return fmt.Errorf("Imported module '%s' collides with existing identifier '%s'%s", sym.Name, existing.Name, formatPos(existing.Pos))
 			}
 		}

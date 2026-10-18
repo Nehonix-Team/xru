@@ -863,6 +863,44 @@ myName
 	}
 }
 
+func TestLSPUnusedDestructuredImportRange(t *testing.T) {
+	uri := "file:///home/idevo/Documents/projects/XTemplates/test_destruct_unused.xru"
+	code := `from "dll" use gArgs::@map{author, xems, mode, cdn}
+if xems == false {
+}
+if mode == "minimal" {
+}
+if cdn == false {
+}
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	if !strings.Contains(outStr, `"tags":[1]`) {
+		t.Errorf("Expected DiagnosticTagUnnecessary (tags:[1]) in publishDiagnostics, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, "author") {
+		t.Errorf("Expected diagnostic message mentioning 'author', got: %s", outStr)
+	}
+	// The range must NOT start at character 0 (which would grey out the whole line)
+	if strings.Contains(outStr, `"start":{"line":0,"character":0}`) {
+		t.Errorf("Diagnostic should not cover full line for destructured unused symbol: %s", outStr)
+	}
+}
+
 func TestLSPGoToDefinitionPriority(t *testing.T) {
 	uri := "file:///home/idevo/Documents/projects/XTemplates/test_def_priority.xru"
 	code := `mod TDP

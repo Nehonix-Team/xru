@@ -144,16 +144,20 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 					Pos:    exp.Position,
 				}
 			}
+			symPos := s.Pos()
+			if p, ok := s.MemberPositions[modName]; ok {
+				symPos = p
+			}
 			modSym := &Symbol{
 				Name:    modName,
 				Kind:    SymUnit,
-				Pos:     s.Pos(),
+				Pos:     symPos,
 				Methods: methods,
 			}
 			if existing, ok := c.scope.Resolve(modName); ok && existing.Pos.Line == 0 {
 				existing.Kind = SymUnit
 				existing.Methods = methods
-				existing.Pos = s.Pos()
+				existing.Pos = symPos
 				c.importedSyms = append(c.importedSyms, existing)
 				continue
 			}
@@ -265,18 +269,22 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		if s.Alias != "" {
 			targetName = s.Alias
 		}
+		symPos := s.Pos()
+		if p, ok := s.MemberPositions[s.Member]; ok {
+			symPos = p
+		}
 		memberSym := &Symbol{
 			Name:   targetName,
 			Kind:   symKind,
 			Type:   exp.Type,
 			Params: exp.Params,
-			Pos:    s.Pos(),
+			Pos:    symPos,
 		}
 		if existing, ok := c.scope.Resolve(targetName); ok && existing.Pos.Line == 0 {
 			existing.Kind = symKind
 			existing.Type = exp.Type
 			existing.Params = exp.Params
-			existing.Pos = s.Pos()
+			existing.Pos = symPos
 			c.importedSyms = append(c.importedSyms, existing)
 			return
 		}
@@ -326,18 +334,22 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 			} else if exp.Kind == "const" {
 				symKind = SymConst
 			}
+			symPos := s.Pos()
+			if p, ok := s.MemberPositions[memName]; ok {
+				symPos = p
+			}
 			memberSym := &Symbol{
 				Name:   memName,
 				Kind:   symKind,
 				Type:   exp.Type,
 				Params: exp.Params,
-				Pos:    s.Pos(),
+				Pos:    symPos,
 			}
 			if existing, ok := c.scope.Resolve(memName); ok && existing.Pos.Line == 0 {
 				existing.Kind = symKind
 				existing.Type = exp.Type
 				existing.Params = exp.Params
-				existing.Pos = s.Pos()
+				existing.Pos = symPos
 				c.importedSyms = append(c.importedSyms, existing)
 				continue
 			}

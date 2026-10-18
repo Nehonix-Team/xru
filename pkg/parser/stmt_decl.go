@@ -236,7 +236,10 @@ func (p *Parser) parseModStatement() *ast.ModStatement {
 // from "services" use auth::b
 // from "services" use (auth, cdn, db)
 func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
-	stmt := &ast.FromUseStatement{Position: p.curToken.Pos}
+	stmt := &ast.FromUseStatement{
+		Position:        p.curToken.Pos,
+		MemberPositions: make(map[string]lexer.Position),
+	}
 	if !p.expectPeek(lexer.STRING) && !p.expectPeek(lexer.IDENT) {
 		return nil
 	}
@@ -256,6 +259,7 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 					cleanMod = cleanMod[1 : len(cleanMod)-1]
 				}
 				stmt.Modules = append(stmt.Modules, cleanMod)
+				stmt.MemberPositions[cleanMod] = p.curToken.Pos
 			}
 			if p.peekTokenIs(lexer.COMMA) {
 				p.nextToken()
@@ -293,6 +297,7 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 				for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
 					if p.curTokenIs(lexer.IDENT) {
 						stmt.Members = append(stmt.Members, p.curToken.Literal)
+						stmt.MemberPositions[p.curToken.Literal] = p.curToken.Pos
 					}
 					if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
 						p.nextToken()
@@ -314,6 +319,7 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 						cleanMem = cleanMem[1 : len(cleanMem)-1]
 					}
 					stmt.Members = append(stmt.Members, cleanMem)
+					stmt.MemberPositions[cleanMem] = p.curToken.Pos
 				}
 				if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
 					p.nextToken()
@@ -322,6 +328,7 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 			}
 		} else if p.expectPeek(lexer.IDENT) {
 			stmt.Member = p.curToken.Literal
+			stmt.MemberPositions[stmt.Member] = p.curToken.Pos
 		} else {
 			return nil
 		}

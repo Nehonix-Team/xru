@@ -133,7 +133,8 @@ type FromUseStatement struct {
 	Alias    string   // e.g. "a" (when from "services" use auth as a or auth::@map as a)
 	Modules  []string // e.g. ["auth", "cdn", "db"] (when from "services" use (auth, cdn, db))
 	AsMap    bool     // true when module::@map or module::@map{ ... }
-	CatchVar string   // e.g. "e" (when from "services" use auth::b catch e)
+	CatchVar        string                  // e.g. "e" (when from "services" use auth::b catch e)
+	MemberPositions map[string]lexer.Position // Position de chaque membre ou module importé
 }
 
 func (s *FromUseStatement) statementNode()      {}

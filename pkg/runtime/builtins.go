@@ -118,6 +118,13 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		return NilValue{}, nil
 	}
 
+	typeFn := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, fmt.Errorf("std.type requires 1 argument")
+		}
+		return StringValue{Val: string(args[0].Type())}, nil
+	}
+
 	stdUnit := &UnitInstance{
 		UnitName:   "std",
 		Properties: make(map[string]Value),
@@ -140,6 +147,12 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Sleep":   sleepFn,
 			"fatal":   fatalFn,
 			"Fatal":   fatalFn,
+			"exit":    exitFn,
+			"Exit":    exitFn,
+			"type":    typeFn,
+			"Type":    typeFn,
+			"typeof":  typeFn,
+			"Typeof":  typeFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}

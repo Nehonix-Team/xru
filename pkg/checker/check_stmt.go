@@ -672,6 +672,33 @@ func (c *Checker) checkFor(s *ast.ForStatement) {
 	} else if isMap {
 		itemType = "string"
 		idxType = "any"
+
+		var fields []*ast.InterfaceField
+		if c.interfaces != nil && c.interfaces[iterType] != nil {
+			fields = c.interfaces[iterType].Fields
+		} else if strings.HasPrefix(iterType, "@map") && strings.Contains(iterType, "{") {
+			fields = parseInlineMapFieldDefs(iterType)
+		}
+
+		if len(fields) > 0 {
+			var valTypes []string
+			seen := make(map[string]bool)
+			for _, field := range fields {
+				ft := strings.TrimSpace(field.Type)
+				if strings.HasPrefix(ft, "\"") && strings.HasSuffix(ft, "\"") {
+					ft = "string"
+				}
+				if !seen[ft] && ft != "" {
+					seen[ft] = true
+					valTypes = append(valTypes, ft)
+				}
+			}
+			if len(valTypes) == 1 {
+				idxType = valTypes[0]
+			} else if len(valTypes) > 1 {
+				idxType = strings.Join(valTypes, " or ")
+			}
+		}
 	}
 
 	itemSym := &Symbol{

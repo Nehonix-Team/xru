@@ -28,6 +28,10 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 				return nil, fmt.Errorf("method '%s' not found on task", c.Property)
 			}
 		}
+		propLower := strings.ToLower(c.Property)
+		if (propLower == "type" || propLower == "typeof") && len(call.Arguments) == 0 {
+			return StringValue{Val: string(objVal.Type())}, nil
+		}
 		if strVal, ok := objVal.(StringValue); ok {
 			return ev.evalStringMethod(c, strVal, call.Arguments, env)
 		}

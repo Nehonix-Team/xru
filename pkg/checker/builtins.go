@@ -78,6 +78,10 @@ func (c *Checker) initBuiltinUnits() {
 			"Sleep":   {Name: "Sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
 			"fatal":   {Name: "fatal", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "message", Type: "any"}, {Name: "code", Type: "number"}}, MinArgs: 1, HasOptional: true},
 			"Fatal":   {Name: "Fatal", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "message", Type: "any"}, {Name: "code", Type: "number"}}, MinArgs: 1, HasOptional: true},
+			"type":    {Name: "type", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "value", Type: "any"}}},
+			"Type":    {Name: "Type", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "value", Type: "any"}}},
+			"typeof":  {Name: "typeof", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "value", Type: "any"}}},
+			"Typeof":  {Name: "Typeof", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "value", Type: "any"}}},
 		},
 	}
 	sysUnit := &Symbol{
@@ -331,6 +335,14 @@ type NativeMethodSpec struct {
 }
 
 var StringMethodSpecs = map[string]NativeMethodSpec{
+	"type": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"typeof": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
 	"len": {
 		Params:     []NativeParam{},
 		ReturnType: "number",
@@ -422,6 +434,14 @@ var StringMethodSpecs = map[string]NativeMethodSpec{
 }
 
 var ListMethodSpecs = map[string]NativeMethodSpec{
+	"type": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"typeof": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
 	"len": {
 		Params:     []NativeParam{},
 		ReturnType: "number",
@@ -498,6 +518,14 @@ func GetListMethodSpec(name string) (NativeMethodSpec, bool) {
 }
 
 var NumberMethodSpecs = map[string]NativeMethodSpec{
+	"type": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"typeof": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
 	"abs": {
 		Params:     []NativeParam{},
 		ReturnType: "number",
@@ -545,6 +573,14 @@ func GetNumberMethodSpec(name string) (NativeMethodSpec, bool) {
 }
 
 var MapMethodSpecs = map[string]NativeMethodSpec{
+	"type": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"typeof": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
 	"get": {
 		Params: []NativeParam{
 			{Name: "key", Type: "string"},

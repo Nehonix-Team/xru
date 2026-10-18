@@ -651,6 +651,7 @@ type Mangler struct {
 	argParams     map[string]bool
 	mapVars       map[string]bool
 	mapInterfaces map[string]bool
+	moduleAliases map[string]string
 	unitProps     map[string]string
 	unitMethods   map[string]string
 	localScopes   []map[string]string
@@ -663,6 +664,7 @@ func NewMangler(prog *ast.Program) *Mangler {
 		argParams:     make(map[string]bool),
 		mapVars:       make(map[string]bool),
 		mapInterfaces: make(map[string]bool),
+		moduleAliases: make(map[string]string),
 		unitProps:     make(map[string]string),
 		unitMethods:   make(map[string]string),
 	}
@@ -687,19 +689,19 @@ func NewMangler(prog *ast.Program) *Mangler {
 
 	// Register native module imports with alphanumeric aliases (s1, s2, s3...)
 	importCounter := 1
-	moduleAliases := make(map[string]string)
 	for _, stmt := range prog.Statements {
 		if u, ok := stmt.(*ast.UseStatement); ok {
-			alias, exists := moduleAliases[u.Module]
+			alias, exists := m.moduleAliases[u.Module]
 			if !exists {
 				alias = fmt.Sprintf("s%d", importCounter)
 				importCounter++
-				moduleAliases[u.Module] = alias
+				m.moduleAliases[u.Module] = alias
 				m.reserved[alias] = true
 			}
-			m.nameMap[u.Module] = alias
 			if u.Alias != "" {
 				m.nameMap[u.Alias] = alias
+			} else {
+				m.nameMap[u.Module] = alias
 			}
 		}
 	}
@@ -888,10 +890,7 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		return fmt.Sprintf("%sarg %s: %s", prefix, s.Name, s.Type)
 
 	case *ast.UseStatement:
-		alias := m.nameMap[s.Module]
-		if alias == "" && s.Alias != "" {
-			alias = m.nameMap[s.Alias]
-		}
+		alias := m.moduleAliases[s.Module]
 		if alias != "" {
 			return fmt.Sprintf("use %s as %s", s.Module, alias)
 		}

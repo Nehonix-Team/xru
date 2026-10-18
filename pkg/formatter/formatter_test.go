@@ -114,3 +114,16 @@ std.println("OK"); // End of script
 		t.Errorf("Expected raw chevron string preserved verbatim, got:\n%s", formatted)
 	}
 }
+
+func TestStandaloneSnippet(t *testing.T) {
+	code := `const o = if i -> "<green>Dependencies installation enabled</>" else "<yellow>Dependencies installation disabled</>";
+interface EnvObj @map{XYPRISS_SHIELD "silent";PORT number;SERVER_TIMEOUT number;XEMS_SECRET string};
+const q = @map{PORT:j,SERVER_TIMEOUT:k,XEMS_SECRET:p,XYPRISS_SHIELD:"silent"};
+if s2.exists(".env"){file ".env",(ae,af)->{if af!=nil{return};if e=="minimal"{let ag = "";for ah,ai in q{if ai.type()=="number"{ag=:ag+"$f{ah}=$f{ai}\n"} else{ag=:ag+"$f{ah}=\"$f{ai}\"\n"}};ae.setContent(ag)} else{ae.removeLines("XEMS_SECRET");ae.append("\n");ae.append("XEMS_SECRET=$f{p}")}}};`
+
+	formatted, err := Format(code)
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+	t.Logf("Formatted output:\n%s", formatted)
+}

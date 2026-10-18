@@ -42,17 +42,21 @@ type fmtEngine struct {
 	tokens []lexer.Token
 	pos    int
 
-	indent      int
-	buf         strings.Builder
-	lineEmpty   bool
-	consecNL    int
-	inParen     int
+	indent        int
+	buf           strings.Builder
+	lineEmpty     bool
+	consecNL      int
+	inParen       int
 	inBracket     int
 	braceStack    []string
 	lastStarter   string
 	lastClosedCtx string
 	prevTokType   lexer.TokenType
 	prevRaw       string
+
+	inHeader    bool
+	inForHeader bool
+	inArrowExpr bool
 }
 
 func (f *fmtEngine) cur() lexer.Token {
@@ -147,8 +151,28 @@ func (f *fmtEngine) format() string {
 	for f.pos < len(f.tokens) {
 		tok := f.cur()
 
+		if tok.Type == lexer.FOR {
+			f.inForHeader = true
+			f.inHeader = true
+		} else if tok.Type == lexer.IF || tok.Type == lexer.ELIF || tok.Type == lexer.WHILE ||
+			tok.Type == lexer.MATCH || tok.Type == lexer.FILE || tok.Type == lexer.WITH {
+			f.inHeader = true
+		} else if tok.Type == lexer.ARROW {
+			f.inArrowExpr = true
+		}
+
 		if isStatementStarter(tok.Type) {
-			f.lastStarter = string(tok.Type)
+			if tok.Type == lexer.IN && f.inForHeader {
+				// not a statement starter
+			} else {
+				f.lastStarter = string(tok.Type)
+			}
+		}
+
+		if f.prevTokType == lexer.AT && tok.Type == lexer.MAP {
+			if f.lastStarter != "interface" {
+				f.lastStarter = "map"
+			}
 		}
 
 		switch tok.Type {
@@ -166,6 +190,7 @@ func (f *fmtEngine) format() string {
 			if f.inParen > 0 {
 				f.inParen--
 			}
+			f.inArrowExpr = false
 			f.write(")")
 
 		case lexer.LBRACKET:
@@ -176,9 +201,14 @@ func (f *fmtEngine) format() string {
 			if f.inBracket > 0 {
 				f.inBracket--
 			}
+			f.inArrowExpr = false
 			f.write("]")
 
 		case lexer.LBRACE:
+			f.inHeader = false
+			f.inForHeader = false
+			f.inArrowExpr = false
+
 			ctx := "block"
 			if f.lastStarter != "" {
 				ctx = f.lastStarter
@@ -192,6 +222,10 @@ func (f *fmtEngine) format() string {
 			f.indent++
 
 		case lexer.RBRACE:
+			f.inHeader = false
+			f.inForHeader = false
+			f.inArrowExpr = false
+
 			if f.indent > 0 {
 				f.indent--
 			}
@@ -208,10 +242,20 @@ func (f *fmtEngine) format() string {
 			}
 			f.write("}")
 
-			// Check what follows: 'else' or 'elif'?
 			peekTok := f.peek()
 			if peekTok.Type == lexer.ELSE || peekTok.Type == lexer.ELIF {
 				f.writeSpace()
+			} else if peekTok.Type == lexer.SEMICOLON {
+				if isBlockBrace(ctx) {
+					// Drop redundant semicolon after block statement }
+					f.pos++
+					f.writeNewline()
+					if f.indent == 0 && (ctx == "unit" || ctx == "func" || ctx == "interface") {
+						f.ensureBlankLine()
+					}
+				}
+				// If not a block brace (e.g. map), do not write newline now;
+				// the following SEMICOLON will write on the same line: };
 			} else {
 				f.writeNewline()
 				// Top-level units and functions get an empty line after
@@ -221,8 +265,17 @@ func (f *fmtEngine) format() string {
 			}
 
 		case lexer.SEMICOLON:
+			f.inArrowExpr = false
+			f.inHeader = false
+			f.inForHeader = false
 			if f.prevTokType == lexer.RBRACE && isBlockBrace(f.lastClosedCtx) {
 				// Redundant semicolon after block brace: ignore
+				f.prevTokType = tok.Type
+				f.pos++
+				continue
+			}
+			if f.lineEmpty {
+				// Isolated semicolon on an empty line: ignore
 				f.prevTokType = tok.Type
 				f.pos++
 				continue
@@ -231,6 +284,7 @@ func (f *fmtEngine) format() string {
 			f.writeNewline()
 
 		case lexer.COMMA:
+			f.inArrowExpr = false
 			f.write(",")
 			f.writeSpace()
 
@@ -249,7 +303,10 @@ func (f *fmtEngine) format() string {
 			f.write(tok.Literal)
 
 		case lexer.AT:
-			// @Unit() or @map{}: no space after
+			// Space before @ if preceded by identifier, etc. (e.g. interface EnvObj @map)
+			if f.needsSpaceBefore(tok) {
+				f.writeSpace()
+			}
 			f.write("@")
 
 		case lexer.AMP:
@@ -270,11 +327,19 @@ func (f *fmtEngine) format() string {
 			f.writeSpace()
 
 		case lexer.ELIF, lexer.ELSE:
-			if f.prevTokType != lexer.RBRACE && !f.lineEmpty {
-				f.writeNewline()
+			if f.inArrowExpr {
+				f.writeSpace()
+				f.write(tok.Literal)
+				f.writeSpace()
+			} else {
+				if f.prevTokType == lexer.RBRACE {
+					f.writeSpace()
+				} else if !f.lineEmpty {
+					f.writeNewline()
+				}
+				f.write(tok.Literal)
+				f.writeSpace()
 			}
-			f.write(tok.Literal)
-			f.writeSpace()
 
 		default:
 			// Operator spacing
@@ -369,6 +434,20 @@ func (f *fmtEngine) needsSpaceBefore(tok lexer.Token) bool {
 }
 
 func (f *fmtEngine) shouldInsertSemicolon(cur, next lexer.Token) bool {
+	// If in header (for, if, while, etc.) or in an arrow expression, never insert semicolon
+	if f.inHeader || f.inForHeader || f.inArrowExpr {
+		return false
+	}
+	// Inside a map literal, never insert semicolons
+	if len(f.braceStack) > 0 && f.braceStack[len(f.braceStack)-1] == "map" {
+		return false
+	}
+
+	// Never insert semicolon right before 'in' keyword
+	if next.Type == lexer.IN {
+		return false
+	}
+
 	// If next is semicolon, EOF, or closing brace: no need to insert before them
 	if next.Type == lexer.SEMICOLON || next.Type == lexer.EOF || next.Type == lexer.RBRACE {
 		// If next is RBRACE or EOF, a statement should terminate with ';' if it didn't!

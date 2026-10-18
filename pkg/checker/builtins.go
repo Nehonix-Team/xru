@@ -116,8 +116,8 @@ func (c *Checker) initBuiltinUnits() {
 		Name: "Cmd",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"Exec": {Name: "Exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}}},
-			"exec": {Name: "exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}}},
+			"Exec": {Name: "Exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}, {Name: "dir", Type: "string"}}, MinArgs: 1, HasOptional: true},
+			"exec": {Name: "exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}, {Name: "dir", Type: "string"}}, MinArgs: 1, HasOptional: true},
 		},
 	}
 	cryptoUnit := &Symbol{

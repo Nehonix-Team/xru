@@ -70,8 +70,9 @@ func (s *UseStatement) String() string {
 type ArgStatement struct {
 	Position     lexer.Position
 	TypePos      lexer.Position
-	Name         string
-	Alias        string // Optional alias for the internal variable name (e.g. arg mode as _e)
+	Name         string // Variable name & long flag (e.g. port -> --port)
+	Short        string // Short CLI flag alias (e.g. p -> -p)
+	Alias        string // Optional mangled internal variable name in bundled code
 	Type         string // "string", "number", "bool", "duration", etc.
 	DefaultValue Expression
 	IsGlobal     bool
@@ -92,7 +93,11 @@ func (s *ArgStatement) String() string {
 		prefix = "global "
 	}
 	namePart := s.Name
-	if s.Alias != "" {
+	if s.Short != "" && s.Alias != "" {
+		namePart = fmt.Sprintf("%s, %s as %s", s.Name, s.Short, s.Alias)
+	} else if s.Short != "" {
+		namePart = fmt.Sprintf("%s, %s", s.Name, s.Short)
+	} else if s.Alias != "" {
 		namePart = fmt.Sprintf("%s as %s", s.Name, s.Alias)
 	}
 	if s.DefaultValue != nil {

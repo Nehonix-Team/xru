@@ -110,6 +110,9 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 	for _, st := range mainProg.Statements {
 		if s, ok := st.(*ast.ArgStatement); ok {
 			knownArgs[s.Name] = true
+			if s.Short != "" {
+				knownArgs[s.Short] = true
+			}
 			if s.Alias != "" {
 				knownArgs[s.Alias] = true
 			}
@@ -174,6 +177,9 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 		for _, st := range subProg.Statements {
 			if s, ok := st.(*ast.ArgStatement); ok {
 				knownArgs[s.Name] = true
+				if s.Short != "" {
+					knownArgs[s.Short] = true
+				}
 				if s.Alias != "" {
 					knownArgs[s.Alias] = true
 				}
@@ -901,17 +907,21 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		if s.IsGlobal {
 			prefix = "global "
 		}
+		namePart := s.Name
+		if s.Short != "" {
+			namePart = fmt.Sprintf("%s, %s", s.Name, s.Short)
+		}
 		alias := s.VarName()
 		if alias != s.Name {
 			if s.DefaultValue != nil {
-				return fmt.Sprintf("%sarg %s as %s: %s = %s", prefix, s.Name, alias, s.Type, m.minifyExpression(s.DefaultValue))
+				return fmt.Sprintf("%sarg %s as %s: %s = %s", prefix, namePart, alias, s.Type, m.minifyExpression(s.DefaultValue))
 			}
-			return fmt.Sprintf("%sarg %s as %s: %s", prefix, s.Name, alias, s.Type)
+			return fmt.Sprintf("%sarg %s as %s: %s", prefix, namePart, alias, s.Type)
 		}
 		if s.DefaultValue != nil {
-			return fmt.Sprintf("%sarg %s: %s = %s", prefix, s.Name, s.Type, m.minifyExpression(s.DefaultValue))
+			return fmt.Sprintf("%sarg %s: %s = %s", prefix, namePart, s.Type, m.minifyExpression(s.DefaultValue))
 		}
-		return fmt.Sprintf("%sarg %s: %s", prefix, s.Name, s.Type)
+		return fmt.Sprintf("%sarg %s: %s", prefix, namePart, s.Type)
 
 	case *ast.UseStatement:
 		alias := m.moduleAliases[s.Module]

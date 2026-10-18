@@ -181,8 +181,8 @@ func TestBuildSingleFileModule(t *testing.T) {
 	// 2. Create rt/cArg.xru
 	_ = os.MkdirAll(filepath.Join(tempDir, "rt"), 0755)
 	cArgContent := `use std
-const dArgVal: string = "hello"
-func run(x: number) -> string {
+global const dArgVal: string = "hello"
+global func run(x: number) -> string {
     return dArgVal + " " + x
 }`
 	_ = os.WriteFile(filepath.Join(tempDir, "rt", "cArg.xru"), []byte(cArgContent), 0644)

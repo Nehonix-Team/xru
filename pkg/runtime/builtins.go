@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -512,17 +513,14 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 
 		var stdoutBuf, stderrBuf bytes.Buffer
 		cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
-		cmd.Stderr = &stderrBuf
+		cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
 		err := cmd.Run()
 		if err != nil {
-			errMsg := strings.TrimSpace(stderrBuf.String())
-			if errMsg == "" {
-				errMsg = strings.TrimSpace(stdoutBuf.String())
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				return StringValue{Val: stdoutBuf.String()}, fmt.Errorf("command '%s' exited with code %d", commandLine, exitErr.ExitCode())
 			}
-			if errMsg == "" {
-				errMsg = err.Error()
-			}
-			return StringValue{Val: stdoutBuf.String()}, fmt.Errorf("%s", errMsg)
+			return StringValue{Val: stdoutBuf.String()}, err
 		}
 		return StringValue{Val: stdoutBuf.String()}, nil
 	}

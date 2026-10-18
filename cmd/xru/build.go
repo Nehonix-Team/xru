@@ -42,28 +42,22 @@ func handleBuild(args []string, verbose bool) {
 			outputFile = cleanArgs[1]
 		} else if len(cleanArgs) == 1 {
 			arg := cleanArgs[0]
-			if _, err := os.Stat(arg); os.IsNotExist(err) {
+			if _, err := os.Stat(arg); err == nil {
+				// The provided file exists: it is the entry file!
+				entryFile = arg
+				baseName := filepath.Base(arg)
+				if !strings.HasSuffix(baseName, ".xru") {
+					baseName += ".xru"
+				}
+				outputFile = filepath.Join("out", baseName)
+			} else {
+				// The argument does not exist: it is the output file!
 				entryFile = "main.xru"
 				outputFile = arg
-			} else {
-				if filepath.Base(arg) == "main.xru" {
-					fmt.Println("Error: 'xru build' requires an output file path.")
-					fmt.Println("Usage: xru build [entry.xru] <output.xru>")
-					os.Exit(1)
-				}
-				if _, err := os.Stat("main.xru"); err == nil {
-					entryFile = "main.xru"
-					outputFile = arg
-				} else {
-					fmt.Println("Error: 'xru build' requires an output file path.")
-					fmt.Println("Usage: xru build [entry.xru] <output.xru>")
-					os.Exit(1)
-				}
 			}
 		} else {
-			fmt.Println("Error: 'xru build' requires an output file path.")
-			fmt.Println("Usage: xru build [entry.xru] <output.xru>")
-			os.Exit(1)
+			entryFile = "main.xru"
+			outputFile = filepath.Join("out", "standalone.xru")
 		}
 	} else {
 		if len(cleanArgs) >= 1 {
@@ -71,6 +65,11 @@ func handleBuild(args []string, verbose bool) {
 		} else {
 			entryFile = "main.xru"
 		}
+	}
+
+	if filepath.Clean(entryFile) == filepath.Clean(outputFile) {
+		fmt.Printf("\033[31m[BUILD ERROR]\033[0m Cannot overwrite entry file '%s' with output file\n", entryFile)
+		os.Exit(1)
 	}
 
 	if !strings.HasSuffix(outputFile, ".xru") && !strings.Contains(filepath.Base(outputFile), ".") {

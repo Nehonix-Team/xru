@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/internal/utils"
@@ -420,6 +421,9 @@ func parseCliVal(val string) runtime.Value {
 	}
 	if lower == "simple" || lower == "minimal" {
 		return runtime.StringValue{Val: "minimal"}
+	}
+	if n, err := strconv.ParseFloat(val, 64); err == nil {
+		return runtime.NumberValue{Val: n}
 	}
 	return runtime.StringValue{Val: val}
 }

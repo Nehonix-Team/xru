@@ -190,7 +190,14 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		if len(args) < 1 {
 			return NilValue{}, fmt.Errorf("removeLines requires pattern string or startLine/endLine (1-indexed)")
 		}
-		if len(args) == 1 {
+		cleanGap := false
+		if len(args) == 2 {
+			if b, ok := args[1].(BoolValue); ok {
+				cleanGap = b.Val
+			}
+		}
+		// If 1 arg, or 2 args where 2nd is cleanGap bool
+		if len(args) == 1 || (len(args) == 2 && cleanGap) {
 			pattern := args[0].String()
 			lines := strings.Split(content, "\n")
 			var newLines []string
@@ -199,13 +206,28 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 					newLines = append(newLines, l)
 				}
 			}
-			updateContent(strings.Join(newLines, "\n"))
+			newContent := strings.Join(newLines, "\n")
+			if cleanGap {
+				reGap := regexp.MustCompile(`(\r?\n[ \t]*){3,}`)
+				newContent = reGap.ReplaceAllString(newContent, "\n\n")
+			}
+			updateContent(newContent)
 			return BoolValue{Val: true}, nil
 		}
 		startN, ok1 := args[0].(NumberValue)
 		endN, ok2 := args[1].(NumberValue)
 		if !ok1 || !ok2 {
-			return NilValue{}, fmt.Errorf("removeLines expects number arguments for line range")
+			pattern := args[0].String()
+			lines := strings.Split(content, "\n")
+			var newLines []string
+			for _, l := range lines {
+				if !strings.Contains(l, pattern) {
+					newLines = append(newLines, l)
+				}
+			}
+			newContent := strings.Join(newLines, "\n")
+			updateContent(newContent)
+			return BoolValue{Val: true}, nil
 		}
 		lines := strings.Split(content, "\n")
 		startIdx := int(startN.Val) - 1
@@ -218,7 +240,14 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		}
 		if startIdx <= endIdx && startIdx < len(lines) {
 			lines = append(lines[:startIdx], lines[endIdx+1:]...)
-			updateContent(strings.Join(lines, "\n"))
+			newContent := strings.Join(lines, "\n")
+			if len(args) > 2 {
+				if b, ok := args[2].(BoolValue); ok && b.Val {
+					reGap := regexp.MustCompile(`(\r?\n[ \t]*){3,}`)
+					newContent = reGap.ReplaceAllString(newContent, "\n\n")
+				}
+			}
+			updateContent(newContent)
 		}
 		return BoolValue{Val: true}, nil
 	}
@@ -364,7 +393,7 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		return BoolValue{Val: true}, nil
 	}
 
-	// removeBetween(startPattern, endPattern, includeBounds = true)
+	// removeBetween(startPattern, endPattern, includeBounds = true, cleanGap = false)
 	docUnit.Methods["removeBetween"] = func(args []Value) (Value, error) {
 		if len(args) < 2 {
 			return NilValue{}, fmt.Errorf("removeBetween requires startPattern and endPattern")
@@ -372,9 +401,27 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		startPattern := args[0].String()
 		endPattern := args[1].String()
 		includeBounds := true
+		cleanGap := false
+
 		if len(args) > 2 {
 			if b, ok := args[2].(BoolValue); ok {
 				includeBounds = b.Val
+			} else if mv, ok := args[2].(MapValue); ok {
+				if inc, exists := mv.Pairs["includeBounds"]; exists {
+					if b, ok := inc.(BoolValue); ok {
+						includeBounds = b.Val
+					}
+				}
+				if cg, exists := mv.Pairs["cleanGap"]; exists {
+					if b, ok := cg.(BoolValue); ok {
+						cleanGap = b.Val
+					}
+				}
+			}
+		}
+		if len(args) > 3 {
+			if b, ok := args[3].(BoolValue); ok {
+				cleanGap = b.Val
 			}
 		}
 
@@ -402,10 +449,44 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		actualEndStart := startLoc[1] + endLoc[0]
 		actualEndEnd := startLoc[1] + endLoc[1]
 
-		if includeBounds {
-			updateContent(content[:startLoc[0]] + content[actualEndEnd:])
+		if cleanGap {
+			startIndex := startLoc[0]
+			endIndex := actualEndEnd
+			if !includeBounds {
+				startIndex = startLoc[1]
+				endIndex = actualEndStart
+			}
+
+			// Consommer les espaces, tabs, virgules, points-virgules et saut de ligne après endPattern
+			for endIndex < len(content) && (content[endIndex] == ';' || content[endIndex] == ',' || content[endIndex] == ' ' || content[endIndex] == '\t') {
+				endIndex++
+			}
+			if endIndex < len(content) && content[endIndex] == '\r' {
+				endIndex++
+			}
+			if endIndex < len(content) && content[endIndex] == '\n' {
+				endIndex++
+			}
+
+			// Si la ligne avant startIndex ne contient que des espaces d'indentation, reculer
+			lineStart := startIndex
+			for lineStart > 0 && (content[lineStart-1] == ' ' || content[lineStart-1] == '\t') {
+				lineStart--
+			}
+			if lineStart == 0 || content[lineStart-1] == '\n' {
+				startIndex = lineStart
+			}
+
+			newContent := content[:startIndex] + content[endIndex:]
+			reGap := regexp.MustCompile(`(\r?\n[ \t]*){3,}`)
+			newContent = reGap.ReplaceAllString(newContent, "\n\n")
+			updateContent(newContent)
 		} else {
-			updateContent(content[:startLoc[1]] + content[actualEndStart:])
+			if includeBounds {
+				updateContent(content[:startLoc[0]] + content[actualEndEnd:])
+			} else {
+				updateContent(content[:startLoc[1]] + content[actualEndStart:])
+			}
 		}
 		return BoolValue{Val: true}, nil
 	}
@@ -418,11 +499,17 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		startAnchor := args[0].String()
 		openChar := "{"
 		closeChar := "}"
+		cleanGap := false
 		if len(args) > 1 {
 			openChar = args[1].String()
 		}
 		if len(args) > 2 {
 			closeChar = args[2].String()
+		}
+		if len(args) > 3 {
+			if b, ok := args[3].(BoolValue); ok {
+				cleanGap = b.Val
+			}
 		}
 
 		anchorRe, err := makeFuzzyRegex(startAnchor)
@@ -510,12 +597,27 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 				startIndex = lineStart
 			}
 
-			updateContent(content[:startIndex] + content[endIndex:])
+			newContent := content[:startIndex] + content[endIndex:]
+			if cleanGap {
+				reGap := regexp.MustCompile(`(\r?\n[ \t]*){3,}`)
+				newContent = reGap.ReplaceAllString(newContent, "\n\n")
+			}
+			updateContent(newContent)
 			return BoolValue{Val: true}, nil
 		}
 
 		return BoolValue{Val: false}, nil
 	}
+
+	docUnit.Methods["cleanGaps"] = func(args []Value) (Value, error) {
+		reGap := regexp.MustCompile(`(\r?\n[ \t]*){3,}`)
+		cleaned := reGap.ReplaceAllString(content, "\n\n")
+		reEmptyLine := regexp.MustCompile(`\n[ \t]+\n`)
+		cleaned = reEmptyLine.ReplaceAllString(cleaned, "\n\n")
+		updateContent(cleaned)
+		return BoolValue{Val: true}, nil
+	}
+	docUnit.Methods["cleanGap"] = docUnit.Methods["cleanGaps"]
 
 	docUnit.Methods["save"] = func(args []Value) (Value, error) {
 		err := os.WriteFile(targetPath, []byte(content), 0644)

@@ -187,10 +187,15 @@ interface Document {
 	func remove(target: string) -> bool
 
 	/// Removes content between start and end delimiters.
-	func removeBetween(start: string, end: string, includeBounds: bool = false) -> bool
+	/// Set cleanGap = true to automatically collapse resulting multiple blank lines and empty gaps.
+	func removeBetween(start: string, end: string, includeBounds: bool = true, cleanGap: bool = false) -> bool
 
 	/// Surgically removes a block starting at anchor by counting matched bracket depth, safely ignoring strings and comments.
-	func removeBalanced(anchor: string, openChar: string = "{", closeChar: string = "}") -> bool
+	/// Set cleanGap = true to automatically collapse resulting multiple blank lines.
+	func removeBalanced(anchor: string, openChar: string = "{", closeChar: string = "}", cleanGap: bool = false) -> bool
+
+	/// Collapses multiple consecutive blank lines across the document down to at most one empty line.
+	func cleanGaps() -> bool
 
 	/// Manually flushes document modifications to disk immediately.
 	func save() -> bool

@@ -671,6 +671,7 @@ func NewMangler(prog *ast.Program) *Mangler {
 		"print", "println", "len", "append", "exit", "std", "fs", "Fs", "cmd", "Cmd",
 		"crypto", "Crypto", "net", "path", "exists", "exec", "getRandomBytes",
 		"replace", "replaceFuzzy", "removeLine", "removeLines", "removeBalanced", "removeBetween",
+		"cleanGaps", "cleanGap",
 		"setJson", "getJson", "content", "save", "as", "or", "and", "not", "is", "fn",
 		"func", "let", "const", "use", "mod", "from", "to", "by", "unit", "interface",
 		"type", "set", "get", "has", "delete", "clear", "merge", "keys", "values", "entries",

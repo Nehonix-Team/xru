@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -2094,5 +2095,79 @@ let r = b.run()
 		t.Fatalf("Expected cannot call &action() error, got: %v", err3)
 	}
 }
+
+func TestRemoveCleanGap(t *testing.T) {
+	tempDir := t.TempDir()
+	samplePath := filepath.Join(tempDir, "router.ts")
+	originalContent := `import { Router } from "xypriss";
+
+const r = Router();
+
+r.group({ prefix: ["/api", "/"] }, (api) => {
+  api.use("/", apiRouter);
+});
+
+// ============================== AUTH SERVER ==============================
+r.group({ prefix: ["/auth", "api"] }, (auth) => {
+  auth.use("/", authRouter);
+});
+
+// ============================== CDN SERVER ==============================
+r.group({ prefix: "/cdn" }, (cdn) => {
+  cdn.use("/", cdnRouter);
+});
+
+export { r as router };
+export default r;
+`
+	if err := os.WriteFile(samplePath, []byte(originalContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	code := fmt.Sprintf(`
+file "%s", (doc, err) -> {
+    doc.removeBetween(<<<r.group({ prefix: ["/auth", "api"]>>>, "});", true, true)
+    doc.removeBetween(<<<r.group({ prefix: "/cdn">>>, "});", true, true)
+    doc.removeLines("AUTH SERVER", true)
+    doc.removeLines("CDN SERVER", true)
+    doc.removeLines("// ==============================", true)
+}
+`, samplePath)
+
+	p := parser.New(lexer.New("clean_gap.xru", code))
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	data, err := os.ReadFile(samplePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := string(data)
+
+	// Verify that multiple consecutive blank lines are gone
+	reGap := regexp.MustCompile(`(\r?\n[ \t]*){3,}`)
+	if reGap.MatchString(res) {
+		t.Errorf("Expected gaps to be cleaned, but found consecutive blank lines in:\n%s", res)
+	}
+
+	// Verify that between api group and export there is clean separation
+	expectedSnippet := `r.group({ prefix: ["/api", "/"] }, (api) => {
+  api.use("/", apiRouter);
+});
+
+export { r as router };`
+	if !strings.Contains(res, expectedSnippet) {
+		t.Errorf("Expected clean snippet '%s', got:\n%s", expectedSnippet, res)
+	}
+}
+
 
 

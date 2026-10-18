@@ -312,6 +312,8 @@ func CreateDocumentSymbol(name string) *Symbol {
 			"insertBefore":   {Name: "insertBefore", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "anchor", Type: "string"}, {Name: "content", Type: "string"}}},
 			"removeBetween":  {Name: "removeBetween", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "startPattern", Type: "string"}, {Name: "endPattern", Type: "string"}}, MinArgs: 2, IsVariadic: true},
 			"removeBalanced": {Name: "removeBalanced", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "startAnchor", Type: "string"}}, MinArgs: 1, IsVariadic: true},
+			"cleanGaps":      {Name: "cleanGaps", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{}, MinArgs: 0},
+			"cleanGap":       {Name: "cleanGap", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{}, MinArgs: 0},
 			"save":           {Name: "save", Kind: SymFunc, Type: "bool"},
 		},
 	}

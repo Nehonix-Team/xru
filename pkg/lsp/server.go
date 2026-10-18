@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/Nehonix-Team/xru/internal/utils"
+	"github.com/Nehonix-Team/xru/pkg/formatter"
 	"github.com/Nehonix-Team/xru/pkg/lsp/navigation"
 )
 
@@ -137,9 +138,10 @@ func (s *Server) handleRequest(req *Request) error {
 				HoverProvider:             true,
 				DefinitionProvider:        true,
 				DocumentSymbolProvider:    true,
-				CompletionProvider:        &CompletionOptions{TriggerCharacters: []string{".", "@", ":", " ", "\"", "["}},
-				DocumentHighlightProvider: true,
-				ReferencesProvider:        true,
+				CompletionProvider:         &CompletionOptions{TriggerCharacters: []string{".", "@", ":", " ", "\"", "["}},
+				DocumentHighlightProvider:  true,
+				ReferencesProvider:         true,
+				DocumentFormattingProvider: true,
 			},
 			ServerInfo: &ServerInfo{
 				Name:    "xru-lsp",
@@ -240,6 +242,14 @@ func (s *Server) handleRequest(req *Request) error {
 		actions := s.handleCodeAction(params.TextDocument.URI, params.Range, params.Context)
 		return s.writeResponse(req.ID, actions)
 
+	case "textDocument/formatting":
+		var params DocumentFormattingParams
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return err
+		}
+		edits := s.handleFormatting(params.TextDocument.URI)
+		return s.writeResponse(req.ID, edits)
+
 	case "shutdown":
 		return s.writeResponse(req.ID, nil)
 
@@ -249,4 +259,29 @@ func (s *Server) handleRequest(req *Request) error {
 	}
 
 	return nil
+}
+
+func (s *Server) handleFormatting(uri string) []TextEdit {
+	content, ok := s.docs[uri]
+	if !ok {
+		return []TextEdit{}
+	}
+	formatted, err := formatter.Format(content)
+	if err != nil || formatted == content {
+		return []TextEdit{}
+	}
+
+	lines := strings.Split(content, "\n")
+	lastLine := len(lines) - 1
+	lastChar := len(lines[lastLine])
+
+	return []TextEdit{
+		{
+			Range: Range{
+				Start: Position{Line: 0, Character: 0},
+				End:   Position{Line: lastLine, Character: lastChar},
+			},
+			NewText: formatted,
+		},
+	}
 }

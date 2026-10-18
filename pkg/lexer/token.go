@@ -116,6 +116,7 @@ type Token struct {
 	Type    TokenType
 	Literal string
 	Pos     Position
+	Raw     string
 }
 
 func (t Token) String() string {

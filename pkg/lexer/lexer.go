@@ -14,6 +14,7 @@ type Lexer struct {
 	ch           rune // Caractère courant sous examen
 	line         int  // Ligne courante (1-indexed)
 	column       int  // Colonne courante (1-indexed)
+	KeepComments bool
 }
 
 func New(filename string, input string) *Lexer {
@@ -61,195 +62,246 @@ func (l *Lexer) peekChar2() rune {
 	return r
 }
 
+func (l *Lexer) makeToken(tokType TokenType, lit string, startPos Position, startOffset int) Token {
+	raw := l.input[startOffset:l.position]
+	return Token{Type: tokType, Literal: lit, Pos: startPos, Raw: raw}
+}
+
+func (l *Lexer) skipWhitespace() {
+	for l.ch == ' ' || l.ch == '\t' || l.ch == '\r' || l.ch == '\n' {
+		if l.ch == '\n' {
+			l.line++
+			l.column = 0
+		}
+		l.readChar()
+	}
+}
+
 func (l *Lexer) NextToken() Token {
-	l.skipWhitespaceAndComments()
+	if l.KeepComments {
+		l.skipWhitespace()
+	} else {
+		l.skipWhitespaceAndComments()
+	}
 
 	if l.ch == 0 {
 		return Token{
 			Type:    EOF,
 			Literal: "",
+			Raw:     "",
 			Pos:     Position{Filename: l.filename, Line: l.line, Column: l.column},
 		}
 	}
 
 	startPos := Position{Filename: l.filename, Line: l.line, Column: l.column}
+	startOffset := l.position
+
+	// Comment check when KeepComments is enabled
+	if l.KeepComments {
+		if l.ch == '/' && l.peekChar() == '/' {
+			for l.ch != '\n' && l.ch != 0 {
+				l.readChar()
+			}
+			return l.makeToken(COMMENT, l.input[startOffset:l.position], startPos, startOffset)
+		}
+		if l.ch == '/' && l.peekChar() == '*' {
+			l.readChar()
+			l.readChar()
+			for {
+				if l.ch == 0 {
+					break
+				}
+				if l.ch == '\n' {
+					l.line++
+					l.column = 0
+				}
+				if l.ch == '*' && l.peekChar() == '/' {
+					l.readChar()
+					l.readChar()
+					break
+				}
+				l.readChar()
+			}
+			return l.makeToken(COMMENT, l.input[startOffset:l.position], startPos, startOffset)
+		}
+	}
 
 	// 1. Chaines de caractères "..." ou """...""" ou '''...''' ou `...`
 	if l.ch == '"' {
 		if l.peekChar() == '"' && l.peekChar2() == '"' {
 			str := l.readTripleString('"')
-			return Token{Type: STRING, Literal: str, Pos: startPos}
+			return l.makeToken(STRING, str, startPos, startOffset)
 		}
 		str := l.readString()
-		return Token{Type: STRING, Literal: str, Pos: startPos}
+		return l.makeToken(STRING, str, startPos, startOffset)
 	}
 	if l.ch == '\'' {
 		if l.peekChar() == '\'' && l.peekChar2() == '\'' {
 			str := l.readTripleString('\'')
-			return Token{Type: STRING, Literal: str, Pos: startPos}
+			return l.makeToken(STRING, str, startPos, startOffset)
 		}
 		str := l.readQuotedString('\'')
-		return Token{Type: STRING, Literal: str, Pos: startPos}
+		return l.makeToken(STRING, str, startPos, startOffset)
 	}
 	if l.ch == '`' {
 		str := l.readRawBacktickString()
-		return Token{Type: STRING, Literal: str, Pos: startPos}
+		return l.makeToken(STRING, str, startPos, startOffset)
 	}
 
 	// 3. Opérateurs composites (->, =>, ==, !=, <=, >=)
 	switch l.ch {
 	case '+':
 		l.readChar()
-		return Token{Type: PLUS, Literal: "+", Pos: startPos}
+		return l.makeToken(PLUS, "+", startPos, startOffset)
 	case '-':
 		if l.peekChar() == '>' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: ARROW, Literal: "->", Pos: startPos}
+			return l.makeToken(ARROW, "->", startPos, startOffset)
 		}
 		l.readChar()
-		return Token{Type: MINUS, Literal: "-", Pos: startPos}
+		return l.makeToken(MINUS, "-", startPos, startOffset)
 	case '*':
 		l.readChar()
-		return Token{Type: ASTERISK, Literal: "*", Pos: startPos}
+		return l.makeToken(ASTERISK, "*", startPos, startOffset)
 	case '/':
 		l.readChar()
-		return Token{Type: SLASH, Literal: "/", Pos: startPos}
+		return l.makeToken(SLASH, "/", startPos, startOffset)
 	case '%':
 		l.readChar()
-		return Token{Type: PERCENT, Literal: "%", Pos: startPos}
+		return l.makeToken(PERCENT, "%", startPos, startOffset)
 	case '=':
 		if l.peekChar() == '=' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: EQ, Literal: "==", Pos: startPos}
+			return l.makeToken(EQ, "==", startPos, startOffset)
 		}
 		if l.peekChar() == '>' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: FAT_ARROW, Literal: "=>", Pos: startPos}
+			return l.makeToken(FAT_ARROW, "=>", startPos, startOffset)
 		}
 		if l.peekChar() == ':' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: MUT_ASSIGN, Literal: "=:", Pos: startPos}
+			return l.makeToken(MUT_ASSIGN, "=:", startPos, startOffset)
 		}
 		l.readChar()
-		return Token{Type: ASSIGN, Literal: "=", Pos: startPos}
+		return l.makeToken(ASSIGN, "=", startPos, startOffset)
 	case '!':
 		if l.peekChar() == '=' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: NEQ, Literal: "!=", Pos: startPos}
+			return l.makeToken(NEQ, "!=", startPos, startOffset)
 		}
 		l.readChar()
-		return Token{Type: BANG, Literal: "!", Pos: startPos}
+		return l.makeToken(BANG, "!", startPos, startOffset)
 	case '<':
 		if l.peekChar() == '<' && l.peekChar2() == '<' {
 			str := l.readChevronHeredoc()
-			return Token{Type: STRING, Literal: str, Pos: startPos}
+			return l.makeToken(STRING, str, startPos, startOffset)
 		}
 		if l.peekChar() == '=' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: LTE, Literal: "<=", Pos: startPos}
+			return l.makeToken(LTE, "<=", startPos, startOffset)
 		}
 		l.readChar()
-		return Token{Type: LT, Literal: "<", Pos: startPos}
+		return l.makeToken(LT, "<", startPos, startOffset)
 	case '>':
 		if l.peekChar() == '=' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: GTE, Literal: ">=", Pos: startPos}
+			return l.makeToken(GTE, ">=", startPos, startOffset)
 		}
 		l.readChar()
-		return Token{Type: GT, Literal: ">", Pos: startPos}
+		return l.makeToken(GT, ">", startPos, startOffset)
 	case '@':
 		l.readChar()
-		return Token{Type: AT, Literal: "@", Pos: startPos}
+		return l.makeToken(AT, "@", startPos, startOffset)
 	case '&':
 		if l.peekChar() == '&' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: AND, Literal: "&&", Pos: startPos}
+			return l.makeToken(AND, "&&", startPos, startOffset)
 		}
 		l.readChar()
-		return Token{Type: AMP, Literal: "&", Pos: startPos}
+		return l.makeToken(AMP, "&", startPos, startOffset)
 	case '|':
 		if l.peekChar() == '|' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: OR_LOGICAL, Literal: "||", Pos: startPos}
+			return l.makeToken(OR_LOGICAL, "||", startPos, startOffset)
 		}
 		l.readChar()
-		return Token{Type: PIPE, Literal: "|", Pos: startPos}
+		return l.makeToken(PIPE, "|", startPos, startOffset)
 	case '(':
 		l.readChar()
-		return Token{Type: LPAREN, Literal: "(", Pos: startPos}
+		return l.makeToken(LPAREN, "(", startPos, startOffset)
 	case ')':
 		l.readChar()
-		return Token{Type: RPAREN, Literal: ")", Pos: startPos}
+		return l.makeToken(RPAREN, ")", startPos, startOffset)
 	case '[':
 		l.readChar()
-		return Token{Type: LBRACKET, Literal: "[", Pos: startPos}
+		return l.makeToken(LBRACKET, "[", startPos, startOffset)
 	case ']':
 		l.readChar()
-		return Token{Type: RBRACKET, Literal: "]", Pos: startPos}
+		return l.makeToken(RBRACKET, "]", startPos, startOffset)
 	case '{':
 		l.readChar()
-		return Token{Type: LBRACE, Literal: "{", Pos: startPos}
+		return l.makeToken(LBRACE, "{", startPos, startOffset)
 	case '}':
 		l.readChar()
-		return Token{Type: RBRACE, Literal: "}", Pos: startPos}
+		return l.makeToken(RBRACE, "}", startPos, startOffset)
 	case ',':
 		l.readChar()
-		return Token{Type: COMMA, Literal: ",", Pos: startPos}
+		return l.makeToken(COMMA, ",", startPos, startOffset)
 	case ':':
 		if l.peekChar() == ':' {
 			l.readChar()
 			l.readChar()
-			return Token{Type: DOUBLE_COLON, Literal: "::", Pos: startPos}
+			return l.makeToken(DOUBLE_COLON, "::", startPos, startOffset)
 		}
 		l.readChar()
-		return Token{Type: COLON, Literal: ":", Pos: startPos}
+		return l.makeToken(COLON, ":", startPos, startOffset)
 	case '.':
 		if l.peekChar() == '.' {
 			if l.peekChar2() == '.' {
 				l.readChar()
 				l.readChar()
 				l.readChar()
-				return Token{Type: ELLIPSIS, Literal: "...", Pos: startPos}
+				return l.makeToken(ELLIPSIS, "...", startPos, startOffset)
 			}
 			l.readChar()
 			l.readChar()
-			return Token{Type: RANGE, Literal: "..", Pos: startPos}
+			return l.makeToken(RANGE, "..", startPos, startOffset)
 		}
 		l.readChar()
-		return Token{Type: DOT, Literal: ".", Pos: startPos}
+		return l.makeToken(DOT, ".", startPos, startOffset)
 	case ';':
 		l.readChar()
-		return Token{Type: SEMICOLON, Literal: ";", Pos: startPos}
+		return l.makeToken(SEMICOLON, ";", startPos, startOffset)
 	case '?':
 		l.readChar()
-		return Token{Type: QUESTION, Literal: "?", Pos: startPos}
+		return l.makeToken(QUESTION, "?", startPos, startOffset)
 	}
 
 	// 4. Nombres et Durées (ex: 3000, 30s, 500ms)
 	if unicode.IsDigit(l.ch) {
 		tokType, literal := l.readNumberAndSuffix()
-		return Token{Type: tokType, Literal: literal, Pos: startPos}
+		return l.makeToken(tokType, literal, startPos, startOffset)
 	}
 
 	// 5. Identifiants et Mots-Clés
 	if isLetter(l.ch) {
 		ident := l.readIdentifier()
 		tokType := LookupIdent(ident)
-		return Token{Type: tokType, Literal: ident, Pos: startPos}
+		return l.makeToken(tokType, ident, startPos, startOffset)
 	}
 
 	illegalChar := string(l.ch)
 	l.readChar()
-	return Token{Type: ILLEGAL, Literal: illegalChar, Pos: startPos}
+	return l.makeToken(ILLEGAL, illegalChar, startPos, startOffset)
 }
 
 func (l *Lexer) skipWhitespaceAndComments() {

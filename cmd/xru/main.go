@@ -24,6 +24,7 @@ func printUsage() {
 
 Usage:
   xru run <file.xru> [flags...]     Execute an XRU 2.0 rule file
+  xru fmt <file.xru ...>            Format XRU source code cleanly (prettier-like)
   xru lsp                           Start language server (LSP) for editor integration
   xru build [entry.xru] <output.xru> Build project into a single standalone .xru module
   xru pack [output.xpack]           Package project into a structured .xpack bundle
@@ -80,6 +81,9 @@ func main() {
 
 	case "build":
 		handleBuild(cmdArgs, verbose)
+
+	case "fmt", "format":
+		handleFmt(cmdArgs)
 
 	case "pack":
 		handlePack(cmdArgs, verbose)

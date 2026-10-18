@@ -651,6 +651,8 @@ type Mangler struct {
 	argParams     map[string]bool
 	mapVars       map[string]bool
 	mapInterfaces map[string]bool
+	unitProps     map[string]string
+	unitMethods   map[string]string
 	localScopes   []map[string]string
 }
 
@@ -661,6 +663,8 @@ func NewMangler(prog *ast.Program) *Mangler {
 		argParams:     make(map[string]bool),
 		mapVars:       make(map[string]bool),
 		mapInterfaces: make(map[string]bool),
+		unitProps:     make(map[string]string),
+		unitMethods:   make(map[string]string),
 	}
 
 	// Keywords & built-in primitives to never mangle
@@ -668,8 +672,8 @@ func NewMangler(prog *ast.Program) *Mangler {
 		"keep", "Keep", "drop", "Drop", "UseVariant", "useVariant", "Local",
 		"file", "in", "if", "else", "elif", "for", "match", "case", "default",
 		"return", "with", "true", "false", "nil", "null", "void", "arg",
-		"print", "println", "len", "append", "exit", "std", "fs", "Fs", "cmd", "Cmd",
-		"crypto", "Crypto", "net", "path", "exists", "exec", "getRandomBytes",
+		"print", "println", "len", "append", "exit",
+		"exists", "exec", "getRandomBytes",
 		"replace", "replaceFuzzy", "removeLine", "removeLines", "removeBalanced", "removeBetween",
 		"cleanGaps", "cleanGap",
 		"setJson", "getJson", "content", "save", "as", "or", "and", "not", "is", "fn",
@@ -679,6 +683,25 @@ func NewMangler(prog *ast.Program) *Mangler {
 	}
 	for _, b := range builtins {
 		m.reserved[b] = true
+	}
+
+	// Register native module imports with alphanumeric aliases (s1, s2, s3...)
+	importCounter := 1
+	moduleAliases := make(map[string]string)
+	for _, stmt := range prog.Statements {
+		if u, ok := stmt.(*ast.UseStatement); ok {
+			alias, exists := moduleAliases[u.Module]
+			if !exists {
+				alias = fmt.Sprintf("s%d", importCounter)
+				importCounter++
+				moduleAliases[u.Module] = alias
+				m.reserved[alias] = true
+			}
+			m.nameMap[u.Module] = alias
+			if u.Alias != "" {
+				m.nameMap[u.Alias] = alias
+			}
+		}
 	}
 
 	// For each arg statement: assign a mangled alias so internal variable name becomes _a, _b...
@@ -726,11 +749,11 @@ func (m *Mangler) resolveName(name string) string {
 			return mangled
 		}
 	}
-	if m.reserved[name] {
-		return name
-	}
 	if mangled, ok := m.nameMap[name]; ok {
 		return mangled
+	}
+	if m.reserved[name] {
+		return name
 	}
 	return name
 }
@@ -755,11 +778,11 @@ func (m *Mangler) nextName() string {
 }
 
 func (m *Mangler) getMangledName(orig string) string {
-	if m.reserved[orig] {
-		return orig
-	}
 	if mangled, ok := m.nameMap[orig]; ok {
 		return mangled
+	}
+	if m.reserved[orig] {
+		return orig
 	}
 	mangled := m.nextName()
 	m.nameMap[orig] = mangled
@@ -774,7 +797,27 @@ func (m *Mangler) Minify(prog *ast.Program) string {
 		}
 	}
 
-	// Pass 1.1: register all top-level user function, arg, variable, and unit names so calls and refs resolve properly
+	// Pass 1.1: register unit declared properties and user-defined methods
+	for _, stmt := range prog.Statements {
+		if u, ok := stmt.(*ast.UnitStatement); ok {
+			for _, p := range u.Properties {
+				if !m.reserved[p.Name] {
+					if _, exists := m.unitProps[p.Name]; !exists {
+						m.unitProps[p.Name] = m.nextName()
+					}
+				}
+			}
+			for _, mth := range u.Methods {
+				if !m.reserved[mth.Name] {
+					if _, exists := m.unitMethods[mth.Name]; !exists {
+						m.unitMethods[mth.Name] = m.nextName()
+					}
+				}
+			}
+		}
+	}
+
+	// Pass 1.2: register all top-level user function, arg, variable, and unit names so calls and refs resolve properly
 	for _, stmt := range prog.Statements {
 		if fn, ok := stmt.(*ast.FuncStatement); ok {
 			if !m.reserved[fn.Name] {
@@ -808,9 +851,16 @@ func (m *Mangler) Minify(prog *ast.Program) string {
 	}
 
 	var topStmts []string
+	seenUses := make(map[string]bool)
 	for _, stmt := range prog.Statements {
 		str := m.minifyStatement(stmt)
 		if str != "" {
+			if strings.HasPrefix(str, "use ") {
+				if seenUses[str] {
+					continue
+				}
+				seenUses[str] = true
+			}
 			topStmts = append(topStmts, str)
 		}
 	}
@@ -838,8 +888,12 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		return fmt.Sprintf("%sarg %s: %s", prefix, s.Name, s.Type)
 
 	case *ast.UseStatement:
-		if s.Alias != "" {
-			return fmt.Sprintf("use %s as %s", s.Module, s.Alias)
+		alias := m.nameMap[s.Module]
+		if alias == "" && s.Alias != "" {
+			alias = m.nameMap[s.Alias]
+		}
+		if alias != "" {
+			return fmt.Sprintf("use %s as %s", s.Module, alias)
 		}
 		return fmt.Sprintf("use %s", s.Module)
 
@@ -891,7 +945,11 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 			if p.IsPrivate {
 				vis = "private "
 			}
-			parts = append(parts, fmt.Sprintf("declare %s%s%s%s", vis, p.Name, typeStr, valStr))
+			pName := p.Name
+			if mangled, ok := m.unitProps[p.Name]; ok {
+				pName = mangled
+			}
+			parts = append(parts, fmt.Sprintf("declare %s%s%s%s", vis, pName, typeStr, valStr))
 		}
 		for _, d := range s.Directives {
 			var bodyParts []string
@@ -922,7 +980,11 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 				}
 			}
 			m.popScope()
-			parts = append(parts, fmt.Sprintf("func %s(%s){%s}", mth.Name, strings.Join(params, ","), strings.Join(bodyParts, ";")))
+			mthName := mth.Name
+			if mangled, ok := m.unitMethods[mth.Name]; ok {
+				mthName = mangled
+			}
+			parts = append(parts, fmt.Sprintf("func %s(%s){%s}", mthName, strings.Join(params, ","), strings.Join(bodyParts, ";")))
 		}
 		return fmt.Sprintf("unit %s%s{%s}", unitName, inc, strings.Join(parts, ";"))
 
@@ -1082,8 +1144,13 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 
 	case *ast.ReassignStatement:
 		target := s.Name
-		if !m.reserved[target] && !strings.HasPrefix(target, "&") {
-			target = m.getMangledName(target)
+		if strings.HasPrefix(target, "&") {
+			prop := strings.TrimPrefix(target, "&")
+			if mangled, ok := m.unitProps[prop]; ok {
+				target = "&" + mangled
+			}
+		} else if !m.reserved[target] {
+			target = m.resolveName(target)
 		}
 		return fmt.Sprintf("%s=:%s", target, m.minifyExpression(s.Value))
 
@@ -1139,6 +1206,36 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 	}
 }
 
+func (m *Mangler) resolveInterpolation(expr string) string {
+	if strings.HasPrefix(expr, "&") {
+		prop := strings.TrimPrefix(expr, "&")
+		if mangled, ok := m.unitProps[prop]; ok {
+			return "&" + mangled
+		}
+		return expr
+	}
+	if strings.Contains(expr, ".") {
+		dotIdx := strings.Index(expr, ".")
+		obj := expr[:dotIdx]
+		rest := expr[dotIdx+1:]
+		resolvedObj := m.resolveName(obj)
+		openParen := strings.Index(rest, "(")
+		propName := rest
+		callSuffix := ""
+		if openParen != -1 {
+			propName = rest[:openParen]
+			callSuffix = rest[openParen:]
+		}
+		if mangled, ok := m.unitMethods[propName]; ok {
+			propName = mangled
+		} else if mangled, ok := m.unitProps[propName]; ok {
+			propName = mangled
+		}
+		return resolvedObj + "." + propName + callSuffix
+	}
+	return m.resolveName(expr)
+}
+
 func (m *Mangler) minifyExpression(expr ast.Expression) string {
 	if expr == nil {
 		return ""
@@ -1155,7 +1252,7 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 		if len(spans) > 0 {
 			for _, span := range spans {
 				origExpr := span.Expr
-				resolved := m.resolveName(origExpr)
+				resolved := m.resolveInterpolation(origExpr)
 				if resolved != origExpr {
 					val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+resolved+"}", 1)
 				}
@@ -1197,11 +1294,20 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 		if m.isMapExpr(e.Object) && !isBuiltinMapMethod(e.Property) {
 			return fmt.Sprintf("%s.get(\"%s\")", obj, e.Property)
 		}
-		// Property names (methods / fields) are never mangled
-		return fmt.Sprintf("%s.%s", obj, e.Property)
+		prop := e.Property
+		if mangled, ok := m.unitMethods[prop]; ok {
+			prop = mangled
+		} else if mangled, ok := m.unitProps[prop]; ok {
+			prop = mangled
+		}
+		return fmt.Sprintf("%s.%s", obj, prop)
 
 	case *ast.PropAccess:
-		return "&" + e.Name
+		prop := e.Name
+		if mangled, ok := m.unitProps[e.Name]; ok {
+			prop = mangled
+		}
+		return "&" + prop
 
 	case *ast.ListLiteral:
 		var elems []string
@@ -1233,7 +1339,15 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 
 	case *ast.ScopeAccessExpression:
 		if e.IsUnitSelf {
-			return fmt.Sprintf("&%s::%s", e.Scope, e.Member)
+			scope := e.Scope
+			if resolved := m.resolveName(scope); resolved != "" {
+				scope = resolved
+			}
+			member := e.Member
+			if mangled, ok := m.unitMethods[member]; ok {
+				member = mangled
+			}
+			return fmt.Sprintf("&%s::%s", scope, member)
 		}
 		member := e.Member
 		if !m.reserved[member] {

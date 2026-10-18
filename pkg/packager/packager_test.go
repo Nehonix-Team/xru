@@ -433,3 +433,89 @@ if mode == "default" && cdn == true {
 		t.Errorf("Expected bundled code to contain 'arg mode', got: %s", bundled)
 	}
 }
+
+func TestBundleManglingNativeImportsAndUnitMembers(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_bundle_unit_mangling_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	mainCode := `use std;
+use fs as Fs;
+
+unit WorkerPool {
+    declare private secretToken: string = "secret-123"
+    declare public poolSize: number = 4
+
+    func start() {
+        let s = &secretToken
+        &self::recordTask()
+    }
+
+    func recordTask() {
+        &poolSize =: &poolSize + 1
+    }
+}
+
+let pool = @WorkerPool()
+pool.start()
+let sz = pool.poolSize
+if Fs.exists("test.txt") {
+    std.println("Size: $f{pool.poolSize}")
+}
+`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(mainCode), 0644)
+
+	pkg := packager.New(tempDir, "")
+	bundled, err := pkg.BundleAndMinifyWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("Minification failed: %v", err)
+	}
+	t.Logf("Bundled and mangled output:\n%s", bundled)
+
+	// 1. Native imports must be aliased with s1, s2...
+	if !strings.Contains(bundled, "use std as s1") {
+		t.Errorf("Expected 'use std as s1', got: %s", bundled)
+	}
+	if !strings.Contains(bundled, "use fs as s2") {
+		t.Errorf("Expected 'use fs as s2', got: %s", bundled)
+	}
+	if strings.Contains(bundled, "Fs.exists") {
+		t.Errorf("Expected 'Fs.exists' to be mangled to 's2.exists', got: %s", bundled)
+	}
+	if !strings.Contains(bundled, "s2.exists") {
+		t.Errorf("Expected 's2.exists', got: %s", bundled)
+	}
+	if strings.Contains(bundled, "std.println") {
+		t.Errorf("Expected 'std.println' to be mangled to 's1.println', got: %s", bundled)
+	}
+	if !strings.Contains(bundled, "s1.println") {
+		t.Errorf("Expected 's1.println', got: %s", bundled)
+	}
+
+	// 2. Unit properties must be mangled (secretToken and poolSize should not appear verbatim)
+	if strings.Contains(bundled, "secretToken") {
+		t.Errorf("Expected 'secretToken' to be mangled, got: %s", bundled)
+	}
+	if strings.Contains(bundled, "poolSize") {
+		t.Errorf("Expected 'poolSize' to be mangled, got: %s", bundled)
+	}
+
+	// 3. Unit methods must be mangled (start and recordTask should not appear verbatim)
+	if strings.Contains(bundled, "recordTask") {
+		t.Errorf("Expected 'recordTask' to be mangled, got: %s", bundled)
+	}
+
+	// 4. Bundled code must parse cleanly
+	l := lexer.New("bundled.xru", bundled)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Bundled code has parse errors: %v", p.Errors())
+	}
+	if len(prog.Statements) == 0 {
+		t.Fatalf("Expected non-empty program statements")
+	}
+}
+

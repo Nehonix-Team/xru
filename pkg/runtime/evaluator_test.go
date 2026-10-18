@@ -817,6 +817,15 @@ let collected = ""
 for item, idx in items {
     collected =: collected + item + idx
 }
+
+let m = @map{
+    A: 10
+    B: 20
+}
+let mapCollected = ""
+for k, v in m {
+    mapCollected =: mapCollected + k + "=" + v + ";"
+}
 `
 	l := lexer.New("for_test.xru", code)
 	p := parser.New(l)
@@ -839,6 +848,11 @@ for item, idx in items {
 	collVal, _ := env.Get("collected")
 	if collVal.String() != "a0b1c2" {
 		t.Errorf("Expected collected to be 'a0b1c2', got %v", collVal)
+	}
+
+	mapCollVal, _ := env.Get("mapCollected")
+	if mapCollVal.String() != "A=10;B=20;" {
+		t.Errorf("Expected mapCollected to be 'A=10;B=20;', got %v", mapCollVal)
 	}
 }
 

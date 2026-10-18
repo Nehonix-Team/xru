@@ -661,11 +661,17 @@ func (c *Checker) checkFor(s *ast.ForStatement) {
 	defer func() { c.scope = c.scope.parent }()
 
 	itemType := "any"
+	idxType := "number"
 	iterType := c.inferType(s.Iterable)
+	isMap := iterType == "map" || iterType == "@map" || strings.HasPrefix(iterType, "map[") || strings.HasPrefix(iterType, "@map") || (c.interfaces != nil && c.interfaces[iterType] != nil && c.interfaces[iterType].IsMap)
+
 	if strings.HasPrefix(iterType, "list[") && strings.HasSuffix(iterType, "]") {
 		itemType = strings.TrimSuffix(strings.TrimPrefix(iterType, "list["), "]")
 	} else if iterType == "range" {
 		itemType = "number"
+	} else if isMap {
+		itemType = "string"
+		idxType = "any"
 	}
 
 	itemSym := &Symbol{
@@ -680,7 +686,7 @@ func (c *Checker) checkFor(s *ast.ForStatement) {
 		idxSym := &Symbol{
 			Name: s.Index,
 			Kind: SymVar,
-			Type: "number",
+			Type: idxType,
 			Pos:  s.Pos(),
 		}
 		_ = c.scope.Define(idxSym)

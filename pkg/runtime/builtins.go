@@ -466,6 +466,20 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Version": sysVersionFn,
 			"cwd":     cwdFn,
 			"Cwd":     cwdFn,
+			"homeDir": func(args []Value) (Value, error) {
+				h, err := os.UserHomeDir()
+				if err != nil {
+					return StringValue{Val: ""}, err
+				}
+				return StringValue{Val: h}, nil
+			},
+			"HomeDir": func(args []Value) (Value, error) {
+				h, err := os.UserHomeDir()
+				if err != nil {
+					return StringValue{Val: ""}, err
+				}
+				return StringValue{Val: h}, nil
+			},
 		},
 		Directives: make(map[string]NativeDirective),
 	}

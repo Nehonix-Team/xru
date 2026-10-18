@@ -108,6 +108,8 @@ func (c *Checker) initBuiltinUnits() {
 			"Version": {Name: "Version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"cwd":     {Name: "cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"Cwd":     {Name: "Cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"homeDir": {Name: "homeDir", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"HomeDir": {Name: "HomeDir", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 		},
 	}
 	cmdUnit := &Symbol{

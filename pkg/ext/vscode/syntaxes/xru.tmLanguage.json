@@ -99,7 +99,10 @@
           "name": "keyword.operator.heredoc.xru punctuation.definition.string.end.xru"
         }
       },
-      "patterns": []
+      "patterns": [
+        { "include": "#interpolation" },
+        { "include": "#color_tags" }
+      ]
     },
     "strings_heredoc_triple": {
       "name": "string.quoted.triple.double.xru",

@@ -23,6 +23,13 @@ func (p *Parser) parseUseStatement() *ast.UseStatement {
 		}
 		stmt.Alias = p.curToken.Literal
 	}
+	if p.peekTokenIs(lexer.CATCH) || (p.peekTokenIs(lexer.IDENT) && strings.ToLower(p.peekToken.Literal) == "catch") {
+		p.nextToken() // mange 'catch'
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.CatchVar = p.curToken.Literal
+	}
 	if p.peekTokenIs(lexer.SEMICOLON) {
 		p.nextToken()
 	}
@@ -47,6 +54,7 @@ func (p *Parser) parseArgStatement() *ast.ArgStatement {
 
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // mange ':'
+		stmt.TypePos = p.peekToken.Pos
 		stmt.Type = p.parseTypeAnnotation()
 	}
 
@@ -76,6 +84,7 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // mange ':'
+		stmt.TypePos = p.peekToken.Pos
 		stmt.Type = p.parseTypeAnnotation()
 	}
 
@@ -104,13 +113,42 @@ func (p *Parser) parseVarStatement() *ast.VarStatement {
 }
 
 // declare prop: type = value
+// Syntaxes supportées:
+// - declare prop: type = value (défaut public)
+// - declare prop, private: type = value
+// - declare prop, public: type = value
+// - declare private prop: type = value
+// - declare public prop: type = value
+// - declare prop: type = value, private
 func (p *Parser) parseDeclareStatement() *ast.DeclareStatement {
 	stmt := &ast.DeclareStatement{Position: p.curToken.Pos}
-	if !p.expectPeek(lexer.IDENT) {
+
+	// 1. Prefix modifier: declare private x / declare public x
+	if p.peekTokenIs(lexer.PRIVATE) || p.peekTokenIs(lexer.PUBLIC) {
+		stmt.IsPrivate = p.peekTokenIs(lexer.PRIVATE)
+		p.nextToken() // saute 'private' ou 'public'
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.Name = p.curToken.Literal
+	} else if p.expectPeek(lexer.IDENT) {
+		stmt.Name = p.curToken.Literal
+		// 2. Second param modifier via comma: declare x, private / declare x, public
+		if p.peekTokenIs(lexer.COMMA) {
+			p.nextToken() // saute ','
+			if p.peekTokenIs(lexer.PRIVATE) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "private") {
+				stmt.IsPrivate = true
+				p.nextToken()
+			} else if p.peekTokenIs(lexer.PUBLIC) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "public") {
+				stmt.IsPrivate = false
+				p.nextToken()
+			}
+		}
+	} else {
 		return nil
 	}
-	stmt.Name = p.curToken.Literal
 
+	// 3. Type annotation: : type
 	if p.peekTokenIs(lexer.COLON) {
 		p.nextToken() // saute ':'
 		if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.MAP) {
@@ -121,6 +159,7 @@ func (p *Parser) parseDeclareStatement() *ast.DeclareStatement {
 		}
 	}
 
+	// 4. Initial value assignment: = value
 	if p.peekTokenIs(lexer.ASSIGN) {
 		p.nextToken() // saute '='
 		assignPos := p.curToken.Pos
@@ -135,6 +174,23 @@ func (p *Parser) parseDeclareStatement() *ast.DeclareStatement {
 			return stmt
 		}
 	}
+
+	// 5. Trailing modifier via comma: , private / , public
+	if p.peekTokenIs(lexer.COMMA) {
+		p.nextToken() // saute ','
+		if p.peekTokenIs(lexer.PRIVATE) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "private") {
+			stmt.IsPrivate = true
+			p.nextToken()
+		} else if p.peekTokenIs(lexer.PUBLIC) || (p.peekTokenIs(lexer.IDENT) && p.peekToken.Literal == "public") {
+			stmt.IsPrivate = false
+			p.nextToken()
+		}
+	}
+
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
+
 	return stmt
 }
 
@@ -180,7 +236,10 @@ func (p *Parser) parseModStatement() *ast.ModStatement {
 // from "services" use auth::b
 // from "services" use (auth, cdn, db)
 func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
-	stmt := &ast.FromUseStatement{Position: p.curToken.Pos}
+	stmt := &ast.FromUseStatement{
+		Position:        p.curToken.Pos,
+		MemberPositions: make(map[string]lexer.Position),
+	}
 	if !p.expectPeek(lexer.STRING) && !p.expectPeek(lexer.IDENT) {
 		return nil
 	}
@@ -200,6 +259,7 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 					cleanMod = cleanMod[1 : len(cleanMod)-1]
 				}
 				stmt.Modules = append(stmt.Modules, cleanMod)
+				stmt.MemberPositions[cleanMod] = p.curToken.Pos
 			}
 			if p.peekTokenIs(lexer.COMMA) {
 				p.nextToken()
@@ -237,6 +297,7 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 				for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
 					if p.curTokenIs(lexer.IDENT) {
 						stmt.Members = append(stmt.Members, p.curToken.Literal)
+						stmt.MemberPositions[p.curToken.Literal] = p.curToken.Pos
 					}
 					if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
 						p.nextToken()
@@ -244,8 +305,30 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 					p.nextToken()
 				}
 			}
+		} else if p.peekTokenIs(lexer.LPAREN) || p.peekTokenIs(lexer.LBRACE) {
+			closing := lexer.RPAREN
+			if p.peekTokenIs(lexer.LBRACE) {
+				closing = lexer.RBRACE
+			}
+			p.nextToken() // saute '(' ou '{'
+			p.nextToken()
+			for !p.curTokenIs(closing) && !p.curTokenIs(lexer.EOF) {
+				if p.curTokenIs(lexer.IDENT) || p.curTokenIs(lexer.STRING) {
+					cleanMem := p.curToken.Literal
+					if len(cleanMem) >= 2 && cleanMem[0] == '"' && cleanMem[len(cleanMem)-1] == '"' {
+						cleanMem = cleanMem[1 : len(cleanMem)-1]
+					}
+					stmt.Members = append(stmt.Members, cleanMem)
+					stmt.MemberPositions[cleanMem] = p.curToken.Pos
+				}
+				if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
+					p.nextToken()
+				}
+				p.nextToken()
+			}
 		} else if p.expectPeek(lexer.IDENT) {
 			stmt.Member = p.curToken.Literal
+			stmt.MemberPositions[stmt.Member] = p.curToken.Pos
 		} else {
 			return nil
 		}
@@ -257,6 +340,14 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 			return nil
 		}
 		stmt.Alias = p.curToken.Literal
+	}
+
+	if p.peekTokenIs(lexer.CATCH) || (p.peekTokenIs(lexer.IDENT) && strings.ToLower(p.peekToken.Literal) == "catch") {
+		p.nextToken() // saute 'catch'
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.CatchVar = p.curToken.Literal
 	}
 	return stmt
 }
@@ -306,7 +397,8 @@ func (p *Parser) parseInterfaceFields() []*ast.InterfaceField {
 		}
 		if p.curTokenIs(lexer.FUNC) {
 			fnPos := p.curToken.Pos
-			if p.expectPeek(lexer.IDENT) {
+			if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.SET) || p.peekTokenIs(lexer.DEFAULT) || p.peekTokenIs(lexer.MATCH) || p.peekTokenIs(lexer.TYPE) || p.peekTokenIs(lexer.MAP) {
+				p.nextToken()
 				methodName := p.curToken.Literal
 				params := p.parseParameterList()
 				retType := "void"
@@ -360,6 +452,10 @@ func (p *Parser) parseInterfaceFields() []*ast.InterfaceField {
 		}
 		if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
 			p.nextToken()
+		} else if !p.peekTokenIs(lexer.RBRACE) && !p.peekTokenIs(lexer.EOF) {
+			if p.peekToken.Pos.Line == p.curToken.Pos.Line {
+				p.addError(p.peekToken.Pos, fmt.Sprintf("unexpected token '%s' in interface: expected newline, ',' or ';' between fields", p.peekToken.Literal))
+			}
 		}
 		p.nextToken()
 	}

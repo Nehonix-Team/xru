@@ -52,44 +52,116 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 
 	// 1.4 Indexed type property completion: e.g. `TExample["` or `TExample['` or `TExample[`
 	if bracketIdx := strings.LastIndex(prefixLine, "["); bracketIdx != -1 {
-		prefixBeforeBracket := strings.TrimSpace(prefixLine[:bracketIdx])
-		afterBracket := prefixLine[bracketIdx+1:]
-		if strings.HasPrefix(afterBracket, "\"") || strings.HasPrefix(afterBracket, "'") || afterBracket == "" {
-			var typeName string
-			for i := len(prefixBeforeBracket) - 1; i >= 0; i-- {
-				if !isWordChar(prefixBeforeBracket[i]) {
-					typeName = prefixBeforeBracket[i+1:]
-					break
-				}
-				if i == 0 {
-					typeName = prefixBeforeBracket
-				}
-			}
-			if typeName != "" {
-				ifaceMembers := collectInterfaceMembers(lines, typeName, uriToPath(uri))
-				if len(ifaceMembers) > 0 {
-					hasQuote := strings.HasPrefix(afterBracket, "\"") || strings.HasPrefix(afterBracket, "'")
-					var indexedItems []CompletionItem
-					for _, item := range ifaceMembers {
-						insertText := item.Label
-						if !hasQuote {
-							insertText = fmt.Sprintf("\"%s\"]", item.Label)
-						}
-						indexedItems = append(indexedItems, CompletionItem{
-							Label:            item.Label,
-							Kind:             CompletionItemKindField,
-							Detail:           fmt.Sprintf("%s[\"%s\"]: %s", typeName, item.Label, item.Detail),
-							Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Property `%s` of type `%s`", item.Label, typeName)},
-							InsertText:       insertText,
-							FilterText:       item.Label,
-							InsertTextFormat: InsertTextFormatPlainText,
-							SortText:         fmt.Sprintf("00_%s", item.Label),
-						})
+		closeBracketIdx := strings.LastIndex(prefixLine, "]")
+		if closeBracketIdx < bracketIdx {
+			prefixBeforeBracket := strings.TrimSpace(prefixLine[:bracketIdx])
+			afterBracket := prefixLine[bracketIdx+1:]
+			if strings.HasPrefix(afterBracket, "\"") || strings.HasPrefix(afterBracket, "'") || afterBracket == "" {
+				var typeName string
+				for i := len(prefixBeforeBracket) - 1; i >= 0; i-- {
+					if !isWordChar(prefixBeforeBracket[i]) {
+						typeName = prefixBeforeBracket[i+1:]
+						break
 					}
-					return &CompletionList{IsIncomplete: false, Items: indexedItems}
+					if i == 0 {
+						typeName = prefixBeforeBracket
+					}
+				}
+				if typeName != "" {
+					ifaceMembers := collectInterfaceMembers(lines, typeName, uriToPath(uri))
+					if len(ifaceMembers) > 0 {
+						hasQuote := strings.HasPrefix(afterBracket, "\"") || strings.HasPrefix(afterBracket, "'")
+						var indexedItems []CompletionItem
+						for _, item := range ifaceMembers {
+							insertText := item.Label
+							if !hasQuote {
+								insertText = fmt.Sprintf("\"%s\"]", item.Label)
+							}
+							indexedItems = append(indexedItems, CompletionItem{
+								Label:            item.Label,
+								Kind:             CompletionItemKindField,
+								Detail:           fmt.Sprintf("%s[\"%s\"]: %s", typeName, item.Label, item.Detail),
+								Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Property `%s` of type `%s`", item.Label, typeName)},
+								InsertText:       insertText,
+								FilterText:       item.Label,
+								InsertTextFormat: InsertTextFormatPlainText,
+								SortText:         fmt.Sprintf("00_%s", item.Label),
+							})
+						}
+						return &CompletionList{IsIncomplete: false, Items: indexedItems}
+					}
 				}
 			}
 		}
+	}
+
+	// 1.45 Value completion for union types in assignments or argument declarations (e.g. `arg env: S["mode"] = "` or `let mode: "dev" or "prod" = "`)
+	if eqIdx := strings.LastIndex(prefixLine, "="); eqIdx != -1 {
+		beforeEq := strings.TrimSpace(prefixLine[:eqIdx])
+		afterEq := strings.TrimSpace(prefixLine[eqIdx+1:])
+		if colonIdx := strings.LastIndex(beforeEq, ":"); colonIdx != -1 {
+			typeStr := strings.TrimSpace(beforeEq[colonIdx+1:])
+			if typeStr != "" {
+				resolvedType := typeStr
+				if idx := strings.Index(typeStr, "["); idx != -1 && strings.HasSuffix(typeStr, "]") {
+					baseName := strings.TrimSpace(typeStr[:idx])
+					key := strings.Trim(strings.TrimSuffix(typeStr[idx+1:], "]"), "\"'")
+					members := collectInterfaceMembers(lines, baseName, uriToPath(uri))
+					for _, m := range members {
+						if m.Label == key {
+							if colonM := strings.Index(m.Detail, ":"); colonM != -1 {
+								resolvedType = strings.TrimSpace(m.Detail[colonM+1:])
+							} else {
+								resolvedType = m.Detail
+							}
+							break
+						}
+					}
+				}
+				var unionOptions []string
+				for _, part := range strings.Split(resolvedType, " or ") {
+					for _, p2 := range strings.Split(part, "|") {
+						trimmed := strings.TrimSpace(p2)
+						if trimmed != "" {
+							unionOptions = append(unionOptions, trimmed)
+						}
+					}
+				}
+				if len(unionOptions) > 1 {
+					hasQuote := strings.HasPrefix(afterEq, "\"") || strings.HasPrefix(afterEq, "'")
+					var unionItems []CompletionItem
+					for _, opt := range unionOptions {
+						cleanOpt := strings.Trim(opt, "\"'")
+						insertText := fmt.Sprintf("\"%s\"", cleanOpt)
+						if hasQuote {
+							insertText = cleanOpt
+						}
+						unionItems = append(unionItems, CompletionItem{
+							Label:            fmt.Sprintf("\"%s\"", cleanOpt),
+							Kind:             CompletionItemKindValue,
+							Detail:           fmt.Sprintf("Option for %s", typeStr),
+							Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Allowed union value `%q` from `%s`", cleanOpt, typeStr)},
+							InsertText:       insertText,
+							FilterText:       cleanOpt,
+							InsertTextFormat: InsertTextFormatPlainText,
+							SortText:         fmt.Sprintf("00_%s", cleanOpt),
+						})
+					}
+					if len(unionItems) > 0 {
+						return &CompletionList{IsIncomplete: false, Items: unionItems}
+					}
+				}
+			}
+		}
+	}
+
+	// 1.48 Map Literal Value completion (propose allowed literal values, e.g. "log", "silent" for ROpt.mode, even inside quotes)
+	if mapValItems, handled := s.handleMapValueCompletion(uri, lines, pos); handled {
+		localItems := collectLocalSymbols(lines, pos.Line)
+		var combined []CompletionItem
+		combined = append(combined, mapValItems...)
+		combined = append(combined, localItems...)
+		return &CompletionList{IsIncomplete: false, Items: combined}
 	}
 
 	// 1.5 Context Check: Inside a string literal
@@ -124,15 +196,6 @@ func (s *Server) handleCompletion(uri string, pos Position) *CompletionList {
 	if isTypeContext(prefixLine, lines, pos.Line) {
 		typeItems := collectTypeCompletions(uri, lines, prefixLine)
 		return &CompletionList{IsIncomplete: false, Items: typeItems}
-	}
-
-	// 1.8 Map Literal Value completion (propose allowed literal values, e.g. "log", "silent" for ROpt.mode)
-	if mapValItems, handled := s.handleMapValueCompletion(uri, lines, pos); handled {
-		localItems := collectLocalSymbols(lines, pos.Line)
-		var combined []CompletionItem
-		combined = append(combined, mapValItems...)
-		combined = append(combined, localItems...)
-		return &CompletionList{IsIncomplete: false, Items: combined}
 	}
 
 	// 1.9 Map Literal Field completion (with duplicate suppression): e.g. inside `let x: TExample = @map{ ... }`

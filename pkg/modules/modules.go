@@ -29,10 +29,11 @@ type ExportedMember struct {
 
 // ModuleDetails contient les informations d'un module local analysé.
 type ModuleDetails struct {
-	Name      string
-	Namespace string
-	FilePath  string
-	Exports   map[string]*ExportedMember
+	Name          string
+	Namespace     string
+	FilePath      string
+	Exports       map[string]*ExportedMember
+	HasCustomName bool
 }
 
 // ModConfig représente le mapping déclaré dans '_mod.xru'.
@@ -126,16 +127,32 @@ func (cfg *ModConfig) GetNamespaceModules(namespace string) (map[string]*ModuleD
 	}
 
 	info, err := os.Stat(targetDir)
-	if err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("mapped path '%s' (for namespace '%s') does not exist or is not a directory", cleanPath, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("mapped path '%s' (for namespace '%s') does not exist: %v", cleanPath, namespace, err)
+	}
+
+	modules := make(map[string]*ModuleDetails)
+
+	if !info.IsDir() {
+		if strings.HasSuffix(targetDir, ".xru") && filepath.Base(targetDir) != ModConfigFileName {
+			modDetails, err := parseModuleFile(targetDir, namespace)
+			if err == nil && modDetails != nil {
+				modules[modDetails.Name] = modDetails
+				if !modDetails.HasCustomName {
+					fileBase := strings.ReplaceAll(strings.TrimSuffix(filepath.Base(targetDir), ".xru"), " ", "")
+					if fileBase != modDetails.Name {
+						modules[fileBase] = modDetails
+					}
+				}
+			}
+		}
+		return modules, nil
 	}
 
 	entries, err := os.ReadDir(targetDir)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read mapped directory '%s': %v", targetDir, err)
 	}
-
-	modules := make(map[string]*ModuleDetails)
 
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".xru") {
@@ -152,9 +169,11 @@ func (cfg *ModConfig) GetNamespaceModules(namespace string) (map[string]*ModuleD
 			continue
 		}
 		modules[modDetails.Name] = modDetails
-		fileBase := strings.TrimSuffix(entry.Name(), ".xru")
-		if fileBase != modDetails.Name {
-			modules[fileBase] = modDetails
+		if !modDetails.HasCustomName {
+			fileBase := strings.ReplaceAll(strings.TrimSuffix(entry.Name(), ".xru"), " ", "")
+			if fileBase != modDetails.Name {
+				modules[fileBase] = modDetails
+			}
 		}
 	}
 
@@ -190,22 +209,28 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 		return nil, fmt.Errorf("failed to parse %s", filePath)
 	}
 
-	// Nom par défaut : le nom du fichier sans extension
-	baseName := strings.TrimSuffix(filepath.Base(filePath), ".xru")
+	// Nom par défaut : le nom du fichier sans extension, avec tous les espaces supprimés
+	baseName := strings.ReplaceAll(strings.TrimSuffix(filepath.Base(filePath), ".xru"), " ", "")
 	modName := baseName
+	hasCustomName := false
 
 	exports := make(map[string]*ExportedMember)
 
+	hasSeenImportsOrCode := false
 	for _, stmt := range prog.Statements {
 		if stmt == nil {
 			continue
 		}
 		switch s := stmt.(type) {
 		case *ast.ModStatement:
-			if s != nil && s.Name != "" {
+			if s != nil && s.Name != "" && !hasCustomName && !hasSeenImportsOrCode {
 				modName = s.Name
+				hasCustomName = true
 			}
+		case *ast.UseStatement:
+			hasSeenImportsOrCode = true
 		case *ast.VarStatement:
+			hasSeenImportsOrCode = true
 			if s != nil && s.IsGlobal {
 				kind := "var"
 				if s.IsConst {
@@ -223,6 +248,7 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 				}
 			}
 		case *ast.FuncStatement:
+			hasSeenImportsOrCode = true
 			if s != nil && s.IsGlobal {
 				exports[s.Name] = &ExportedMember{
 					Name:     s.Name,
@@ -233,6 +259,7 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 				}
 			}
 		case *ast.ArgStatement:
+			hasSeenImportsOrCode = true
 			if s != nil && s.IsGlobal {
 				memberType := s.Type
 				if memberType == "" && s.DefaultValue != nil {
@@ -245,14 +272,40 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 					Position: s.Pos(),
 				}
 			}
+		case *ast.FromUseStatement:
+			hasSeenImportsOrCode = true
+			if s != nil {
+				if len(s.Members) > 0 {
+					for _, mem := range s.Members {
+						exports[mem] = &ExportedMember{
+							Name:     mem,
+							Kind:     "var",
+							Type:     "any",
+							Position: s.Pos(),
+						}
+					}
+				} else if s.Member != "" {
+					target := s.Member
+					if s.Alias != "" {
+						target = s.Alias
+					}
+					exports[target] = &ExportedMember{
+						Name:     target,
+						Kind:     "var",
+						Type:     "any",
+						Position: s.Pos(),
+					}
+				}
+			}
 		}
 	}
 
 	return &ModuleDetails{
-		Name:      modName,
-		Namespace: namespace,
-		FilePath:  filePath,
-		Exports:   exports,
+		Name:          modName,
+		Namespace:     namespace,
+		FilePath:      filePath,
+		Exports:       exports,
+		HasCustomName: hasCustomName,
 	}, nil
 }
 
@@ -277,7 +330,13 @@ func (cfg *ModConfig) GetAllExportedCandidates() []AutoImportCandidate {
 			continue
 		}
 
+		seenMods := make(map[*ModuleDetails]bool)
 		for _, m := range mods {
+			if seenMods[m] {
+				continue
+			}
+			seenMods[m] = true
+
 			// Candidat 1 : Le module entier (from "services" use auth)
 			candidates = append(candidates, AutoImportCandidate{
 				Name:            m.Name,

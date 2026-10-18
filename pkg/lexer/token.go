@@ -57,6 +57,8 @@ const (
 	INTERFACE     TokenType = "interface"
 	TYPE          TokenType = "type"
 	INCLUDES      TokenType = "includes"
+	PUBLIC        TokenType = "public"
+	PRIVATE       TokenType = "private"
 
 	// Operators & Symbols
 	ASSIGN     TokenType = "="
@@ -83,6 +85,7 @@ const (
 	BANG       TokenType = "!"
 	AND        TokenType = "&&"
 	OR_LOGICAL TokenType = "||"
+	PIPE       TokenType = "|"
 
 	// Delimiters
 	LPAREN       TokenType = "("
@@ -113,6 +116,7 @@ type Token struct {
 	Type    TokenType
 	Literal string
 	Pos     Position
+	Raw     string
 }
 
 func (t Token) String() string {
@@ -159,6 +163,8 @@ var keywords = map[string]TokenType{
 	"interface":     INTERFACE,
 	"type":          TYPE,
 	"includes":      INCLUDES,
+	"public":        PUBLIC,
+	"private":       PRIVATE,
 }
 
 func LookupIdent(ident string) TokenType {
@@ -167,4 +173,14 @@ func LookupIdent(ident string) TokenType {
 		return tok
 	}
 	return IDENT
+}
+
+
+func IsKeyword(tok TokenType) bool {
+	for _, kw := range keywords {
+		if kw == tok {
+			return true
+		}
+	}
+	return false
 }

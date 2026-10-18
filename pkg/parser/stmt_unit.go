@@ -29,6 +29,12 @@ func (p *Parser) parseUnitStatement() *ast.UnitStatement {
 
 	p.nextToken()
 	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		for p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+		}
+		if p.curTokenIs(lexer.RBRACE) || p.curTokenIs(lexer.EOF) {
+			break
+		}
 		switch p.curToken.Type {
 		case lexer.DECLARE:
 			decl := p.parseDeclareStatement()
@@ -87,6 +93,12 @@ func (p *Parser) parseDirectiveDefStatement() *ast.DirectiveDefStatement {
 
 	p.nextToken()
 	for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+		for p.curTokenIs(lexer.SEMICOLON) {
+			p.nextToken()
+		}
+		if p.curTokenIs(lexer.RBRACE) || p.curTokenIs(lexer.EOF) {
+			break
+		}
 		bodyStmt := p.parseStatement()
 		if bodyStmt != nil {
 			stmt.Body = append(stmt.Body, bodyStmt)

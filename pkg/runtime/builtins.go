@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	goRuntime "runtime"
 	"strings"
 	"time"
@@ -117,6 +118,13 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		return NilValue{}, nil
 	}
 
+	typeFn := func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, fmt.Errorf("std.type requires 1 argument")
+		}
+		return StringValue{Val: string(args[0].Type())}, nil
+	}
+
 	stdUnit := &UnitInstance{
 		UnitName:   "std",
 		Properties: make(map[string]Value),
@@ -139,6 +147,12 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Sleep":   sleepFn,
 			"fatal":   fatalFn,
 			"Fatal":   fatalFn,
+			"exit":    exitFn,
+			"Exit":    exitFn,
+			"type":    typeFn,
+			"Type":    typeFn,
+			"typeof":  typeFn,
+			"Typeof":  typeFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}
@@ -370,7 +384,25 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	units["net"] = netUnit
 
 	// 4. #UNIT Sys
-	sysUnit := &UnitInstance{
+	var sysUnit *UnitInstance
+	cwdFn := func(args []Value) (Value, error) {
+		dir := ""
+		if sysUnit != nil && sysUnit.WorkingDir != "" {
+			dir = sysUnit.WorkingDir
+		} else {
+			wd, err := os.Getwd()
+			if err != nil {
+				return StringValue{Val: ""}, err
+			}
+			dir = wd
+		}
+		if abs, err := filepath.Abs(dir); err == nil {
+			return StringValue{Val: abs}, nil
+		}
+		return StringValue{Val: dir}, nil
+	}
+
+	sysUnit = &UnitInstance{
 		UnitName:   "Sys",
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
@@ -380,8 +412,49 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 				}
 				return StringValue{Val: os.Getenv(args[0].String())}, nil
 			},
+			"env": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return StringValue{Val: ""}, nil
+				}
+				return StringValue{Val: os.Getenv(args[0].String())}, nil
+			},
+			"getEnv": func(args []Value) (Value, error) {
+				if len(args) == 0 {
+					return StringValue{Val: ""}, nil
+				}
+				val := os.Getenv(args[0].String())
+				if val == "" && len(args) > 1 {
+					val = args[1].String()
+				}
+				return StringValue{Val: val}, nil
+			},
+			"GetEnv": func(args []Value) (Value, error) {
+				if len(args) == 0 {
+					return StringValue{Val: ""}, nil
+				}
+				val := os.Getenv(args[0].String())
+				if val == "" && len(args) > 1 {
+					val = args[1].String()
+				}
+				return StringValue{Val: val}, nil
+			},
 			"Time": func(args []Value) (Value, error) {
 				return StringValue{Val: time.Now().Format(time.RFC3339)}, nil
+			},
+			"time": func(args []Value) (Value, error) {
+				return StringValue{Val: time.Now().Format(time.RFC3339)}, nil
+			},
+			"Os": func(args []Value) (Value, error) {
+				return StringValue{Val: goRuntime.GOOS}, nil
+			},
+			"os": func(args []Value) (Value, error) {
+				return StringValue{Val: goRuntime.GOOS}, nil
+			},
+			"Arch": func(args []Value) (Value, error) {
+				return StringValue{Val: goRuntime.GOARCH}, nil
+			},
+			"arch": func(args []Value) (Value, error) {
+				return StringValue{Val: goRuntime.GOARCH}, nil
 			},
 			"Sleep":   sleepFn,
 			"sleep":   sleepFn,
@@ -391,6 +464,8 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Require": sysRequireFn,
 			"version": sysVersionFn,
 			"Version": sysVersionFn,
+			"cwd":     cwdFn,
+			"Cwd":     cwdFn,
 		},
 		Directives: make(map[string]NativeDirective),
 	}
@@ -967,15 +1042,130 @@ func generateSecureRandomBytes(length int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+var reTerminalTag = regexp.MustCompile(`</?[a-zA-Z0-9_\-]*>`)
+
+var terminalColorCodes = map[string]string{
+	// Standard foreground colors
+	"red":            "\033[31m",
+	"green":          "\033[32m",
+	"yellow":         "\033[33m",
+	"blue":           "\033[34m",
+	"magenta":        "\033[35m",
+	"purple":         "\033[35m",
+	"cyan":           "\033[36m",
+	"white":          "\033[37m",
+	"gray":           "\033[90m",
+	"grey":           "\033[90m",
+	"black":          "\033[30m",
+
+	// Bright foreground colors
+	"bright_red":     "\033[91m",
+	"light_red":      "\033[91m",
+	"bright_green":   "\033[92m",
+	"light_green":    "\033[92m",
+	"bright_yellow":  "\033[93m",
+	"light_yellow":   "\033[93m",
+	"bright_blue":    "\033[94m",
+	"light_blue":     "\033[94m",
+	"bright_magenta": "\033[95m",
+	"light_magenta":  "\033[95m",
+	"bright_cyan":    "\033[96m",
+	"light_cyan":     "\033[96m",
+	"bright_white":   "\033[97m",
+
+	// Styles
+	"bold":           "\033[1m",
+	"b":              "\033[1m",
+	"dim":            "\033[2m",
+	"italic":         "\033[3m",
+	"i":              "\033[3m",
+	"underline":      "\033[4m",
+	"u":              "\033[4m",
+
+	// Backgrounds
+	"bg_red":         "\033[41m",
+	"bg_green":       "\033[42m",
+	"bg_yellow":      "\033[43m",
+	"bg_blue":        "\033[44m",
+	"bg_magenta":     "\033[45m",
+	"bg_cyan":        "\033[46m",
+	"bg_white":       "\033[47m",
+	"bg_black":       "\033[40m",
+}
+
 func formatTerminalColors(s string) string {
-	s = strings.ReplaceAll(s, "<green>", "\033[32m")
-	s = strings.ReplaceAll(s, "<yellow>", "\033[33m")
-	s = strings.ReplaceAll(s, "<cyan>", "\033[36m")
-	s = strings.ReplaceAll(s, "<blue>", "\033[34m")
-	s = strings.ReplaceAll(s, "<red>", "\033[31m")
-	s = strings.ReplaceAll(s, "<bold>", "\033[1m")
-	s = strings.ReplaceAll(s, "</>", "\033[0m")
-	return s
+	if !strings.Contains(s, "<") {
+		return s
+	}
+
+	matches := reTerminalTag.FindAllStringIndex(s, -1)
+	if len(matches) == 0 {
+		return s
+	}
+
+	var sb strings.Builder
+	var stack []string // holds active tags
+	lastIdx := 0
+
+	for _, loc := range matches {
+		start, end := loc[0], loc[1]
+		sb.WriteString(s[lastIdx:start])
+		lastIdx = end
+
+		tagText := s[start:end]
+		inner := strings.ToLower(tagText[1 : len(tagText)-1])
+
+		if inner == "/" {
+			// Generic close tag: </>
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+			sb.WriteString("\033[0m")
+			for _, t := range stack {
+				if code, ok := terminalColorCodes[t]; ok {
+					sb.WriteString(code)
+				}
+			}
+		} else if strings.HasPrefix(inner, "/") {
+			// Named close tag: </blue>, </red>, </bold>, etc.
+			tagName := strings.TrimPrefix(inner, "/")
+			tagName = strings.ReplaceAll(tagName, "-", "_")
+
+			foundIdx := -1
+			for i := len(stack) - 1; i >= 0; i-- {
+				if stack[i] == tagName {
+					foundIdx = i
+					break
+				}
+			}
+			if foundIdx != -1 {
+				stack = append(stack[:foundIdx], stack[foundIdx+1:]...)
+			}
+
+			sb.WriteString("\033[0m")
+			for _, t := range stack {
+				if code, ok := terminalColorCodes[t]; ok {
+					sb.WriteString(code)
+				}
+			}
+		} else {
+			// Opening tag: <blue>, <red>, etc.
+			tagName := strings.ReplaceAll(inner, "-", "_")
+			if code, ok := terminalColorCodes[tagName]; ok {
+				stack = append(stack, tagName)
+				sb.WriteString(code)
+			} else {
+				sb.WriteString(tagText)
+			}
+		}
+	}
+
+	sb.WriteString(s[lastIdx:])
+	if len(stack) > 0 {
+		sb.WriteString("\033[0m")
+	}
+
+	return sb.String()
 }
 
 func extractZip(zipBytes []byte, destDir string) error {

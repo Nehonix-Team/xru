@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -478,8 +479,30 @@ func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, erro
 				}
 			}
 		}
+	case MapValue:
+		var keys []string
+		for k := range it.Pairs {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			v := it.Pairs[k]
+			_ = loopEnv.Set(f.Item, StringValue{Val: k}, false)
+			if f.Index != "" {
+				_ = loopEnv.Set(f.Index, v, false)
+			}
+			for _, stmt := range f.Body {
+				res, err := ev.Eval(stmt, loopEnv)
+				if err != nil {
+					return nil, err
+				}
+				if ret, ok := res.(ReturnValue); ok {
+					return ret, nil
+				}
+			}
+		}
 	default:
-		return nil, fmt.Errorf("cannot iterate over '%s', expected list or range", iterVal.Type())
+		return nil, fmt.Errorf("cannot iterate over '%s', expected list, range, or map", iterVal.Type())
 	}
 
 	return NilValue{}, nil

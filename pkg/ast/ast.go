@@ -54,6 +54,7 @@ type UseStatement struct {
 	Position lexer.Position
 	Module   string
 	Alias    string
+	CatchVar string
 }
 
 func (s *UseStatement) statementNode()      {}
@@ -68,6 +69,7 @@ func (s *UseStatement) String() string {
 // ArgStatement : [global/export] arg NAME [as ALIAS]: type = default  /  #ARG NAME: type or default
 type ArgStatement struct {
 	Position     lexer.Position
+	TypePos      lexer.Position
 	Name         string
 	Alias        string // Optional alias for the internal variable name (e.g. arg mode as _e)
 	Type         string // "string", "number", "bool", "duration", etc.
@@ -131,6 +133,8 @@ type FromUseStatement struct {
 	Alias    string   // e.g. "a" (when from "services" use auth as a or auth::@map as a)
 	Modules  []string // e.g. ["auth", "cdn", "db"] (when from "services" use (auth, cdn, db))
 	AsMap    bool     // true when module::@map or module::@map{ ... }
+	CatchVar        string                  // e.g. "e" (when from "services" use auth::b catch e)
+	MemberPositions map[string]lexer.Position // Position de chaque membre ou module importé
 }
 
 func (s *FromUseStatement) statementNode()      {}
@@ -149,7 +153,7 @@ func (s *FromUseStatement) String() string {
 		return fmt.Sprintf("from %q use %s::@map", s.Source, s.Module)
 	}
 	if len(s.Members) > 0 {
-		return fmt.Sprintf("from %q use %s::@map{%s}", s.Source, s.Module, strings.Join(s.Members, ", "))
+		return fmt.Sprintf("from %q use %s::(%s)", s.Source, s.Module, strings.Join(s.Members, ", "))
 	}
 	if s.Member != "" {
 		return fmt.Sprintf("from %q use %s::%s", s.Source, s.Module, s.Member)
@@ -191,6 +195,7 @@ func (s *InterfaceStatement) String() string {
 type VarStatement struct {
 	Position lexer.Position
 	NamePos  lexer.Position
+	TypePos  lexer.Position
 	IsConst  bool
 	IsGlobal bool
 	Name     string
@@ -244,18 +249,26 @@ func (s *UnitStatement) String() string {
 	return fmt.Sprintf("#UNIT %s (%d props, %d directives, %d methods)", s.Name, len(s.Properties), len(s.Directives), len(s.Methods))
 }
 
-// DeclareStatement : #DECLARE prop: type = expr
+// DeclareStatement : #DECLARE prop: type = expr (with optional public/private modifier)
 type DeclareStatement struct {
-	Position lexer.Position
-	Name     string
-	Type     string
-	Value    Expression
+	Position  lexer.Position
+	Name      string
+	Type      string
+	Value     Expression
+	IsPrivate bool
 }
 
 func (s *DeclareStatement) statementNode()      {}
 func (s *DeclareStatement) Pos() lexer.Position { return s.Position }
 func (s *DeclareStatement) String() string {
-	return fmt.Sprintf("#DECLARE %s: %s = %s", s.Name, s.Type, s.Value.String())
+	vis := ""
+	if s.IsPrivate {
+		vis = "private "
+	}
+	if s.Value != nil {
+		return fmt.Sprintf("declare %s%s: %s = %s", vis, s.Name, s.Type, s.Value.String())
+	}
+	return fmt.Sprintf("declare %s%s: %s", vis, s.Name, s.Type)
 }
 
 // DirectiveDefStatement : #DIRECTIVE Name(params...) ... #END
@@ -269,7 +282,7 @@ type DirectiveDefStatement struct {
 func (s *DirectiveDefStatement) statementNode()      {}
 func (s *DirectiveDefStatement) Pos() lexer.Position { return s.Position }
 func (s *DirectiveDefStatement) String() string {
-	return fmt.Sprintf("#DIRECTIVE %s(%d params)", s.Name, len(s.Parameters))
+	return fmt.Sprintf("directive %s(%d params)", s.Name, len(s.Parameters))
 }
 
 // FuncStatement : #FUNC Name(params...) -> ReturnType ... #END

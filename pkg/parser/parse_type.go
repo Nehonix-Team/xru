@@ -141,8 +141,8 @@ func (p *Parser) parseTypeAnnotation() string {
 	}
 
 	parts := []string{first}
-	for p.peekTokenIs(lexer.OR) {
-		p.nextToken() // saute 'or'
+	for p.peekTokenIs(lexer.OR) || p.peekTokenIs(lexer.PIPE) {
+		p.nextToken() // saute 'or' ou '|'
 		next := parseSingleType()
 		if next != "" {
 			if p.peekTokenIs(lexer.QUESTION) {

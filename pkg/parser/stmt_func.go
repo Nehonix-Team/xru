@@ -73,7 +73,7 @@ func (p *Parser) parseParameterList() []*ast.Parameter {
 			isVariadic = true
 			p.nextToken()
 		}
-		if !p.curTokenIs(lexer.IDENT) {
+		if !p.curTokenIs(lexer.IDENT) && !p.curTokenIs(lexer.DEFAULT) && !p.curTokenIs(lexer.SET) {
 			break
 		}
 		param := &ast.Parameter{Name: p.curToken.Literal, IsVariadic: isVariadic}

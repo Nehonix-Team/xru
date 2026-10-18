@@ -25,10 +25,12 @@ type Symbol struct {
 	Pos         lexer.Position
 	IsGlobal    bool               // Déclaré avec 'global'
 	ValueStr    string             // Valeur initiale / par défaut pour inspection
-	Directives  map[string]bool    // Pour les #UNIT : directives déclarées
-	Params      []*ast.Parameter   // Pour les fonctions : paramètres
-	Methods     map[string]*Symbol // Pour les #UNIT : méthodes exposées
-	Used        bool               // Indique si le symbole a été utilisé
+	Directives   map[string]bool    // Pour les #UNIT : directives déclarées
+	Params       []*ast.Parameter   // Pour les fonctions : paramètres
+	Methods      map[string]*Symbol // Pour les #UNIT : méthodes exposées
+	Properties   map[string]*Symbol // Pour les #UNIT : propriétés déclarées via 'declare'
+	PrivateProps map[string]bool    // Pour les #UNIT : propriétés privées
+	Used         bool               // Indique si le symbole a été utilisé
 	MinArgs     int                // Nombre minimum d'arguments obligatoires
 	HasOptional bool               // Les paramètres au-delà de MinArgs sont optionnels (non variadique)
 	IsVariadic  bool               // Vrai si accepte des arguments supplémentaires
@@ -49,6 +51,10 @@ func NewScope(parent *Scope, isUnit bool) *Scope {
 		symbols: make(map[string]*Symbol),
 		isUnit:  isUnit,
 	}
+}
+
+func (s *Scope) HasParent() bool {
+	return s != nil && s.parent != nil
 }
 
 func (s *Scope) GetEnclosingUnit() *Symbol {
@@ -85,11 +91,9 @@ func (s *Scope) Define(sym *Symbol) error {
 	// Do not check parent collision if this is an isolated unit scope (properties accessed via &)
 	if !s.isUnit && s.parent != nil {
 		if existing, exists := s.parent.Resolve(sym.Name); exists {
-			if existing.Kind == SymUnit && sym.Kind == SymUnit {
-				return fmt.Errorf("Module alias '%s' is already imported%s", sym.Name, formatPos(existing.Pos))
-			} else if existing.Kind == SymUnit {
+			if existing.Kind == SymUnit && sym.Kind != SymUnit {
 				return fmt.Errorf("Variable '%s' collides with imported module '%s'%s", sym.Name, existing.Name, formatPos(existing.Pos))
-			} else if sym.Kind == SymUnit {
+			} else if sym.Kind == SymUnit && existing.Kind != SymUnit {
 				return fmt.Errorf("Imported module '%s' collides with existing identifier '%s'%s", sym.Name, existing.Name, formatPos(existing.Pos))
 			}
 		}

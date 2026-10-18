@@ -28,6 +28,17 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 			break
 		}
 	}
+	if s.CatchVar != "" {
+		catchSym := &Symbol{
+			Name: s.CatchVar,
+			Kind: SymVar,
+			Type: "any",
+			Pos:  s.Pos(),
+		}
+		_ = c.scope.Define(catchSym)
+		c.declaredVars = append(c.declaredVars, catchSym)
+	}
+
 	if sourceSym != nil {
 		aliasSym := &Symbol{
 			Name:       alias,
@@ -43,7 +54,17 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 			c.importedSyms = append(c.importedSyms, aliasSym)
 		}
 	} else {
-		c.addError(s.Pos(), "ERR_UNKNOWN_MODULE", fmt.Sprintf("Module '%s' does not exist", s.Module))
+		if s.CatchVar == "" {
+			c.addError(s.Pos(), "ERR_UNKNOWN_MODULE", fmt.Sprintf("Module '%s' does not exist", s.Module))
+		} else {
+			aliasSym := &Symbol{
+				Name: alias,
+				Kind: SymUnit,
+				Pos:  s.Pos(),
+			}
+			_ = c.scope.Define(aliasSym)
+			c.importedSyms = append(c.importedSyms, aliasSym)
+		}
 	}
 }
 
@@ -53,6 +74,9 @@ func (c *Checker) checkMap(s *ast.MapStatement) {
 
 func (c *Checker) checkMod(s *ast.ModStatement) {
 	c.hasModStmt = true
+	if c.scope != nil && c.scope.HasParent() {
+		c.addError(s.Pos(), "ERR_MOD_ORDER", "The 'mod' declaration cannot be nested inside a function or block")
+	}
 	if s.Name == "_mod" {
 		c.addError(s.Pos(), "ERR_RESERVED_MOD_NAME", "Module name '_mod' is reserved for project mapping configuration")
 	}
@@ -64,17 +88,30 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		fileDir = filepath.Dir(c.currentFile)
 	}
 	modFilePath := modules.FindModConfigFile(fileDir)
+	var modCfg *modules.ModConfig
 	if modFilePath == "" {
-		c.addError(s.Pos(), "ERR_MISSING_MOD_FILE", "No '_mod.xru' configuration file found in workspace for module resolution")
-		return
-	}
-
-	modCfg, modErrs := modules.LoadModConfig(modFilePath)
-	if len(modErrs) > 0 {
-		for _, errStr := range modErrs {
-			c.addError(s.Pos(), "ERR_INVALID_MOD_CONFIG", errStr)
+		if s.Source == "root" {
+			// Implicit fallback: resolve root from project root
+			wsRoot := findWorkspaceRootDir(fileDir)
+			modCfg = &modules.ModConfig{
+				Dir: wsRoot,
+				Mappings: map[string]string{
+					"root": "./",
+				},
+			}
+		} else {
+			c.addError(s.Pos(), "ERR_MISSING_MOD_FILE", "No '_mod.xru' configuration file found in workspace for module resolution")
+			return
 		}
-		return
+	} else {
+		cfg, modErrs := modules.LoadModConfig(modFilePath)
+		if len(modErrs) > 0 {
+			for _, errStr := range modErrs {
+				c.addError(s.Pos(), "ERR_INVALID_MOD_CONFIG", errStr)
+			}
+			return
+		}
+		modCfg = cfg
 	}
 
 	if _, ok := modCfg.Mappings[s.Source]; !ok {
@@ -110,16 +147,20 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 					Pos:    exp.Position,
 				}
 			}
+			symPos := s.Pos()
+			if p, ok := s.MemberPositions[modName]; ok {
+				symPos = p
+			}
 			modSym := &Symbol{
 				Name:    modName,
 				Kind:    SymUnit,
-				Pos:     s.Pos(),
+				Pos:     symPos,
 				Methods: methods,
 			}
 			if existing, ok := c.scope.Resolve(modName); ok && existing.Pos.Line == 0 {
 				existing.Kind = SymUnit
 				existing.Methods = methods
-				existing.Pos = s.Pos()
+				existing.Pos = symPos
 				c.importedSyms = append(c.importedSyms, existing)
 				continue
 			}
@@ -134,9 +175,34 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 
 	// Cas 2 : membre individuel from "services" use auth::b
 	if s.Member != "" {
+		if s.CatchVar != "" {
+			catchSym := &Symbol{
+				Name: s.CatchVar,
+				Kind: SymVar,
+				Type: "any",
+				Pos:  s.Pos(),
+			}
+			_ = c.scope.Define(catchSym)
+			c.declaredVars = append(c.declaredVars, catchSym)
+		}
 		modDetails, err := modCfg.ResolveModule(s.Source, s.Module)
 		if err != nil {
-			c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
+			if s.CatchVar == "" {
+				c.addError(s.Pos(), "ERR_MODULE_NOT_FOUND", fmt.Sprintf("Module '%s' not found in mapped namespace '%s': %v", s.Module, s.Source, err))
+			} else {
+				targetName := s.Member
+				if s.Alias != "" {
+					targetName = s.Alias
+				}
+				memberSym := &Symbol{
+					Name: targetName,
+					Kind: SymVar,
+					Type: "any",
+					Pos:  s.Pos(),
+				}
+				_ = c.scope.Define(memberSym)
+				c.importedSyms = append(c.importedSyms, memberSym)
+			}
 			return
 		}
 		if c.hasCircularImport(modDetails.FilePath, c.currentFile, modCfg) {
@@ -145,7 +211,55 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		}
 		exp, ok := modDetails.Exports[s.Member]
 		if !ok {
-			c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", s.Member, s.Module))
+			if parentSym, hasParent := c.scope.Resolve(s.Member); hasParent {
+				targetName := s.Member
+				if s.Alias != "" {
+					targetName = s.Alias
+				}
+				memberSym := &Symbol{
+					Name:   targetName,
+					Kind:   parentSym.Kind,
+					Type:   parentSym.Type,
+					Params: parentSym.Params,
+					Pos:    s.Pos(),
+				}
+				_ = c.scope.Define(memberSym)
+				c.importedSyms = append(c.importedSyms, memberSym)
+				return
+			}
+			if s.Source == "root" || s.Module == "main" {
+				if argExp := findExportedArg(modCfg, s.Member); argExp != nil {
+					targetName := s.Member
+					if s.Alias != "" {
+						targetName = s.Alias
+					}
+					memberSym := &Symbol{
+						Name: targetName,
+						Kind: SymVar,
+						Type: argExp.Type,
+						Pos:  s.Pos(),
+					}
+					_ = c.scope.Define(memberSym)
+					c.importedSyms = append(c.importedSyms, memberSym)
+					return
+				}
+			}
+			if s.CatchVar == "" {
+				c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", s.Member, s.Module))
+			} else {
+				targetName := s.Member
+				if s.Alias != "" {
+					targetName = s.Alias
+				}
+				memberSym := &Symbol{
+					Name: targetName,
+					Kind: SymVar,
+					Type: "any",
+					Pos:  s.Pos(),
+				}
+				_ = c.scope.Define(memberSym)
+				c.importedSyms = append(c.importedSyms, memberSym)
+			}
 			return
 		}
 		symKind := SymVar
@@ -158,18 +272,22 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		if s.Alias != "" {
 			targetName = s.Alias
 		}
+		symPos := s.Pos()
+		if p, ok := s.MemberPositions[s.Member]; ok {
+			symPos = p
+		}
 		memberSym := &Symbol{
 			Name:   targetName,
 			Kind:   symKind,
 			Type:   exp.Type,
 			Params: exp.Params,
-			Pos:    s.Pos(),
+			Pos:    symPos,
 		}
 		if existing, ok := c.scope.Resolve(targetName); ok && existing.Pos.Line == 0 {
 			existing.Kind = symKind
 			existing.Type = exp.Type
 			existing.Params = exp.Params
-			existing.Pos = s.Pos()
+			existing.Pos = symPos
 			c.importedSyms = append(c.importedSyms, existing)
 			return
 		}
@@ -195,6 +313,21 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		for _, memName := range s.Members {
 			exp, ok := modDetails.Exports[memName]
 			if !ok {
+				if parentSym, hasParent := c.scope.Resolve(memName); hasParent {
+					exp = &modules.ExportedMember{
+						Name: memName,
+						Kind: "var",
+						Type: parentSym.Type,
+					}
+					ok = true
+				} else if s.Source == "root" || s.Module == "main" {
+					if argExp := findExportedArg(modCfg, memName); argExp != nil {
+						exp = argExp
+						ok = true
+					}
+				}
+			}
+			if !ok {
 				c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", memName, s.Module))
 				continue
 			}
@@ -204,18 +337,22 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 			} else if exp.Kind == "const" {
 				symKind = SymConst
 			}
+			symPos := s.Pos()
+			if p, ok := s.MemberPositions[memName]; ok {
+				symPos = p
+			}
 			memberSym := &Symbol{
 				Name:   memName,
 				Kind:   symKind,
 				Type:   exp.Type,
 				Params: exp.Params,
-				Pos:    s.Pos(),
+				Pos:    symPos,
 			}
 			if existing, ok := c.scope.Resolve(memName); ok && existing.Pos.Line == 0 {
 				existing.Kind = symKind
 				existing.Type = exp.Type
 				existing.Params = exp.Params
-				existing.Pos = s.Pos()
+				existing.Pos = symPos
 				c.importedSyms = append(c.importedSyms, existing)
 				continue
 			}
@@ -318,6 +455,18 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		Pos:     s.Pos(),
 		Methods: methods,
 	}
+	if existing, ok := c.scope.Resolve(alias); ok {
+		if existing.Kind == SymUnit {
+			if existing.Methods == nil {
+				existing.Methods = make(map[string]*Symbol)
+			}
+			for k, v := range methods {
+				existing.Methods[k] = v
+			}
+			c.importedSyms = append(c.importedSyms, existing)
+			return
+		}
+	}
 	if err := c.scope.Define(modSym); err != nil {
 		c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 	} else {
@@ -369,4 +518,43 @@ func (c *Checker) hasCircularImport(targetFilePath, currentFilePath string, modC
 		}
 	}
 	return false
+}
+
+func findExportedArg(cfg *modules.ModConfig, argName string) *modules.ExportedMember {
+	if cfg == nil {
+		return nil
+	}
+	for ns := range cfg.Mappings {
+		mods, err := cfg.GetNamespaceModules(ns)
+		if err != nil {
+			continue
+		}
+		for _, m := range mods {
+			if exp, ok := m.Exports[argName]; ok && exp.Kind == "arg" {
+				return exp
+			}
+		}
+	}
+	return nil
+}
+
+func findWorkspaceRootDir(startDir string) string {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return startDir
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "_mod.xru")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, "main.xru")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return startDir
 }

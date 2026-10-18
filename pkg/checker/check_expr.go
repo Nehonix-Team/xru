@@ -39,27 +39,17 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 	case *ast.PropAccess:
 		if !c.scope.InUnitScope() {
 			c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
-				fmt.Sprintf("Property or method access '&%s' is only allowed inside a unit definition", e.Name))
+				fmt.Sprintf("Property access '&%s' is only allowed inside a unit definition", e.Name))
 		} else {
-			if _, ok := c.scope.Resolve("&" + e.Name); !ok {
-				if _, ok2 := c.scope.Resolve(e.Name); !ok2 {
-					unitSym := c.scope.GetEnclosingUnit()
-					var found bool
-					if unitSym != nil && unitSym.Methods != nil {
-						if _, ok3 := unitSym.Methods[e.Name]; ok3 {
-							found = true
-						} else {
-							for mName := range unitSym.Methods {
-								if strings.EqualFold(mName, e.Name) {
-									found = true
-									break
-								}
-							}
-						}
-					}
-					if !found {
+			unitSym := c.scope.GetEnclosingUnit()
+			if unitSym != nil {
+				if _, ok := unitSym.Properties[e.Name]; !ok {
+					if _, isMethod := unitSym.Methods[e.Name]; isMethod {
+						c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
+							fmt.Sprintf("Cannot access unit method '%s' via '&%s'. Use '&%s::%s()' or '&self::%s()'. The '&' prefix is strictly reserved for variables declared via 'declare'", e.Name, e.Name, unitSym.Name, e.Name, e.Name))
+					} else {
 						c.addError(e.Pos(), "ERR_UNDEFINED_PROPERTY",
-							fmt.Sprintf("Property or method '&%s' is not defined in this unit", e.Name))
+							fmt.Sprintf("Property '&%s' is not declared in unit '%s'", e.Name, unitSym.Name))
 					}
 				}
 			}
@@ -133,6 +123,17 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 					}
 				}
 				return
+			} else if objType == "number" {
+				if spec, ok := GetNumberMethodSpec(member.Property); ok {
+					c.validateNativeMethodCall(e, "number", member.Property, spec)
+				} else {
+					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+						fmt.Sprintf("Method '%s' not found on number", member.Property))
+					for _, arg := range e.Arguments {
+						c.checkExpression(arg)
+					}
+				}
+				return
 			} else if strings.HasPrefix(objType, "list") {
 				if spec, ok := GetListMethodSpec(member.Property); ok {
 					c.validateNativeMethodCall(e, "list", member.Property, spec)
@@ -142,6 +143,24 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 					for _, arg := range e.Arguments {
 						c.checkExpression(arg)
 					}
+				}
+				return
+			} else if objType == "map" || objType == "@map" || strings.HasPrefix(objType, "@map") || (c.interfaces != nil && c.interfaces[objType] != nil && c.interfaces[objType].IsMap) {
+				if spec, ok := GetMapMethodSpec(member.Property); ok {
+					c.validateNativeMethodCall(e, "map", member.Property, spec)
+				} else {
+					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+						fmt.Sprintf("Method '%s' not found on map", member.Property))
+					for _, arg := range e.Arguments {
+						c.checkExpression(arg)
+					}
+				}
+				return
+			} else if objType == "bool" {
+				c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
+					fmt.Sprintf("Method '%s' not found on bool", member.Property))
+				for _, arg := range e.Arguments {
+					c.checkExpression(arg)
 				}
 				return
 			}
@@ -188,6 +207,18 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 									fmt.Sprintf("Method '%s' not found on unit '%s'", member.Property, unitSym.Name))
 							} else if targetMethod.Kind == SymFunc {
 								c.validateCallArgs(e, member.Property, targetMethod)
+							}
+						} else if iface, ok := c.interfaces[sym.Type]; ok {
+							found := false
+							for _, f := range iface.Fields {
+								if f.Name == member.Property {
+									found = true
+									break
+								}
+							}
+							if !found {
+								c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
+									fmt.Sprintf("Property or method '%s' does not exist on type '%s'", member.Property, sym.Type))
 							}
 						}
 					}
@@ -240,6 +271,9 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 							fmt.Sprintf("Method '%s' not found on module '%s'", scopeAccess.Member, sym.Name))
 					} else if targetMethod.Kind == SymFunc {
 						c.validateCallArgs(e, scopeAccess.Member, targetMethod)
+					} else {
+						c.addError(e.Pos(), "ERR_NOT_A_FUNCTION",
+							fmt.Sprintf("Cannot call '%s::%s' which is of type '%s' (not a function)", sym.Name, scopeAccess.Member, targetMethod.Type))
 					}
 				}
 			} else {
@@ -247,31 +281,22 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 					fmt.Sprintf("Module or scope '%s' is not defined", scopeAccess.Scope))
 			}
 		} else if propAccess, ok := e.Caller.(*ast.PropAccess); ok {
-			if !c.scope.InUnitScope() {
-				c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
-					fmt.Sprintf("Method access '&%s' is only allowed inside a unit definition", propAccess.Name))
-			} else {
-				unitSym := c.scope.GetEnclosingUnit()
-				var targetMethod *Symbol
-				if unitSym != nil && unitSym.Methods != nil {
-					targetMethod = unitSym.Methods[propAccess.Name]
-					if targetMethod == nil {
-						for mName, mSym := range unitSym.Methods {
-							if strings.EqualFold(mName, propAccess.Name) {
-								targetMethod = mSym
-								break
-							}
-						}
+			unitName := "Unit"
+			if unitSym := c.scope.GetEnclosingUnit(); unitSym != nil {
+				unitName = unitSym.Name
+			}
+			c.addError(e.Pos(), "ERR_INVALID_PROP_ACCESS",
+				fmt.Sprintf("Cannot call '&%s()' directly. The '&' symbol is strictly reserved for variables declared via 'declare'. To call unit methods, use '&%s::%s()' or '&self::%s()'", propAccess.Name, unitName, propAccess.Name, propAccess.Name))
+		} else if ident, ok := e.Caller.(*ast.Identifier); ok {
+			if c.scope.InUnitScope() {
+				if unitSym := c.scope.GetEnclosingUnit(); unitSym != nil && unitSym.Methods != nil {
+					if _, isMethod := unitSym.Methods[ident.Value]; isMethod {
+						c.addError(e.Pos(), "ERR_INVALID_METHOD_CALL",
+							fmt.Sprintf("Cannot call unit method '%s' directly. Use '&%s::%s()' or '&self::%s()'", ident.Value, unitSym.Name, ident.Value, ident.Value))
+						goto skipIdentCall
 					}
 				}
-				if targetMethod == nil {
-					c.addError(e.Pos(), "ERR_UNKNOWN_METHOD",
-						fmt.Sprintf("Method '%s' not found on current unit", propAccess.Name))
-				} else if targetMethod.Kind == SymFunc {
-					c.validateCallArgs(e, propAccess.Name, targetMethod)
-				}
 			}
-		} else if ident, ok := e.Caller.(*ast.Identifier); ok {
 			if sym, ok := c.scope.Resolve(ident.Value); ok {
 				sym.Used = true
 				if sym.Kind == SymFunc {
@@ -281,6 +306,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 				c.addError(e.Pos(), "ERR_UNDEFINED_VARIABLE",
 					fmt.Sprintf("Function '%s' is not defined", ident.Value))
 			}
+		skipIdentCall:
 		} else {
 			c.checkExpression(e.Caller)
 		}
@@ -402,6 +428,21 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		for _, pair := range e.Pairs {
 			c.checkExpression(pair.Key)
 			c.checkExpression(pair.Value)
+			if _, isLambda := pair.Value.(*ast.LambdaExpression); isLambda {
+				c.addError(pair.Value.Pos(), "ERR_MAP_METHOD_FORBIDDEN",
+					"Maps cannot contain methods or functions; declare a unit instead.")
+			} else {
+				valType := c.inferType(pair.Value)
+				if valType == "function" || strings.HasPrefix(valType, "func(") || strings.HasPrefix(valType, "fn(") {
+					c.addError(pair.Value.Pos(), "ERR_MAP_METHOD_FORBIDDEN",
+						"Maps cannot contain methods or functions; declare a unit instead.")
+				} else if ident, ok := pair.Value.(*ast.Identifier); ok {
+					if sym, ok := c.scope.Resolve(ident.Value); ok && sym.Kind == SymFunc {
+						c.addError(pair.Value.Pos(), "ERR_MAP_METHOD_FORBIDDEN",
+							"Maps cannot contain methods or functions; declare a unit instead.")
+					}
+				}
+			}
 		}
 
 	case *ast.BlockStatement:
@@ -568,6 +609,13 @@ func (c *Checker) validatePropertyAccessOnType(e *ast.MemberExpression, typeName
 	typeName = strings.TrimSpace(typeName)
 	typeName = strings.TrimSuffix(typeName, "?")
 
+	// 0. Primitive types do not have properties
+	if typeName == "number" || typeName == "bool" || typeName == "string" || typeName == "duration" || strings.HasPrefix(typeName, "list") {
+		c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
+			fmt.Sprintf("Cannot access property '%s' on %s", e.Property, typeName))
+		return
+	}
+
 	// 1. Interface
 	if iface, ok := c.interfaces[typeName]; ok {
 		for _, f := range iface.Fields {
@@ -590,6 +638,27 @@ func (c *Checker) validatePropertyAccessOnType(e *ast.MemberExpression, typeName
 		}
 		c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
 			fmt.Sprintf("Property '%s' does not exist on inline map type '%s'", e.Property, typeName))
+		return
+	}
+
+	// 3. Unit prototype: check properties and methods + enforce private encapsulation
+	if sym, ok := c.scope.Resolve(typeName); ok && sym.Kind == SymUnit {
+		if sym.Properties != nil {
+			if _, propOk := sym.Properties[e.Property]; propOk {
+				if sym.PrivateProps != nil && sym.PrivateProps[e.Property] {
+					c.addError(e.Pos(), "ERR_PRIVATE_PROPERTY",
+						fmt.Sprintf("Property '%s' of unit '%s' is private and cannot be accessed outside the unit definition", e.Property, sym.Name))
+				}
+				return
+			}
+		}
+		if sym.Methods != nil {
+			if _, methodOk := sym.Methods[e.Property]; methodOk {
+				return
+			}
+		}
+		c.addError(e.Pos(), "ERR_NO_SUCH_PROPERTY",
+			fmt.Sprintf("Property or method '%s' does not exist on unit '%s'", e.Property, sym.Name))
 		return
 	}
 }
@@ -633,9 +702,15 @@ func (c *Checker) validateArgAgainstInterface(arg ast.Expression, iface *ast.Int
 			valExpr, exists := keys[f.Name]
 			if !f.Optional && !strings.HasSuffix(f.Type, "?") {
 				if !exists {
-					c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
-						fmt.Sprintf("Argument %d ('%s') of function '%s' expects interface '%s', but map is missing required property '%s'",
-							argIdx, paramName, funcName, iface.Name, f.Name))
+					if funcName == "assignment" {
+						c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Assignment to '%s' expects interface '%s', but map is missing required property '%s'",
+								paramName, iface.Name, f.Name))
+					} else {
+						c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Argument %d ('%s') of function '%s' expects interface '%s', but map is missing required property '%s'",
+								argIdx, paramName, funcName, iface.Name, f.Name))
+					}
 					continue
 				}
 			}
@@ -690,9 +765,20 @@ func (c *Checker) validateArgAgainstInterface(arg ast.Expression, iface *ast.Int
 					}
 				}
 				if !c.isTypeCompatible(expectedFieldType, valType) {
-					c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
-						fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got '%s'",
-							f.Name, argIdx, paramName, f.Type, valType))
+					resolvedValType := c.resolveType(valType)
+					typeDetail := fmt.Sprintf("'%s'", valType)
+					if resolvedValType != valType {
+						typeDetail = fmt.Sprintf("'%s' (%s)", valType, resolvedValType)
+					}
+					if funcName == "assignment" {
+						c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Property '%s' of '%s' expects type '%s', got %s",
+								f.Name, paramName, f.Type, typeDetail))
+					} else {
+						c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got %s",
+								f.Name, argIdx, paramName, f.Type, typeDetail))
+					}
 				}
 			}
 		}
@@ -759,9 +845,15 @@ func (c *Checker) validateArgAgainstInlineMap(arg ast.Expression, typeStr, param
 			valExpr, exists := keys[f.Name]
 			if !f.Optional && !strings.HasSuffix(f.Type, "?") {
 				if !exists {
-					c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
-						fmt.Sprintf("Argument %d ('%s') of function '%s' expects inline map, but map is missing required property '%s'",
-							argIdx, paramName, funcName, f.Name))
+					if funcName == "assignment" {
+						c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Assignment to '%s' expects inline map, but map is missing required property '%s'",
+								paramName, f.Name))
+					} else {
+						c.addError(arg.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Argument %d ('%s') of function '%s' expects inline map, but map is missing required property '%s'",
+								argIdx, paramName, funcName, f.Name))
+					}
 					continue
 				}
 			}
@@ -814,9 +906,20 @@ func (c *Checker) validateArgAgainstInlineMap(arg ast.Expression, typeStr, param
 					}
 				}
 				if !c.isTypeCompatible(expectedFieldType, valType) {
-					c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
-						fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got '%s'",
-							f.Name, argIdx, paramName, f.Type, valType))
+					resolvedValType := c.resolveType(valType)
+					typeDetail := fmt.Sprintf("'%s'", valType)
+					if resolvedValType != valType {
+						typeDetail = fmt.Sprintf("'%s' (%s)", valType, resolvedValType)
+					}
+					if funcName == "assignment" {
+						c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Property '%s' of '%s' expects type '%s', got %s",
+								f.Name, paramName, f.Type, typeDetail))
+					} else {
+						c.addError(valExpr.Pos(), "ERR_TYPE_MISMATCH",
+							fmt.Sprintf("Property '%s' in argument %d ('%s') expects type '%s', got %s",
+								f.Name, argIdx, paramName, f.Type, typeDetail))
+					}
 				}
 			}
 		}

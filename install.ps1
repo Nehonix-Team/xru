@@ -1,45 +1,22 @@
-$repo = "Nehonix-Team/xru"
-$binaryName = "xru"
+# ***************************************************************************
+# * XRU (XyPriss Rule Unit) Installer Proxy (Windows)
+# * Fetches and executes the official Nehonix installation workflow
+# * @license MIT
+# ***************************************************************************
+$ErrorActionPreference = "Stop"
 
-# Detect architecture
-$arch = if ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") { "amd64" } else { "arm64" }
-$os = "windows"
+$officialInstaller = "https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.ps1"
+$altInstaller = "https://dll.nehonix.com/xru/install.ps1"
 
-Write-Host "[INFO] Fetching latest version from GitHub..." -ForegroundColor Cyan
 try {
-    $latest = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest"
-    $version = $latest.tag_name
+    $script = Invoke-RestMethod -Uri $officialInstaller -UseBasicParsing -ErrorAction Stop
+    & ([scriptblock]::Create($script)) -Action "xru" @args
 } catch {
-    Write-Host "[ERROR] Failed to fetch latest version." -ForegroundColor Red
-    exit 1
+    try {
+        $script = Invoke-RestMethod -Uri $altInstaller -UseBasicParsing -ErrorAction Stop
+        & ([scriptblock]::Create($script)) @args
+    } catch {
+        Write-Error "Failed to download installer from dll.nehonix.com: $_"
+        exit 1
+    }
 }
-
-$fileName = "${binaryName}-${os}-${arch}.exe"
-$url = "https://github.com/${repo}/releases/latest/download/${fileName}"
-
-$destDir = "$HOME\.xru\bin"
-if (!(Test-Path $destDir)) { 
-    New-Item -ItemType Directory -Force -Path $destDir | Out-Null
-}
-$destFile = "$destDir\${binaryName}.exe"
-
-Write-Host "[INFO] Installing ${binaryName} ${version} for ${os}/${arch}..." -ForegroundColor Blue
-
-# Download
-try {
-    Invoke-WebRequest -Uri $url -OutFile $destFile
-} catch {
-    Write-Host "[ERROR] Download failed. Check your connection or release availability." -ForegroundColor Red
-    exit 1
-}
-
-# Add to PATH if not already there
-$path = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($path -notlike "*$destDir*") {
-    [Environment]::SetEnvironmentVariable("Path", "$path;$destDir", "User")
-    $env:Path += ";$destDir"
-    Write-Host "[INFO] Added $destDir to PATH. Restart your terminal to apply changes." -ForegroundColor Yellow
-}
-
-Write-Host "[SUCCESS] ${binaryName} successfully installed to $destFile" -ForegroundColor Green
-Write-Host "Run '$binaryName version' to verify."

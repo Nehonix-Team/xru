@@ -30,7 +30,26 @@ func (c *Checker) inferType(expr ast.Expression) string {
 		}
 		return "list[" + c.inferType(e.Elements[0]) + "]"
 	case *ast.MapLiteral:
-		return "map"
+		if len(e.Pairs) == 0 {
+			return "@map"
+		}
+		var fields []string
+		for _, p := range e.Pairs {
+			k := ""
+			if str, ok := p.Key.(*ast.StringLiteral); ok {
+				k = str.Value
+			} else if ident, ok := p.Key.(*ast.Identifier); ok {
+				k = ident.Value
+			}
+			if k != "" {
+				t := c.inferType(p.Value)
+				fields = append(fields, fmt.Sprintf("%s: %s", k, t))
+			}
+		}
+		if len(fields) > 0 {
+			return fmt.Sprintf("@map{ %s }", strings.Join(fields, ", "))
+		}
+		return "@map"
 	case *ast.LambdaExpression:
 		return "function"
 	case *ast.InstantiationExpression:
@@ -109,7 +128,14 @@ func (c *Checker) inferType(expr ast.Expression) string {
 					return "bool"
 				case "split":
 					return "list[string]"
-				case "trim", "trimleft", "trimright", "toupper", "tolower", "replace", "slice":
+				case "trim", "trimleft", "trimright", "toupper", "tolower", "replace", "slice", "repeat":
+					return "string"
+				}
+			} else if objType == "number" {
+				switch strings.ToLower(member.Property) {
+				case "abs", "floor", "ceil", "round", "int":
+					return "number"
+				case "tostring", "to_string", "fixed":
 					return "string"
 				}
 			} else if strings.HasPrefix(objType, "list") {
@@ -129,6 +155,23 @@ func (c *Checker) inferType(expr ast.Expression) string {
 					return "any"
 				case "reverse", "slice":
 					return objType
+				}
+			} else if objType == "map" || objType == "@map" || strings.HasPrefix(objType, "@map") || (c.interfaces != nil && c.interfaces[objType] != nil && c.interfaces[objType].IsMap) {
+				switch strings.ToLower(member.Property) {
+				case "keys":
+					return "list[string]"
+				case "values", "entries":
+					return "list[any]"
+				case "has":
+					return "bool"
+				case "len", "size":
+					return "number"
+				case "delete", "clear":
+					return "void"
+				case "set", "merge":
+					return "map"
+				case "get":
+					return "any"
 				}
 			}
 
@@ -226,6 +269,32 @@ func (c *Checker) inferType(expr ast.Expression) string {
 			return sym.Type
 		}
 		return "any"
+	case *ast.ScopeAccessExpression:
+		if e.IsUnitSelf {
+			unitSym := c.scope.GetEnclosingUnit()
+			if unitSym != nil && unitSym.Methods != nil {
+				if mSym, ok := unitSym.Methods[e.Member]; ok && mSym.Type != "" {
+					return mSym.Type
+				}
+				for mName, mSym := range unitSym.Methods {
+					if strings.EqualFold(mName, e.Member) && mSym.Type != "" {
+						return mSym.Type
+					}
+				}
+			}
+		} else if sym, ok := c.scope.Resolve(e.Scope); ok {
+			if sym.Kind == SymUnit && sym.Methods != nil {
+				if mSym, ok := sym.Methods[e.Member]; ok && mSym.Type != "" {
+					return mSym.Type
+				}
+				for mName, mSym := range sym.Methods {
+					if strings.EqualFold(mName, e.Member) && mSym.Type != "" {
+						return mSym.Type
+					}
+				}
+			}
+		}
+		return "any"
 	case *ast.IfExpression:
 		conseqType := c.inferType(e.Consequence)
 		altType := c.inferType(e.Alternative)
@@ -287,10 +356,37 @@ func (c *Checker) inferType(expr ast.Expression) string {
 				}
 			}
 		}
+		if targetType == "map" || targetType == "@map" || strings.HasPrefix(targetType, "@map") || (c.interfaces != nil && c.interfaces[targetType] != nil && c.interfaces[targetType].IsMap) {
+			if spec, ok := GetMapMethodSpec(e.Property); ok {
+				return spec.ReturnType
+			}
+		}
+		if targetType == "number" {
+			if spec, ok := GetNumberMethodSpec(e.Property); ok {
+				return spec.ReturnType
+			}
+		}
 		return "any"
 	default:
 		return "any"
 	}
+}
+
+func splitUnionTypes(t string) []string {
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return nil
+	}
+	var parts []string
+	for _, p1 := range strings.Split(t, " or ") {
+		for _, p2 := range strings.Split(p1, "|") {
+			trimmed := strings.TrimSpace(p2)
+			if trimmed != "" {
+				parts = append(parts, trimmed)
+			}
+		}
+	}
+	return parts
 }
 
 func (c *Checker) resolveType(typeName string) string {
@@ -309,14 +405,14 @@ func (c *Checker) resolveType(typeName string) string {
 			if iface, ok := c.interfaces[baseName]; ok {
 				for _, f := range iface.Fields {
 					if f.Name == key {
-						return f.Type
+						return c.resolveType(f.Type)
 					}
 				}
 			}
 		}
 		if sym, ok := c.scope.Resolve(baseName); ok && sym.Methods != nil {
 			if m, ok := sym.Methods[key]; ok && m.Type != "" {
-				return m.Type
+				return c.resolveType(m.Type)
 			}
 		}
 	}
@@ -330,9 +426,10 @@ func (c *Checker) validateTypeAnnotation(pos lexer.Position, typeName string) {
 	}
 	typeName = strings.TrimSuffix(typeName, "?")
 
-	if strings.Contains(typeName, " or ") {
-		for _, part := range strings.Split(typeName, " or ") {
-			c.validateTypeAnnotation(pos, strings.TrimSpace(part))
+	unionParts := splitUnionTypes(typeName)
+	if len(unionParts) > 1 {
+		for _, part := range unionParts {
+			c.validateTypeAnnotation(pos, part)
 		}
 		return
 	}
@@ -587,13 +684,33 @@ func (c *Checker) isTypeCompatible(expected, actual string) bool {
 		tActual := strings.TrimSuffix(strings.TrimPrefix(cleanActual, "list["), "]")
 		return c.isTypeCompatible(tExpected, tActual)
 	}
-	if strings.Contains(cleanExpected, " or ") {
-		for _, part := range strings.Split(cleanExpected, " or ") {
-			if c.isTypeCompatible(strings.TrimSpace(part), actual) {
+	expectedUnion := splitUnionTypes(cleanExpected)
+	if len(expectedUnion) > 1 {
+		actualUnion := splitUnionTypes(cleanActual)
+		if len(actualUnion) > 1 {
+			for _, act := range actualUnion {
+				if !c.isTypeCompatible(cleanExpected, act) {
+					return false
+				}
+			}
+			return true
+		}
+		for _, part := range expectedUnion {
+			if c.isTypeCompatible(part, actual) {
 				return true
 			}
 		}
 		return false
+	}
+
+	actualUnion := splitUnionTypes(cleanActual)
+	if len(actualUnion) > 1 {
+		for _, act := range actualUnion {
+			if !c.isTypeCompatible(cleanExpected, act) {
+				return false
+			}
+		}
+		return true
 	}
 	if strings.HasPrefix(cleanExpected, "\"") && strings.HasSuffix(cleanExpected, "\"") {
 		if strings.HasPrefix(cleanActual, "\"") && strings.HasSuffix(cleanActual, "\"") {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -816,6 +817,15 @@ let collected = ""
 for item, idx in items {
     collected =: collected + item + idx
 }
+
+let m = @map{
+    A: 10
+    B: 20
+}
+let mapCollected = ""
+for k, v in m {
+    mapCollected =: mapCollected + k + "=" + v + ";"
+}
 `
 	l := lexer.New("for_test.xru", code)
 	p := parser.New(l)
@@ -838,6 +848,11 @@ for item, idx in items {
 	collVal, _ := env.Get("collected")
 	if collVal.String() != "a0b1c2" {
 		t.Errorf("Expected collected to be 'a0b1c2', got %v", collVal)
+	}
+
+	mapCollVal, _ := env.Get("mapCollected")
+	if mapCollVal.String() != "A=10;B=20;" {
+		t.Errorf("Expected mapCollected to be 'A=10;B=20;', got %v", mapCollVal)
 	}
 }
 
@@ -1112,6 +1127,8 @@ let replaced = trimmed.replace("World", "XRU")
 let sliced = trimmed.slice(0, 5)
 let parts = trimmed.split(" ")
 let countParts = parts.len()
+let repeated = "abc".repeat(3)
+let repeatZero = "xyz".repeat(0)
 `
 	l := lexer.New("test_str_methods.xru", code)
 	p := parser.New(l)
@@ -1165,6 +1182,14 @@ let countParts = parts.len()
 	countVal, _ := env.Get("countParts")
 	if countVal.String() != "2" {
 		t.Errorf("Expected countParts == 2, got %v", countVal)
+	}
+	repThreeVal, _ := env.Get("repeated")
+	if repThreeVal.String() != "abcabcabc" {
+		t.Errorf("Expected repeated == 'abcabcabc', got %v", repThreeVal)
+	}
+	repZeroVal, _ := env.Get("repeatZero")
+	if repZeroVal.String() != "" {
+		t.Errorf("Expected repeatZero == '', got %v", repZeroVal)
 	}
 }
 
@@ -1799,6 +1824,362 @@ let total = c.compute(5, 7)
 	// r1 = 10 + 5 = 15; r2 = 10 + 7 = 17; total = 32
 	if totalVal.String() != "32" {
 		t.Errorf("Expected 32, got %v", totalVal)
+	}
+}
+
+func TestFileStatementErrorFirst(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_file_err_first_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	samplePath := filepath.Join(tempDir, "test.html")
+	_ = os.WriteFile(samplePath, []byte("<h1>HelixGear</h1>"), 0644)
+
+	code := fmt.Sprintf(`
+file "%s" (e, d) -> {
+    if e == nil {
+        d.replace("HelixGear", "HelixGear Test")
+    }
+}
+`, samplePath)
+
+	p := parser.New(lexer.New("test_err_first.xru", code))
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	content, err := os.ReadFile(samplePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "<h1>HelixGear Test</h1>" {
+		t.Errorf("Expected '<h1>HelixGear Test</h1>', got '%s'", string(content))
+	}
+}
+
+func TestFromUseCatch(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_catch_test_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	modPath := filepath.Join(tempDir, "_mod.xru")
+	_ = os.WriteFile(modPath, []byte(`map { r -> "./arg.xru" }`), 0644)
+
+	argPath := filepath.Join(tempDir, "arg.xru")
+	_ = os.WriteFile(argPath, []byte(`
+mod cArg
+global let existingVal = "hello"
+`), 0644)
+
+	mainPath := filepath.Join(tempDir, "main.xru")
+	mainCode := `
+from "r" use cArg::existingVal as v
+from "r" use cArg::missingVal catch e
+
+let hasErr = (e != nil)
+let val = v
+`
+	_ = os.WriteFile(mainPath, []byte(mainCode), 0644)
+
+	p := parser.New(lexer.New(mainPath, mainCode))
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	env.SetCurrentDir(tempDir)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	hasErrVal, ok := env.Get("hasErr")
+	if !ok || hasErrVal.String() != "true" {
+		t.Errorf("Expected hasErr to be true, got %v", hasErrVal)
+	}
+
+	valVal, ok := env.Get("val")
+	if !ok || valVal.String() != "hello" {
+		t.Errorf("Expected val to be 'hello', got %v", valVal)
+	}
+}
+
+func TestTerminalColorFormatting(t *testing.T) {
+	code := `
+use std
+
+std.info("<blue>=== </blue><red>TEST</red>")
+std.println("<blue>=== <red>NESTED</red> ===</blue>")
+std.println("<green><bold>SUCCESS</bold></green>")
+`
+	l := lexer.New("test_colors.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on color formatting: %v", err)
+	}
+}
+
+
+func TestMapGetSetMergeRuntime(t *testing.T) {
+	code := `
+let m = @map {
+    host: "127.0.0.1",
+    port: 8080
+}
+
+let h = m.get("host")
+let fallback = m.get("missing", "default_val")
+
+m.set("mode", "production")
+let modeVal = m.get("mode")
+
+let extra = @map {
+    active: true
+}
+m.merge(extra)
+let activeVal = m.get("active")
+`
+	l := lexer.New("test_map_runtime.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on map runtime methods: %v", err)
+	}
+
+	hVal, ok := env.Get("h")
+	if !ok || hVal.String() != "127.0.0.1" {
+		t.Errorf("Expected h to be '127.0.0.1', got %v", hVal)
+	}
+
+	fbVal, ok := env.Get("fallback")
+	if !ok || fbVal.String() != "default_val" {
+		t.Errorf("Expected fallback to be 'default_val', got %v", fbVal)
+	}
+
+	modeVal, ok := env.Get("modeVal")
+	if !ok || modeVal.String() != "production" {
+		t.Errorf("Expected modeval to be 'production', got %v", modeVal)
+	}
+
+	actVal, ok := env.Get("activeVal")
+	if !ok || actVal.String() != "true" {
+		t.Errorf("Expected activeval to be 'true', got %v", actVal)
+	}
+}
+
+func TestSysCwd(t *testing.T) {
+	code := `
+use sys
+
+let dir = sys.cwd()
+`
+	l := lexer.New("test_sys_cwd.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on sys.cwd(): %v", err)
+	}
+
+	dirVal, ok := env.Get("dir")
+	if !ok {
+		t.Fatalf("Expected dir to be set")
+	}
+	expectedWd, _ := os.Getwd()
+	if dirVal.String() != expectedWd {
+		t.Errorf("Expected %s, got %s", expectedWd, dirVal.String())
+	}
+}
+
+func TestUnitEncapsulationAndVisibility(t *testing.T) {
+	// 1. Valid private property access inside unit, public outside
+	codeValid := `
+unit UserAccount {
+    declare public username: string = "alice"
+    declare private passwordHash: string = "hash123"
+    declare private loginAttempts: number = 0
+
+    func tryLogin(attempt: string) -> bool {
+        if attempt == &passwordHash {
+            return true
+        }
+        &loginAttempts =: &loginAttempts + 1
+        return false
+    }
+
+    func getAttempts() -> number {
+        return &loginAttempts
+    }
+
+    func verifyUser(attempt: string) -> bool {
+        return &self::tryLogin(attempt)
+    }
+}
+
+let acc = @UserAccount()
+let u = acc.username
+let resFail = acc.verifyUser("wrong")
+let attempts = acc.getAttempts()
+let resSuccess = acc.verifyUser("hash123")
+`
+	l := lexer.New("test_unit.xru", codeValid)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on valid unit: %v", err)
+	}
+
+	uVal, _ := env.Get("u")
+	if uVal.String() != "alice" {
+		t.Errorf("Expected username alice, got %s", uVal.String())
+	}
+	attemptsVal, _ := env.Get("attempts")
+	if attemptsVal.String() != "1" {
+		t.Errorf("Expected attempts 1, got %s", attemptsVal.String())
+	}
+	succVal, _ := env.Get("resSuccess")
+	if succVal.String() != "true" {
+		t.Errorf("Expected login success true, got %s", succVal.String())
+	}
+
+	// 2. Accessing private property outside unit must fail at runtime
+	codePriv := `
+unit Vault {
+    declare private secretKey: string = "confidential"
+}
+let v = @Vault()
+let s = v.secretKey
+`
+	p2 := parser.New(lexer.New("test_priv.xru", codePriv))
+	prog2 := p2.ParseProgram()
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	_, err2 := ev2.Eval(prog2, env2)
+	if err2 == nil || !strings.Contains(err2.Error(), "is private") {
+		t.Fatalf("Expected private property error, got: %v", err2)
+	}
+
+	// 3. Calling &method() directly must fail at runtime
+	codeDirectCall := `
+unit Bot {
+    func action() -> string { return "done" }
+    func run() -> string {
+        return &action()
+    }
+}
+let b = @Bot()
+let r = b.run()
+`
+	p3 := parser.New(lexer.New("test_direct.xru", codeDirectCall))
+	prog3 := p3.ParseProgram()
+	ev3 := runtime.NewEvaluator()
+	env3 := runtime.NewEnvironment(nil)
+	_, err3 := ev3.Eval(prog3, env3)
+	if err3 == nil || !strings.Contains(err3.Error(), "cannot call '&action()'") {
+		t.Fatalf("Expected cannot call &action() error, got: %v", err3)
+	}
+}
+
+func TestRemoveCleanGap(t *testing.T) {
+	tempDir := t.TempDir()
+	samplePath := filepath.Join(tempDir, "router.ts")
+	originalContent := `import { Router } from "xypriss";
+
+const r = Router();
+
+r.group({ prefix: ["/api", "/"] }, (api) => {
+  api.use("/", apiRouter);
+});
+
+// ============================== AUTH SERVER ==============================
+r.group({ prefix: ["/auth", "api"] }, (auth) => {
+  auth.use("/", authRouter);
+});
+
+// ============================== CDN SERVER ==============================
+r.group({ prefix: "/cdn" }, (cdn) => {
+  cdn.use("/", cdnRouter);
+});
+
+export { r as router };
+export default r;
+`
+	if err := os.WriteFile(samplePath, []byte(originalContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	code := fmt.Sprintf(`
+file "%s", (doc, err) -> {
+    doc.removeBetween(<<<r.group({ prefix: ["/auth", "api"]>>>, "});", true, true)
+    doc.removeBetween(<<<r.group({ prefix: "/cdn">>>, "});", true, true)
+    doc.removeLines("AUTH SERVER", true)
+    doc.removeLines("CDN SERVER", true)
+    doc.removeLines("// ==============================", true)
+}
+`, samplePath)
+
+	p := parser.New(lexer.New("clean_gap.xru", code))
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	data, err := os.ReadFile(samplePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := string(data)
+
+	// Verify that multiple consecutive blank lines are gone
+	reGap := regexp.MustCompile(`(\r?\n[ \t]*){3,}`)
+	if reGap.MatchString(res) {
+		t.Errorf("Expected gaps to be cleaned, but found consecutive blank lines in:\n%s", res)
+	}
+
+	// Verify that between api group and export there is clean separation
+	expectedSnippet := `r.group({ prefix: ["/api", "/"] }, (api) => {
+  api.use("/", apiRouter);
+});
+
+export { r as router };`
+	if !strings.Contains(res, expectedSnippet) {
+		t.Errorf("Expected clean snippet '%s', got:\n%s", expectedSnippet, res)
 	}
 }
 

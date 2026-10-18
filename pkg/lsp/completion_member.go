@@ -123,15 +123,21 @@ func (s *Server) handleMemberCompletion(uri string, lines []string, lineIdx int,
 			}
 		}
 
+		if targetInfo.isMap {
+			var items []CompletionItem
+			if targetInfo.interfaceName != "" {
+				ifaceMembers := collectInterfaceMembers(lines, targetInfo.interfaceName, filePath)
+				items = append(items, ifaceMembers...)
+			}
+			items = append(items, getMapCompletionItems(targetInfo)...)
+			return &CompletionList{IsIncomplete: false, Items: deduplicateCompletionItems(items)}, true
+		}
+
 		if targetInfo.interfaceName != "" {
 			ifaceMembers := collectInterfaceMembers(lines, targetInfo.interfaceName, filePath)
 			if len(ifaceMembers) > 0 {
 				return &CompletionList{IsIncomplete: false, Items: ifaceMembers}, true
 			}
-		}
-
-		if targetInfo.isMap {
-			return &CompletionList{IsIncomplete: false, Items: getMapCompletionItems(targetInfo)}, true
 		}
 
 		if targetInfo.unitType != "" {
@@ -210,6 +216,70 @@ func (s *Server) handleMemberCompletion(uri string, lines []string, lineIdx int,
 	return &CompletionList{IsIncomplete: false, Items: []CompletionItem{}}, true
 }
 
+type declarePropInfo struct {
+	name      string
+	propType  string
+	isPrivate bool
+}
+
+func parseDeclareLine(line string) *declarePropInfo {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "declare ") && !strings.HasPrefix(trimmed, "declare\t") {
+		return nil
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "declare"))
+	isPrivate := false
+	if strings.HasPrefix(rest, "private ") || strings.HasPrefix(rest, "private\t") {
+		isPrivate = true
+		rest = strings.TrimSpace(strings.TrimPrefix(rest, "private"))
+	} else if strings.HasPrefix(rest, "public ") || strings.HasPrefix(rest, "public\t") {
+		rest = strings.TrimSpace(strings.TrimPrefix(rest, "public"))
+	}
+
+	reName := regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)`)
+	mName := reName.FindStringSubmatch(rest)
+	if len(mName) <= 1 {
+		return nil
+	}
+	name := mName[1]
+	after := strings.TrimSpace(rest[len(name):])
+
+	if strings.HasPrefix(after, ",") {
+		afterComma := strings.TrimSpace(strings.TrimPrefix(after, ","))
+		if strings.HasPrefix(afterComma, "private") {
+			isPrivate = true
+			after = strings.TrimSpace(strings.TrimPrefix(afterComma, "private"))
+		} else if strings.HasPrefix(afterComma, "public") {
+			after = strings.TrimSpace(strings.TrimPrefix(afterComma, "public"))
+		}
+	}
+
+	pType := "any"
+	if strings.HasPrefix(after, ":") {
+		afterColon := strings.TrimSpace(strings.TrimPrefix(after, ":"))
+		endType := len(afterColon)
+		for _, sep := range []string{"=", ",", ";"} {
+			if idx := strings.Index(afterColon, sep); idx != -1 && idx < endType {
+				endType = idx
+			}
+		}
+		if t := strings.TrimSpace(afterColon[:endType]); t != "" {
+			pType = t
+		}
+		after = strings.TrimSpace(afterColon[endType:])
+	}
+
+	if strings.Contains(after, "private") {
+		isPrivate = true
+	}
+
+	return &declarePropInfo{
+		name:      name,
+		propType:  pType,
+		isPrivate: isPrivate,
+	}
+}
+
 func collectUnitMembers(lines []string, unitName string) []CompletionItem {
 	var items []CompletionItem
 
@@ -232,7 +302,6 @@ func collectUnitMembers(lines []string, unitName string) []CompletionItem {
 	// 2. Document unit definition
 	reUnitStart := regexp.MustCompile(fmt.Sprintf(`^\s*unit\s+%s\b`, regexp.QuoteMeta(unitName)))
 	reFunc := regexp.MustCompile(`^\s*(?:global\s+)?func\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*?)\)(?:\s*->\s*([a-zA-Z0-9_\[\]]+))?`)
-	reProp := regexp.MustCompile(`^\s*(?:prop|declare|let)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*:\s*([^=]+?))?(?:\s*=|$)`)
 
 	inUnit := false
 	depth := 0
@@ -249,44 +318,46 @@ func collectUnitMembers(lines []string, unitName string) []CompletionItem {
 			continue
 		}
 
+		curDepth := depth
 		depth += strings.Count(l, "{") - strings.Count(l, "}")
 		if depth <= 0 {
 			break
 		}
 
-		if m := reFunc.FindStringSubmatch(l); len(m) > 1 {
-			fName := m[1]
-			params := strings.TrimSpace(m[2])
-			ret := strings.TrimSpace(m[3])
-			if ret == "" {
-				ret = "void"
+		// Only parse members declared directly at unit level (curDepth == 1)
+		if curDepth == 1 {
+			if m := reFunc.FindStringSubmatch(l); len(m) > 1 {
+				fName := m[1]
+				params := strings.TrimSpace(m[2])
+				ret := strings.TrimSpace(m[3])
+				if ret == "" {
+					ret = "void"
+				}
+				items = append(items, CompletionItem{
+					Label:            fName,
+					Kind:             CompletionItemKindMethod,
+					Detail:           fmt.Sprintf("func %s(%s) -> %s", fName, params, ret),
+					Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Method of unit `%s`", unitName)},
+					InsertText:       fName + "()",
+					InsertTextFormat: InsertTextFormatPlainText,
+					SortText:         fmt.Sprintf("00_%s", fName),
+				})
 			}
-			items = append(items, CompletionItem{
-				Label:            fName,
-				Kind:             CompletionItemKindMethod,
-				Detail:           fmt.Sprintf("func %s(%s) -> %s", fName, params, ret),
-				Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Method of unit `%s`", unitName)},
-				InsertText:       fName + "()",
-				InsertTextFormat: InsertTextFormatPlainText,
-				SortText:         fmt.Sprintf("00_%s", fName),
-			})
-		}
 
-		if m := reProp.FindStringSubmatch(l); len(m) > 1 {
-			pName := m[1]
-			pType := strings.TrimSpace(m[2])
-			if pType == "" {
-				pType = "any"
+			if pInfo := parseDeclareLine(l); pInfo != nil {
+				// Only propose public properties on instance access!
+				if !pInfo.isPrivate {
+					items = append(items, CompletionItem{
+						Label:            pInfo.name,
+						Kind:             CompletionItemKindProperty,
+						Detail:           fmt.Sprintf("prop %s: %s", pInfo.name, pInfo.propType),
+						Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Public property of unit `%s`", unitName)},
+						InsertText:       pInfo.name,
+						InsertTextFormat: InsertTextFormatPlainText,
+						SortText:         fmt.Sprintf("01_%s", pInfo.name),
+					})
+				}
 			}
-			items = append(items, CompletionItem{
-				Label:            pName,
-				Kind:             CompletionItemKindProperty,
-				Detail:           fmt.Sprintf("prop %s: %s", pName, pType),
-				Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Property of unit `%s`", unitName)},
-				InsertText:       pName,
-				InsertTextFormat: InsertTextFormatPlainText,
-				SortText:         fmt.Sprintf("01_%s", pName),
-			})
 		}
 	}
 
@@ -487,3 +558,15 @@ func extractTargetCandidate(rawBefore string) string {
 }
 
 
+
+func deduplicateCompletionItems(items []CompletionItem) []CompletionItem {
+	seen := make(map[string]bool)
+	var result []CompletionItem
+	for _, it := range items {
+		if !seen[it.Label] {
+			seen[it.Label] = true
+			result = append(result, it)
+		}
+	}
+	return result
+}

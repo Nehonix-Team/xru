@@ -653,6 +653,64 @@ downloadTask.
 	}
 }
 
+func TestUnitMemberVisibilityCompletion(t *testing.T) {
+	uri := "file:///test_visibility.xru"
+	testCode := `unit Service {
+    declare public endpoint: string = "https://api.com"
+    declare private token: string = "secret"
+    declare internalCount, private: number = 0
+
+    func fetch() -> string {
+        let localTask = "not a member"
+        return &endpoint
+    }
+}
+
+let svc = @Service()
+svc.
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       testCode,
+		},
+	})
+
+	compReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 12, "character": 4},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + compReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	// Public property must be proposed
+	if !strings.Contains(outStr, `"label":"endpoint"`) {
+		t.Errorf("Expected public property 'endpoint' in svc. completions, got: %s", outStr)
+	}
+	// Unit method must be proposed
+	if !strings.Contains(outStr, `"label":"fetch"`) {
+		t.Errorf("Expected method 'fetch' in svc. completions, got: %s", outStr)
+	}
+	// Private property MUST NOT be proposed
+	if strings.Contains(outStr, `"label":"token"`) {
+		t.Errorf("Private property 'token' should NOT be proposed in svc. completions, got: %s", outStr)
+	}
+	if strings.Contains(outStr, `"label":"internalCount"`) {
+		t.Errorf("Private property 'internalCount' should NOT be proposed in svc. completions, got: %s", outStr)
+	}
+	// Local variable inside method MUST NOT be proposed
+	if strings.Contains(outStr, `"label":"localTask"`) {
+		t.Errorf("Local variable 'localTask' inside method should NOT be proposed in svc. completions, got: %s", outStr)
+	}
+}
+
 func TestInterpolationAndCallCompletion(t *testing.T) {
 	uri := "file:///test_interp.xru"
 	testCode := `use std
@@ -802,6 +860,44 @@ myName
 	}
 	if !strings.Contains(outStr, "downloadRelease") {
 		t.Errorf("Expected diagnostic message mentioning 'downloadRelease', got: %s", outStr)
+	}
+}
+
+func TestLSPUnusedDestructuredImportRange(t *testing.T) {
+	uri := "file:///home/idevo/Documents/projects/XTemplates/test_destruct_unused.xru"
+	code := `from "dll" use gArgs::@map{author, xems, mode, cdn}
+if xems == false {
+}
+if mode == "minimal" {
+}
+if cdn == false {
+}
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	if !strings.Contains(outStr, `"tags":[1]`) {
+		t.Errorf("Expected DiagnosticTagUnnecessary (tags:[1]) in publishDiagnostics, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, "author") {
+		t.Errorf("Expected diagnostic message mentioning 'author', got: %s", outStr)
+	}
+	// The range must NOT start at character 0 (which would grey out the whole line)
+	if strings.Contains(outStr, `"start":{"line":0,"character":0}`) {
+		t.Errorf("Diagnostic should not cover full line for destructured unused symbol: %s", outStr)
 	}
 }
 
@@ -2109,7 +2205,236 @@ Sys.require("<= 2.0.0", @map{
 	}
 }
 
+func TestUnionAssignmentCompletion(t *testing.T) {
+	uri := "file:///test_union_comp.xru"
+	code := `interface S {
+    mode "dev" or "prod"
+}
 
+arg env: S["mode"] = "
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
 
+	// Completion after '=' on line 4, col 23
+	compReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 4, "character": 23},
+	})
 
+	testInput := bytes.NewBufferString(didOpenReq + compReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	if !strings.Contains(outStr, `"label":"\"dev\""`) {
+		t.Errorf("Expected '\"dev\"' in union completion, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, `"label":"\"prod\""`) {
+		t.Errorf("Expected '\"prod\"' in union completion, got: %s", outStr)
+	}
+	if strings.Contains(outStr, `"label":"mode"`) {
+		t.Errorf("Should NOT propose property 'mode' after '=' assignment, got: %s", outStr)
+	}
+}
+
+func TestLocalInterfaceHoverDoesNotFallbackToBuiltin(t *testing.T) {
+	uri := "file:///test_local_doc_hover.xru"
+	code := `interface Document {
+    test string
+}
+
+file "tests.html" (e, d: Document) -> {
+    d.replace("a", "b")
+}
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
+
+	// Hover on "replace" in d.replace on line 5, col 6
+	hoverReq := formatLSPMessage("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 5, "character": 6},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + hoverReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	// Must NOT contain "(method) Document.replace" or "Replaces all occurrences"
+	if strings.Contains(outStr, "Replaces all occurrences") {
+		t.Errorf("Expected NO builtin replace doc on local Document, but got: %s", outStr)
+	}
+}
+
+func TestNamespaceModuleDefinitionAndTypeChecking(t *testing.T) {
+	tempDir := t.TempDir()
+
+	modFilePath := filepath.Join(tempDir, "_mod.xru")
+	modContent := `map {
+    "rt" -> "./"
+}
+`
+	_ = os.WriteFile(modFilePath, []byte(modContent), 0644)
+
+	cArgPath := filepath.Join(tempDir, "cArg.xru")
+	cArgContent := `mod cArg
+
+global const dArgVal: string = "default"
+global func run(x: number) -> bool {
+    return true
+}
+`
+	_ = os.WriteFile(cArgPath, []byte(cArgContent), 0644)
+
+	mainPath := filepath.Join(tempDir, "main.xru")
+	mainContent := `use std
+from "rt" use (cArg, mainb)
+from "rt" use cArg::(dArgVal, run)
+
+const a = cArg::dArgVal
+const b: number = cArg::dArgVal
+`
+	_ = os.WriteFile(mainPath, []byte(mainContent), 0644)
+	mainURI := "file://" + mainPath
+
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        mainURI,
+			"languageId": "xru",
+			"version":    1,
+			"text":       mainContent,
+		},
+	})
+
+	formatReqWithID := func(id int, method string, params any) string {
+		payloadMap := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      id,
+			"method":  method,
+			"params":  params,
+		}
+		data, _ := json.Marshal(payloadMap)
+		return fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(data), string(data))
+	}
+
+	// 1. Definition on "cArg" in 'from "rt" use (cArg, mainb)' (line 1, col 16)
+	defModReq := formatReqWithID(1, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": mainURI},
+		"position":     map[string]any{"line": 1, "character": 16},
+	})
+
+	// 2. Definition on "dArgVal" in 'from "rt" use cArg::(dArgVal, run)' (line 2, col 23)
+	defMemberReq := formatReqWithID(2, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": mainURI},
+		"position":     map[string]any{"line": 2, "character": 23},
+	})
+
+	// 3. Definition on "cArg" in 'const a = cArg::dArgVal' (line 4, col 11)
+	defQualModReq := formatReqWithID(3, "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": mainURI},
+		"position":     map[string]any{"line": 4, "character": 11},
+	})
+
+	// 4. Hover on "dArgVal" in 'const a = cArg::dArgVal' (line 4, col 18)
+	hoverReq := formatReqWithID(4, "textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": mainURI},
+		"position":     map[string]any{"line": 4, "character": 18},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + defModReq + defMemberReq + defQualModReq + hoverReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	// Diagnostics: must flag line 5 (const b: number = cArg::dArgVal) because dArgVal is string!
+	if !strings.Contains(outStr, "ERR_TYPE_MISMATCH") {
+		t.Errorf("Expected ERR_TYPE_MISMATCH for const b: number = cArg::dArgVal, got: %s", outStr)
+	}
+
+	// ID 1: Definition on cArg must point to cArg.xru
+	if !strings.Contains(outStr, `"id":1`) || !strings.Contains(outStr, "cArg.xru") {
+		t.Errorf("Expected definition of cArg to point to cArg.xru, got: %s", outStr)
+	}
+
+	// ID 2: Definition on dArgVal must point to cArg.xru
+	if !strings.Contains(outStr, `"id":2`) || !strings.Contains(outStr, "cArg.xru") {
+		t.Errorf("Expected definition of dArgVal to point to cArg.xru, got: %s", outStr)
+	}
+
+	// ID 3: Definition on cArg in cArg::dArgVal must point to cArg.xru
+	if !strings.Contains(outStr, `"id":3`) || !strings.Contains(outStr, "cArg.xru") {
+		t.Errorf("Expected definition on module part of cArg::dArgVal to point to cArg.xru, got: %s", outStr)
+	}
+
+	// ID 4: Hover on dArgVal must show constant/property and NOT '(method) cArg::dArgVal(): string'
+	if strings.Contains(outStr, "(method) cArg::dArgVal()") {
+		t.Errorf("Expected hover on dArgVal to NOT be a method, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, "cArg::dArgVal: string") {
+		t.Errorf("Expected hover to show 'cArg::dArgVal: string', got: %s", outStr)
+	}
+}
+
+func TestStringRepeatCompletionAndHover(t *testing.T) {
+	uri := "file:///test_repeat.xru"
+	code := `let str = "hello"
+str.repeat(3)
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       code,
+		},
+	})
+
+	// Completion after 'str.' on line 1, col 4
+	compReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 1, "character": 4},
+	})
+
+	// Hover on "repeat" on line 1, col 6
+	hoverReq := formatLSPMessage("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 1, "character": 6},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + compReq + hoverReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+
+	if !strings.Contains(outStr, `"label":"repeat"`) {
+		t.Errorf("Expected 'repeat' in string completions, got: %s", outStr)
+	}
+	if !strings.Contains(outStr, "repeat(count: number)") {
+		t.Errorf("Expected repeat signature in hover/completion, got: %s", outStr)
+	}
+}
 

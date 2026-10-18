@@ -13,6 +13,7 @@
     { "include": "#strings_single" },
     { "include": "#loops" },
     { "include": "#keywords_control" },
+    { "include": "#modifiers" },
     { "include": "#keywords_declaration" },
     { "include": "#type_annotations" },
     { "include": "#types" },
@@ -25,6 +26,7 @@
     { "include": "#global_access" },
     { "include": "#prop_access" },
     { "include": "#unit_instantiation" },
+    { "include": "#constants_screaming" },
     { "include": "#pascal_types" },
     { "include": "#identifiers" }
   ],
@@ -84,9 +86,19 @@
       ]
     },
     "strings_heredoc_chevron": {
-      "name": "string.quoted.triple.chevron.xru",
+      "name": "string.quoted.double.xru",
       "begin": "<<<",
+      "beginCaptures": {
+        "0": {
+          "name": "keyword.operator.heredoc.xru punctuation.definition.string.begin.xru"
+        }
+      },
       "end": ">>>",
+      "endCaptures": {
+        "0": {
+          "name": "keyword.operator.heredoc.xru punctuation.definition.string.end.xru"
+        }
+      },
       "patterns": [
         { "include": "#interpolation" },
         { "include": "#color_tags" }
@@ -162,6 +174,14 @@
         }
       ]
     },
+    "modifiers": {
+      "patterns": [
+        {
+          "name": "storage.modifier.xru",
+          "match": "\\b(public|private)\\b"
+        }
+      ]
+    },
     "keywords_declaration": {
       "patterns": [
         {
@@ -169,7 +189,7 @@
           "captures": {
             "1": { "name": "keyword.declaration.xru" },
             "2": { "name": "entity.name.type.class.xru" },
-            "3": { "name": "storage.type.map.xru" }
+            "3": { "name": "keyword.control.map.xru" }
           }
         },
         {
@@ -179,6 +199,36 @@
             "2": { "name": "entity.name.type.class.xru" },
             "3": { "name": "keyword.other.xru" },
             "4": { "name": "entity.name.type.class.xru" }
+          }
+        },
+        {
+          "match": "\\b(const|let|var|arg)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "variable.other.constant.xru" }
+          }
+        },
+        {
+          "match": "\\b(declare)\\s+(public|private)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "storage.modifier.xru" },
+            "3": { "name": "variable.other.property.xru" }
+          }
+        },
+        {
+          "match": "\\b(declare)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*(public|private)\\b",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "variable.other.property.xru" },
+            "3": { "name": "storage.modifier.xru" }
+          }
+        },
+        {
+          "match": "\\b(declare)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "variable.other.property.xru" }
           }
         },
         {
@@ -258,7 +308,7 @@
       "patterns": [
         {
           "name": "entity.name.type.xru",
-          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task|range|function|unit|document)\\b|@map"
+          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task|range|function|unit|document)\\b"
         }
       ]
     },
@@ -388,7 +438,7 @@
         {
           "match": "(@map)\\b",
           "captures": {
-            "1": { "name": "storage.type.map.xru entity.name.type.xru" }
+            "1": { "name": "keyword.control.map.xru" }
           }
         },
         {
@@ -400,11 +450,19 @@
         }
       ]
     },
+    "constants_screaming": {
+      "patterns": [
+        {
+          "name": "variable.other.constant.xru",
+          "match": "\\b[A-Z0-9]+(_[A-Z0-9]+)+\\b"
+        }
+      ]
+    },
     "pascal_types": {
       "patterns": [
         {
           "name": "entity.name.type.class.xru",
-          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+          "match": "\\b[A-Z][a-z0-9]+[a-zA-Z0-9]*\\b"
         }
       ]
     },

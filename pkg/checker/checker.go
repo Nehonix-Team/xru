@@ -19,6 +19,7 @@ type Checker struct {
 	interfaces       map[string]*ast.InterfaceStatement
 	importedSyms     []*Symbol        // Alias créés par 'use' (pour détecter les imports inutilisés)
 	unreachable      []lexer.Position // Instructions situées après un appel 'never' (std.fatal, Sys.exit)
+	visitedDispatches map[string]bool
 }
 
 func New() *Checker {
@@ -28,6 +29,7 @@ func New() *Checker {
 		availableModules: make(map[string]*Symbol),
 		declaredVars:     []*Symbol{},
 		interfaces:       make(map[string]*ast.InterfaceStatement),
+		visitedDispatches: make(map[string]bool),
 	}
 	c.initBuiltinUnits()
 	return c
@@ -41,6 +43,16 @@ func (c *Checker) DefineVar(name string) {
 	_ = c.scope.Define(&Symbol{Name: name, Kind: SymVar, Type: "any"})
 }
 
+func (c *Checker) SetupDescriptorScope() {
+	_ = c.scope.Define(&Symbol{Name: "keep", Kind: SymFunc, Type: "any"})
+	_ = c.scope.Define(&Symbol{Name: "Keep", Kind: SymFunc, Type: "any"})
+	_ = c.scope.Define(&Symbol{Name: "drop", Kind: SymFunc, Type: "any"})
+	_ = c.scope.Define(&Symbol{Name: "Drop", Kind: SymFunc, Type: "any"})
+	_ = c.scope.Define(&Symbol{Name: "useVariant", Kind: SymFunc, Type: "any"})
+	_ = c.scope.Define(&Symbol{Name: "UseVariant", Kind: SymFunc, Type: "any"})
+	_ = c.scope.Define(&Symbol{Name: "Local", Kind: SymUnit, Type: "Unit"})
+}
+
 func (c *Checker) Errors() []string {
 	return c.errors
 }
@@ -51,6 +63,17 @@ func (c *Checker) GetScope() *Scope {
 
 func (c *Checker) AllDeclaredVars() []*Symbol {
 	return c.declaredVars
+}
+
+func (c *Checker) GetInterface(name string) *ast.InterfaceStatement {
+	if c.interfaces == nil {
+		return nil
+	}
+	return c.interfaces[name]
+}
+
+func (c *Checker) AllInterfaces() map[string]*ast.InterfaceStatement {
+	return c.interfaces
 }
 
 func (c *Checker) UnusedSymbols() []*Symbol {

@@ -74,26 +74,38 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 					if propInfo := findPropertyDeclaration(lines, targetType, memberName, uri); propInfo != nil {
 						return formatPropertyHover(propInfo)
 					}
+					if vInfo.interfaceName != "" {
+						return nil
+					}
+					if c != nil {
+						if iface, ok := c.AllInterfaces()[targetType]; ok && (len(iface.Fields) > 0 || iface.Pos().Filename != "") {
+							return nil
+						}
+					}
 				}
 				if vInfo.isString {
 					if doc, ok := StringMethodsDocs[memberName]; ok {
 						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
 					}
+					return nil
 				}
 				if vInfo.isNumber {
 					if doc, ok := NumberMethodsDocs[memberName]; ok {
 						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
 					}
+					return nil
 				}
 				if vInfo.isList {
 					if doc, ok := ListMethodsDocs[memberName]; ok {
 						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
 					}
+					return nil
 				}
 				if vInfo.isMap {
 					if doc, ok := MapMethodsDocs[memberName]; ok {
 						return &Hover{Contents: MarkupContent{Kind: "markdown", Value: FormatMarkdown(&doc)}}
 					}
+					return nil
 				}
 			}
 		}
@@ -115,6 +127,12 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 		} else if c != nil {
 			for _, d := range c.AllDeclaredVars() {
 				if d.Name == objectName && d.Type != "" {
+					if iface, ok := c.AllInterfaces()[d.Type]; ok && (len(iface.Fields) > 0 || iface.Pos().Filename != "") {
+						return nil
+					}
+					if d.Type == "number" || d.Type == "string" || d.Type == "bool" || d.Type == "duration" {
+						return nil
+					}
 					lookupExpr = d.Type + "." + methodName
 					break
 				}
@@ -122,19 +140,34 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 		}
 	}
 
-	if docItem := GetDocForWord(lookupExpr, word); docItem != nil {
-		return &Hover{
-			Contents: MarkupContent{
-				Kind:  "markdown",
-				Value: FormatMarkdown(docItem),
-			},
-		}
-	}
-
-	// 2. Check user-defined symbols (variables, constants, arguments, functions, modules)
+	// 2. Check user-defined interfaces and symbols (local declarations ALWAYS override builtins)
 	if prog != nil && c != nil {
+		// 2.A: User-defined interface declaration
+		if iface, ok := c.AllInterfaces()[word]; ok && (len(iface.Fields) > 0 || iface.Pos().Filename != "") {
+			var md strings.Builder
+			atMap := ""
+			if iface.IsMap {
+				atMap = " @map"
+			}
+			md.WriteString(fmt.Sprintf("```xru\ninterface %s%s {\n", iface.Name, atMap))
+			for _, f := range iface.Fields {
+				opt := ""
+				if f.Optional {
+					opt = "?"
+				}
+				md.WriteString(fmt.Sprintf("    %s%s: %s\n", f.Name, opt, f.Type))
+			}
+			md.WriteString("}\n```\n")
+			fileContent := s.getFileContentForPos(uri, iface.Pos().Filename)
+			if doc := extractDocComment(fileContent, iface.Pos().Line); doc != "" {
+				md.WriteString("\n" + doc + "\n")
+			}
+			return &Hover{
+				Contents: MarkupContent{Kind: "markdown", Value: md.String()},
+			}
+		}
 
-		// 2.A: Si l'expression est sous la forme scope::member
+		// 2.B: Scope::member expression
 		if strings.Contains(fullExpr, "::") {
 			parts := strings.Split(fullExpr, "::")
 			if len(parts) == 2 {
@@ -142,19 +175,33 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 				if unitSym, exists := c.GetScope().Resolve(scopeName); exists && unitSym.Kind == checker.SymUnit {
 					if method, exists := unitSym.Methods[memberName]; exists {
 						var md strings.Builder
-						var params []string
-						for _, param := range method.Params {
-							pType := param.Type
-							if pType == "" {
-								pType = "any"
+						if method.Kind == checker.SymFunc {
+							var params []string
+							for _, param := range method.Params {
+								pType := param.Type
+								if pType == "" {
+									pType = "any"
+								}
+								params = append(params, fmt.Sprintf("%s: %s", param.Name, pType))
 							}
-							params = append(params, fmt.Sprintf("%s: %s", param.Name, pType))
+							retType := method.Type
+							if retType == "" {
+								retType = "void"
+							}
+							md.WriteString(fmt.Sprintf("```xru\n(method) %s::%s(%s): %s\n```\n", scopeName, memberName, strings.Join(params, ", "), retType))
+						} else {
+							kindStr := "(variable)"
+							if method.Kind == checker.SymConst {
+								kindStr = "(constant)"
+							} else if method.Kind == "arg" {
+								kindStr = "(arg)"
+							}
+							typeStr := method.Type
+							if typeStr == "" {
+								typeStr = "any"
+							}
+							md.WriteString(fmt.Sprintf("```xru\n%s %s::%s: %s\n```\n", kindStr, scopeName, memberName, typeStr))
 						}
-						retType := method.Type
-						if retType == "" {
-							retType = "void"
-						}
-						md.WriteString(fmt.Sprintf("```xru\n(method) %s::%s(%s): %s\n```\n", scopeName, memberName, strings.Join(params, ", "), retType))
 						fileContent := s.getFileContentForPos(uri, method.Pos.Filename)
 						if doc := extractDocComment(fileContent, method.Pos.Line); doc != "" {
 							md.WriteString("\n" + doc + "\n")
@@ -167,6 +214,7 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 			}
 		}
 
+		// 2.C: User-defined variable, constant, or function
 		var sym *checker.Symbol
 		if s, ok := c.GetScope().Resolve(word); ok {
 			sym = s
@@ -178,70 +226,83 @@ func (s *Server) handleHover(uri string, pos Position) *Hover {
 				}
 			}
 		}
-		if sym != nil {
-			var md strings.Builder
-			switch sym.Kind {
-			case checker.SymVar:
-				typeStr := sym.Type
-				if typeStr == "" {
-					typeStr = "any"
-				}
-				prefix := "(variable)"
-				if sym.IsGlobal {
-					prefix = "(global variable)"
-				}
-				if sym.ValueStr != "" {
-					md.WriteString(fmt.Sprintf("```xru\n%s %s: %s = %s\n```\n", prefix, sym.Name, typeStr, sym.ValueStr))
-				} else {
-					md.WriteString(fmt.Sprintf("```xru\n%s %s: %s\n```\n", prefix, sym.Name, typeStr))
-				}
-			case checker.SymConst:
-				typeStr := sym.Type
-				if typeStr == "" {
-					typeStr = "any"
-				}
-				prefix := "(constant)"
-				if sym.IsGlobal {
-					prefix = "(global constant)"
-				}
-				if sym.ValueStr != "" {
-					md.WriteString(fmt.Sprintf("```xru\n%s %s: %s = %s\n```\n", prefix, sym.Name, typeStr, sym.ValueStr))
-				} else {
-					md.WriteString(fmt.Sprintf("```xru\n%s %s: %s\n```\n", prefix, sym.Name, typeStr))
-				}
-			case checker.SymFunc:
-				var params []string
-				for _, param := range sym.Params {
-					pType := param.Type
-					if pType == "" {
-						pType = "any"
+		if sym != nil && (sym.Pos.Filename != "" || sym.Kind != checker.SymUnit) {
+			if sym.Kind == checker.SymUnit && checker.IsBuiltinUnit(sym.Name) {
+				// Fall through to rich GetDocForWord documentation
+			} else {
+				var md strings.Builder
+				switch sym.Kind {
+				case checker.SymVar:
+					typeStr := sym.Type
+					if typeStr == "" {
+						typeStr = "any"
 					}
-					params = append(params, fmt.Sprintf("%s: %s", param.Name, pType))
+					prefix := "(variable)"
+					if sym.IsGlobal {
+						prefix = "(global variable)"
+					}
+					if sym.ValueStr != "" {
+						md.WriteString(fmt.Sprintf("```xru\n%s %s: %s = %s\n```\n", prefix, sym.Name, typeStr, sym.ValueStr))
+					} else {
+						md.WriteString(fmt.Sprintf("```xru\n%s %s: %s\n```\n", prefix, sym.Name, typeStr))
+					}
+				case checker.SymConst:
+					typeStr := sym.Type
+					if typeStr == "" {
+						typeStr = "any"
+					}
+					prefix := "(constant)"
+					if sym.IsGlobal {
+						prefix = "(global constant)"
+					}
+					if sym.ValueStr != "" {
+						md.WriteString(fmt.Sprintf("```xru\n%s %s: %s = %s\n```\n", prefix, sym.Name, typeStr, sym.ValueStr))
+					} else {
+						md.WriteString(fmt.Sprintf("```xru\n%s %s: %s\n```\n", prefix, sym.Name, typeStr))
+					}
+				case checker.SymFunc:
+					var params []string
+					for _, param := range sym.Params {
+						pType := param.Type
+						if pType == "" {
+							pType = "any"
+						}
+						params = append(params, fmt.Sprintf("%s: %s", param.Name, pType))
+					}
+					retType := sym.Type
+					if retType == "" {
+						retType = "void"
+					}
+					prefix := "func"
+					if sym.IsGlobal {
+						prefix = "global func"
+					}
+					md.WriteString(fmt.Sprintf("```xru\n%s %s(%s): %s\n```\n", prefix, sym.Name, strings.Join(params, ", "), retType))
+				case checker.SymUnit:
+					md.WriteString(fmt.Sprintf("```xru\n(module) %s\n```\n", sym.Name))
+				default:
+					md.WriteString(fmt.Sprintf("```xru\n%s: %s\n```\n", sym.Name, sym.Type))
 				}
-				retType := sym.Type
-				if retType == "" {
-					retType = "void"
+				fileContent := s.getFileContentForPos(uri, sym.Pos.Filename)
+				if doc := extractDocComment(fileContent, sym.Pos.Line); doc != "" {
+					md.WriteString("\n" + doc + "\n")
 				}
-				prefix := "func"
-				if sym.IsGlobal {
-					prefix = "global func"
+				return &Hover{
+					Contents: MarkupContent{
+						Kind:  "markdown",
+						Value: md.String(),
+					},
 				}
-				md.WriteString(fmt.Sprintf("```xru\n%s %s(%s): %s\n```\n", prefix, sym.Name, strings.Join(params, ", "), retType))
-			case checker.SymUnit:
-				md.WriteString(fmt.Sprintf("```xru\n(module) %s\n```\n", sym.Name))
-			default:
-				md.WriteString(fmt.Sprintf("```xru\n%s: %s\n```\n", sym.Name, sym.Type))
 			}
-			fileContent := s.getFileContentForPos(uri, sym.Pos.Filename)
-			if doc := extractDocComment(fileContent, sym.Pos.Line); doc != "" {
-				md.WriteString("\n" + doc + "\n")
-			}
-			return &Hover{
-				Contents: MarkupContent{
-					Kind:  "markdown",
-					Value: md.String(),
-				},
-			}
+		}
+	}
+
+	if docItem := GetDocForWord(lookupExpr, word); docItem != nil {
+		return &Hover{
+			Contents: MarkupContent{
+				Kind:  "markdown",
+				Value: FormatMarkdown(docItem),
+			},
 		}
 	}
 

@@ -1135,6 +1135,19 @@ let x = 10
 	if len(chk5.Errors()) > 0 {
 		t.Errorf("Expected 0 errors for valid import order, got: %v", chk5.Errors())
 	}
+
+	// 6. Nested mod inside function -> ERR_MOD_ORDER
+	c6 := `
+func test() {
+    mod inner
+}
+`
+	p6 := parser.New(lexer.New("t6.xru", c6))
+	chk6 := checker.New()
+	chk6.Check(p6.ParseProgram())
+	if !strings.Contains(strings.Join(chk6.Errors(), " "), "ERR_MOD_ORDER") {
+		t.Errorf("Expected ERR_MOD_ORDER when mod is nested, got: %v", chk6.Errors())
+	}
 }
 
 func TestCheckStdFiles(t *testing.T) {
@@ -1216,6 +1229,78 @@ func TestUnitSelfScopeAccess(t *testing.T) {
 			}
 			`,
 			wantErr: "ERR_INVALID_UNIT_SELF_REF",
+		},
+		{
+			name: "prohibited direct method call via &methodName()",
+			input: `
+			unit Worker {
+				func ping() -> string { return "pong" }
+				func execute() -> string {
+					return &ping()
+				}
+			}
+			`,
+			wantErr: "ERR_INVALID_PROP_ACCESS",
+		},
+		{
+			name: "prohibited method access via &methodName property",
+			input: `
+			unit Worker {
+				func ping() -> string { return "pong" }
+				func execute() -> string {
+					let p = &ping
+					return "done"
+				}
+			}
+			`,
+			wantErr: "ERR_INVALID_PROP_ACCESS",
+		},
+		{
+			name: "prohibited bare method call without &self:: or &Unit::",
+			input: `
+			unit Worker {
+				func ping() -> string { return "pong" }
+				func execute() -> string {
+					return ping()
+				}
+			}
+			`,
+			wantErr: "ERR_INVALID_METHOD_CALL",
+		},
+		{
+			name: "valid declare public and private properties",
+			input: `
+			unit Worker {
+				declare public a: string = "hello"
+				declare private b: number = 42
+				declare c, public: bool = true
+				declare d, private: string = "secret"
+				declare e: number = 100, private
+
+				func test() -> string {
+					if &b > 0 && &c == true {
+						return &a + &d
+					}
+					return "none"
+				}
+			}
+
+			let w = @Worker()
+			let pub = w.a
+			`,
+			wantErr: "",
+		},
+		{
+			name: "prohibited access to private property outside unit",
+			input: `
+			unit Worker {
+				declare private secret: string = "topsecret"
+			}
+
+			let w = @Worker()
+			let s = w.secret
+			`,
+			wantErr: "ERR_PRIVATE_PROPERTY",
 		},
 	}
 
@@ -1457,5 +1542,303 @@ func TestSysRequireOptionValidation(t *testing.T) {
 	}
 }
 
+func TestIndexedArgTypeAndUnionValidation(t *testing.T) {
+	code := `
+interface ServerConfig @map {
+    host string
+    port number
+    mode "development" or "production"
+}
 
+interface S {
+    mode "dev" | "prod"
+}
+
+arg env: ServerConfig["mode"] = "production"
+arg port: number = 8080
+arg appName: string
+
+const config: ServerConfig = @map {
+    host: "127.0.0.1",
+    port: port,
+    mode: env
+}
+`
+	l := lexer.New("test_indexed_args.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Checker errors: %v", c.Errors())
+	}
+}
+
+func TestLocalInterfaceOverridesBuiltinDocument(t *testing.T) {
+	code := `
+interface Document {
+    test string
+}
+
+file "tests.html" (e, d: Document) -> {
+    d.test
+    d.replace("a", "b")
+}
+`
+	l := lexer.New("test_local_doc.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+
+	foundErr := false
+	for _, err := range c.Errors() {
+		if strings.Contains(err, "ERR_NO_SUCH_PROPERTY") && strings.Contains(err, "replace") {
+			foundErr = true
+			break
+		}
+	}
+	if !foundErr {
+		t.Errorf("Expected ERR_NO_SUCH_PROPERTY for d.replace with local Document interface, got: %v", c.Errors())
+	}
+}
+
+func TestIndexedTypeAssignmentCompatibility(t *testing.T) {
+	// Case 1: Compatible indexed type ServerConfig["mode"] -> ServerConfig.mode
+	validCode := `
+interface ServerConfig @map {
+    host string
+    port number
+    mode "development" or "production"
+}
+
+arg env: ServerConfig["mode"] = "production"
+arg port: number = 8080
+
+const config: ServerConfig = @map {
+    host: "127.0.0.1",
+    port: port,
+    mode: env
+}
+`
+	l := lexer.New("test_valid_index.xru", validCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Expected 0 errors for valid indexed type assignment, got: %v", c.Errors())
+	}
+
+	// Case 2: Incompatible indexed type S["mode"] ("dev" or "prod") -> ServerConfig.mode ("development" or "production")
+	invalidCode := `
+interface ServerConfig @map {
+    host string
+    port number
+    mode "development" or "production"
+}
+
+interface S {
+    mode "dev" or "prod"
+}
+
+arg env: S["mode"] = "prod"
+arg port: number = 8080
+
+const config: ServerConfig = @map {
+    host: "127.0.0.1",
+    port: port,
+    mode: env
+}
+`
+	l2 := lexer.New("test_invalid_index.xru", invalidCode)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+
+	if len(c2.Errors()) == 0 {
+		t.Fatalf("Expected ERR_TYPE_MISMATCH for incompatible union values, got 0 errors")
+	}
+
+	foundErr := false
+	for _, err := range c2.Errors() {
+		if strings.Contains(err, "ERR_TYPE_MISMATCH") && strings.Contains(err, "Property 'mode' of 'config'") && strings.Contains(err, `S["mode"]`) {
+			foundErr = true
+			break
+		}
+	}
+	if !foundErr {
+		t.Errorf("Expected explicit error message 'Property \\'mode\\' of \\'config\\' expects type ... got \\'S[\"mode\"]\\'', got: %v", c2.Errors())
+	}
+}
+
+
+func TestMapMethodForbiddenRule(t *testing.T) {
+	// 1. Function in map literal
+	code1 := `
+let m = @map {
+    name: "test",
+    run: (x) -> { return x + 1 }
+}
+`
+	l1 := lexer.New("test_map_fn.xru", code1)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	c1 := checker.New()
+	c1.Check(prog1)
+
+	if len(c1.Errors()) == 0 {
+		t.Fatalf("Expected ERR_MAP_METHOD_FORBIDDEN for function in map literal, got 0 errors")
+	}
+	found := false
+	for _, err := range c1.Errors() {
+		if strings.Contains(err, "ERR_MAP_METHOD_FORBIDDEN") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected ERR_MAP_METHOD_FORBIDDEN error, got: %v", c1.Errors())
+	}
+
+	// 2. Method in @map interface
+	code2 := `
+interface IMap @map {
+    name string
+    func doSomething() -> void
+}
+`
+	l2 := lexer.New("test_map_iface_fn.xru", code2)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+
+	if len(c2.Errors()) == 0 {
+		t.Fatalf("Expected ERR_MAP_METHOD_FORBIDDEN for method in @map interface, got 0 errors")
+	}
+	found2 := false
+	for _, err := range c2.Errors() {
+		if strings.Contains(err, "ERR_MAP_METHOD_FORBIDDEN") {
+			found2 = true
+			break
+		}
+	}
+	if !found2 {
+		t.Errorf("Expected ERR_MAP_METHOD_FORBIDDEN error, got: %v", c2.Errors())
+	}
+}
+
+func TestMapBuiltinMethodsTypeChecking(t *testing.T) {
+	code := `
+let m = @map {
+    host: "127.0.0.1",
+    port: 8080
+}
+
+m.set("mode", "production")
+let v = m.get("host")
+let hasH = m.has("host")
+let k = m.keys()
+let l = m.len()
+`
+	l := lexer.New("test_map_methods.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Expected 0 errors for valid map builtin calls, got: %v", c.Errors())
+	}
+}
+
+func TestDispatchTreeScanningAndValidation(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_dispatch_check_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	subDir := filepath.Join(tempDir, "src", "controllers")
+	_ = os.MkdirAll(subDir, 0755)
+
+	// Subdescriptor with an invalid undefined variable
+	badSubCode := `use std
+if unknownVar == true {
+    std.println("Bad")
+}
+`
+	_ = os.WriteFile(filepath.Join(subDir, ".rules.xru"), []byte(badSubCode), 0644)
+
+	mainCode := `mod main
+dispatch "./src"
+`
+	mainPath := filepath.Join(tempDir, "main.xru")
+	_ = os.WriteFile(mainPath, []byte(mainCode), 0644)
+
+	l := lexer.New(mainPath, mainCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	c := checker.New()
+	c.SetCurrentFile(mainPath)
+	c.Check(prog)
+
+	if len(c.Errors()) == 0 {
+		t.Fatalf("Expected validation error from dispatched subdescriptor, got 0 errors")
+	}
+
+	foundErr := false
+	for _, e := range c.Errors() {
+		if strings.Contains(e, "ERR_DISPATCH_VALIDATION") || strings.Contains(e, "unknownVar") {
+			foundErr = true
+			break
+		}
+	}
+	if !foundErr {
+		t.Errorf("Expected ERR_DISPATCH_VALIDATION error, got: %v", c.Errors())
+	}
+}
+
+func TestDispatchTreeWithSubdescriptorImports(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_dispatch_sub_import_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	subDir := filepath.Join(tempDir, "src", "servers")
+	_ = os.MkdirAll(subDir, 0755)
+
+	subRule := `use std
+use fs
+std.info("Hello from subdescriptor")
+`
+	_ = os.WriteFile(filepath.Join(subDir, ".rules.xru"), []byte(subRule), 0644)
+
+	mainCode := `use std
+use fs
+dispatch "./src"
+`
+	mainPath := filepath.Join(tempDir, "main.xru")
+	_ = os.WriteFile(mainPath, []byte(mainCode), 0644)
+
+	l := lexer.New(mainPath, mainCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	c := checker.New()
+	c.SetCurrentFile(mainPath)
+	c.Check(prog)
+
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Expected 0 errors when subdescriptor imports std/fs, got: %v", c.Errors())
+	}
+}
 

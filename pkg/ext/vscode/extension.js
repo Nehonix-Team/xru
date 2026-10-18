@@ -549,6 +549,39 @@ function activate(context) {
     },
   );
   context.subscriptions.push(symbolProvider);
+
+  // 10. Document Formatting Provider (Format Document & Format On Save via LSP)
+  const formattingProvider =
+    vscode.languages.registerDocumentFormattingEditProvider(XRU_SELECTOR, {
+      async provideDocumentFormattingEdits(document, options, token) {
+        if (!lspClient || !lspClient.isAlive()) return [];
+        try {
+          if (changeDebounce) {
+            clearTimeout(changeDebounce);
+            changeDebounce = null;
+          }
+          syncDocumentToLsp(document, false);
+          const res = await lspClient.request("textDocument/formatting", {
+            textDocument: { uri: document.uri.toString() },
+            options: {
+              tabSize: options.tabSize || 4,
+              insertSpaces: options.insertSpaces !== false,
+            },
+          });
+          if (Array.isArray(res) && res.length > 0) {
+            return res.map(
+              (edit) =>
+                new vscode.TextEdit(
+                  toVsCodeRange(edit.range),
+                  edit.newText,
+                ),
+            );
+          }
+        } catch (e) {}
+        return [];
+      },
+    });
+  context.subscriptions.push(formattingProvider);
 }
 
 function deactivate() {

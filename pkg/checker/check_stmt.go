@@ -2,9 +2,15 @@ package checker
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/lexer"
+	"github.com/Nehonix-Team/xru/pkg/parser"
 )
 
 func (c *Checker) checkStatement(stmt ast.Statement) {
@@ -75,21 +81,86 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 				oldScope := c.scope
 				c.scope = childScope
 
-				if len(lambda.Parameters) > 0 {
-					docSym := CreateDocumentSymbol(lambda.Parameters[0].Name)
-					docSym.Pos = lambda.Pos()
-					_ = c.scope.Define(docSym)
-					c.declaredVars = append(c.declaredVars, docSym)
-				}
-				if len(lambda.Parameters) > 1 {
-					errSym := &Symbol{
-						Name: lambda.Parameters[1].Name,
-						Kind: SymVar,
-						Type: "string",
-						Pos:  lambda.Pos(),
+				isErrFirst := false
+				if len(lambda.Parameters) >= 2 {
+					p0Name := strings.ToLower(lambda.Parameters[0].Name)
+					p1Name := strings.ToLower(lambda.Parameters[1].Name)
+					p1Type := lambda.Parameters[1].Type
+
+					if p1Type == "Document" || ((p0Name == "e" || p0Name == "err" || p0Name == "error") && (p1Name == "data" || p1Name == "d" || p1Name == "doc" || p1Name == "content" || p1Type == "Document")) {
+						isErrFirst = true
 					}
-					_ = c.scope.Define(errSym)
-					c.declaredVars = append(c.declaredVars, errSym)
+				}
+
+				createDocOrCustomSymbol := func(param *ast.Parameter) *Symbol {
+					docType := param.Type
+					if docType == "" {
+						docType = "Document"
+					}
+					if iface, ok := c.interfaces[docType]; ok && (len(iface.Fields) > 0 || iface.Pos().Filename != "") {
+						return &Symbol{
+							Name: param.Name,
+							Kind: SymVar,
+							Type: docType,
+							Pos:  lambda.Pos(),
+						}
+					}
+					docSym := CreateDocumentSymbol(param.Name)
+					docSym.Pos = lambda.Pos()
+					return docSym
+				}
+
+				if len(lambda.Parameters) == 1 {
+					p0Name := strings.ToLower(lambda.Parameters[0].Name)
+					if p0Name == "e" || p0Name == "err" || p0Name == "error" {
+						errType := lambda.Parameters[0].Type
+						if errType == "" {
+							errType = "any"
+						}
+						errSym := &Symbol{Name: lambda.Parameters[0].Name, Kind: SymVar, Type: errType, Pos: lambda.Pos()}
+						_ = c.scope.Define(errSym)
+						c.declaredVars = append(c.declaredVars, errSym)
+					} else {
+						docSym := createDocOrCustomSymbol(lambda.Parameters[0])
+						_ = c.scope.Define(docSym)
+						c.declaredVars = append(c.declaredVars, docSym)
+					}
+				} else if len(lambda.Parameters) >= 2 {
+					if isErrFirst {
+						errType := lambda.Parameters[0].Type
+						if errType == "" {
+							errType = "any"
+						}
+						errSym := &Symbol{
+							Name: lambda.Parameters[0].Name,
+							Kind: SymVar,
+							Type: errType,
+							Pos:  lambda.Pos(),
+						}
+						_ = c.scope.Define(errSym)
+						c.declaredVars = append(c.declaredVars, errSym)
+
+						docSym := createDocOrCustomSymbol(lambda.Parameters[1])
+						_ = c.scope.Define(docSym)
+						c.declaredVars = append(c.declaredVars, docSym)
+					} else {
+						docSym := createDocOrCustomSymbol(lambda.Parameters[0])
+						_ = c.scope.Define(docSym)
+						c.declaredVars = append(c.declaredVars, docSym)
+
+						errType := lambda.Parameters[1].Type
+						if errType == "" {
+							errType = "any"
+						}
+						errSym := &Symbol{
+							Name: lambda.Parameters[1].Name,
+							Kind: SymVar,
+							Type: errType,
+							Pos:  lambda.Pos(),
+						}
+						_ = c.scope.Define(errSym)
+						c.declaredVars = append(c.declaredVars, errSym)
+					}
 				}
 
 				if lambda.Body != nil {
@@ -108,12 +179,7 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.MatchStatement:
 		c.checkMatch(s)
 	case *ast.DispatchTreeStatement:
-		if s.PathExpr != nil {
-			c.checkExpression(s.PathExpr)
-		}
-		if s.PatternExpr != nil {
-			c.checkExpression(s.PatternExpr)
-		}
+		c.checkDispatchTree(s)
 	case *ast.InStatement:
 		c.checkIn(s)
 	case *ast.ReassignStatement:
@@ -228,14 +294,24 @@ func (c *Checker) checkArg(s *ast.ArgStatement) {
 	}
 
 	if s.Type != "" {
-		c.validateTypeAnnotation(s.Pos(), s.Type)
+		pos := s.Pos()
+		if s.TypePos.Line > 0 {
+			pos = s.TypePos
+		}
+		c.validateTypeAnnotation(pos, s.Type)
 	}
 
 	if s.DefaultValue != nil {
 		c.checkExpression(s.DefaultValue)
 		if s.Type != "" {
 			actualType := c.inferType(s.DefaultValue)
-			if !isTypeCompatible(s.Type, actualType) {
+			resolvedType := c.resolveType(s.Type)
+			if strings.Contains(resolvedType, " or ") || strings.Contains(resolvedType, "|") || strings.HasPrefix(resolvedType, "\"") {
+				if strLit, ok := s.DefaultValue.(*ast.StringLiteral); ok {
+					actualType = fmt.Sprintf("%q", strLit.Value)
+				}
+			}
+			if !c.isTypeCompatible(s.Type, actualType) {
 				c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
 					fmt.Sprintf("Default value of type '%s' does not match declared type '%s' for argument '%s'", actualType, s.Type, s.Name))
 			}
@@ -262,7 +338,11 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 	}
 	inferredType := s.Type
 	if s.Type != "" {
-		c.validateTypeAnnotation(s.Pos(), s.Type)
+		pos := s.Pos()
+		if s.TypePos.Line > 0 {
+			pos = s.TypePos
+		}
+		c.validateTypeAnnotation(pos, s.Type)
 	}
 	if inferredType == "" && s.Value != nil {
 		inferredType = c.inferType(s.Value)
@@ -288,6 +368,14 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 
 	c.checkExpression(s.Value)
 
+	if s.Value != nil {
+		actualValType := c.inferType(s.Value)
+		if actualValType == "void" {
+			c.addError(s.Value.Pos(), "ERR_TYPE_MISMATCH",
+				fmt.Sprintf("Cannot assign expression of type 'void' to variable '%s'", s.Name))
+		}
+	}
+
 	if s.Value != nil && s.Type != "" {
 		if mapLit, isMap := s.Value.(*ast.MapLiteral); isMap {
 			if c.interfaces != nil {
@@ -311,11 +399,13 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 
 func (c *Checker) checkUnit(s *ast.UnitStatement) {
 	unitSym := &Symbol{
-		Name:       s.Name,
-		Kind:       SymUnit,
-		Pos:        s.Pos(),
-		Directives: make(map[string]bool),
-		Methods:    make(map[string]*Symbol),
+		Name:         s.Name,
+		Kind:         SymUnit,
+		Pos:          s.Pos(),
+		Directives:   make(map[string]bool),
+		Methods:      make(map[string]*Symbol),
+		Properties:   make(map[string]*Symbol),
+		PrivateProps: make(map[string]bool),
 	}
 
 	for _, dir := range s.Directives {
@@ -374,13 +464,17 @@ func (c *Checker) checkUnit(s *ast.UnitStatement) {
 
 	for _, prop := range s.Properties {
 		propSym := &Symbol{Name: prop.Name, Kind: SymVar, Type: prop.Type, Pos: prop.Pos()}
+		unitSym.Properties[prop.Name] = propSym
+		if prop.IsPrivate {
+			unitSym.PrivateProps[prop.Name] = true
+		}
 		if err := c.scope.Define(propSym); err != nil {
 			c.addError(prop.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
 		}
 		c.checkExpression(prop.Value)
 		if prop.Value != nil && prop.Type != "" {
 			actualType := c.inferType(prop.Value)
-			if !isTypeCompatible(prop.Type, actualType) {
+			if !c.isTypeCompatible(prop.Type, actualType) {
 				c.addError(prop.Pos(), "ERR_TYPE_MISMATCH",
 					fmt.Sprintf("Cannot assign expression of type '%s' to property '%s' declared as '%s'", actualType, prop.Name, prop.Type))
 			}
@@ -567,11 +661,44 @@ func (c *Checker) checkFor(s *ast.ForStatement) {
 	defer func() { c.scope = c.scope.parent }()
 
 	itemType := "any"
+	idxType := "number"
 	iterType := c.inferType(s.Iterable)
+	isMap := iterType == "map" || iterType == "@map" || strings.HasPrefix(iterType, "map[") || strings.HasPrefix(iterType, "@map") || (c.interfaces != nil && c.interfaces[iterType] != nil && c.interfaces[iterType].IsMap)
+
 	if strings.HasPrefix(iterType, "list[") && strings.HasSuffix(iterType, "]") {
 		itemType = strings.TrimSuffix(strings.TrimPrefix(iterType, "list["), "]")
 	} else if iterType == "range" {
 		itemType = "number"
+	} else if isMap {
+		itemType = "string"
+		idxType = "any"
+
+		var fields []*ast.InterfaceField
+		if c.interfaces != nil && c.interfaces[iterType] != nil {
+			fields = c.interfaces[iterType].Fields
+		} else if strings.HasPrefix(iterType, "@map") && strings.Contains(iterType, "{") {
+			fields = parseInlineMapFieldDefs(iterType)
+		}
+
+		if len(fields) > 0 {
+			var valTypes []string
+			seen := make(map[string]bool)
+			for _, field := range fields {
+				ft := strings.TrimSpace(field.Type)
+				if strings.HasPrefix(ft, "\"") && strings.HasSuffix(ft, "\"") {
+					ft = "string"
+				}
+				if !seen[ft] && ft != "" {
+					seen[ft] = true
+					valTypes = append(valTypes, ft)
+				}
+			}
+			if len(valTypes) == 1 {
+				idxType = valTypes[0]
+			} else if len(valTypes) > 1 {
+				idxType = strings.Join(valTypes, " or ")
+			}
+		}
 	}
 
 	itemSym := &Symbol{
@@ -586,7 +713,7 @@ func (c *Checker) checkFor(s *ast.ForStatement) {
 		idxSym := &Symbol{
 			Name: s.Index,
 			Kind: SymVar,
-			Type: "number",
+			Type: idxType,
 			Pos:  s.Pos(),
 		}
 		_ = c.scope.Define(idxSym)
@@ -678,6 +805,13 @@ func (c *Checker) checkInterface(s *ast.InterfaceStatement) {
 		}
 		seenLower[lower] = f.Name
 
+		if s.IsMap {
+			if f.Params != nil || f.Type == "function" || strings.HasPrefix(f.Type, "func(") || strings.HasPrefix(f.Type, "fn(") || strings.HasPrefix(f.Type, "(") {
+				c.addError(f.Position, "ERR_MAP_METHOD_FORBIDDEN",
+					fmt.Sprintf("Map interface '%s' cannot contain methods or functions (field '%s'); declare a unit instead.", s.Name, f.Name))
+			}
+		}
+
 		if f.Params != nil {
 			if f.ReturnType != "" {
 				c.validateTypeAnnotation(f.Position, f.ReturnType)
@@ -752,3 +886,105 @@ func hasReturnStatement(stmts []ast.Statement) bool {
 	return false
 }
 
+
+func (c *Checker) checkDispatchTree(s *ast.DispatchTreeStatement) {
+	if s.PathExpr != nil {
+		c.checkExpression(s.PathExpr)
+	}
+	if s.PatternExpr != nil {
+		c.checkExpression(s.PatternExpr)
+	}
+
+	targetDir := s.Path
+	if targetDir == "" && s.PathExpr != nil {
+		if strLit, ok := s.PathExpr.(*ast.StringLiteral); ok {
+			targetDir = strLit.Value
+		}
+	}
+	if targetDir == "" {
+		targetDir = "./"
+	}
+	pattern := s.Pattern
+	if pattern == "" && s.PatternExpr != nil {
+		if strLit, ok := s.PatternExpr.(*ast.StringLiteral); ok {
+			pattern = strLit.Value
+		}
+	}
+	if pattern == "" {
+		pattern = ".rules.xru"
+	}
+
+	baseDir := "."
+	if c.currentFile != "" {
+		baseDir = filepath.Dir(c.currentFile)
+	}
+	fullTarget := filepath.Join(baseDir, targetDir)
+	if !filepath.IsAbs(fullTarget) {
+		if abs, err := filepath.Abs(fullTarget); err == nil {
+			fullTarget = abs
+		}
+	}
+
+	if fi, err := os.Stat(fullTarget); err != nil || !fi.IsDir() {
+		return
+	}
+
+	var discoveredFiles []string
+	_ = filepath.WalkDir(fullTarget, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		name := entry.Name()
+		matched, _ := filepath.Match(pattern, name)
+		if matched || name == pattern {
+			discoveredFiles = append(discoveredFiles, path)
+		}
+		return nil
+	})
+
+	sort.Strings(discoveredFiles)
+
+	for _, path := range discoveredFiles {
+		absPath, _ := filepath.Abs(path)
+		if c.visitedDispatches == nil {
+			c.visitedDispatches = make(map[string]bool)
+		}
+		if c.visitedDispatches[absPath] {
+			continue
+		}
+		c.visitedDispatches[absPath] = true
+
+		subContent, err := os.ReadFile(path)
+		if err != nil {
+			c.addError(s.Pos(), "ERR_DISPATCH_READ", fmt.Sprintf("cannot read dispatched file '%s': %v", path, err))
+			continue
+		}
+		subLex := lexer.New(path, string(subContent))
+		subParser := parser.New(subLex)
+		subProg := subParser.ParseProgram()
+		if len(subParser.Errors()) > 0 {
+			for _, pe := range subParser.Errors() {
+				c.addError(s.Pos(), "ERR_SYNTAX", fmt.Sprintf("syntax error in dispatched file %s: %s", filepath.Base(path), pe))
+			}
+			continue
+		}
+
+		subChecker := New()
+		subChecker.SetCurrentFile(path)
+		subChecker.scope = NewScope(c.scope, false)
+		subChecker.scope.Define(&Symbol{Name: "keep", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "Keep", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "drop", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "Drop", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "useVariant", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "UseVariant", Kind: SymFunc, Type: "any", Pos: s.Pos()})
+		subChecker.scope.Define(&Symbol{Name: "Local", Kind: SymUnit, Type: "Unit", Pos: s.Pos()})
+
+		subChecker.Check(subProg)
+		if len(subChecker.Errors()) > 0 {
+			for _, errStr := range subChecker.Errors() {
+				c.addError(s.Pos(), "ERR_DISPATCH_VALIDATION", errStr)
+			}
+		}
+	}
+}

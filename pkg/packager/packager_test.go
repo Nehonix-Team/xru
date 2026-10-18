@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Nehonix-Team/xru/pkg/checker"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 	"github.com/Nehonix-Team/xru/pkg/packager"
 	"github.com/Nehonix-Team/xru/pkg/parser"
@@ -71,8 +72,8 @@ func TestPackBundleAndMinify(t *testing.T) {
 
 	// Create root main.xru
 	mainCode := `
-arg mode: string = "default"
-arg cdn: bool = true
+global arg mode: string = "default"
+global arg cdn: bool = true
 
 global func prune(kind: string, mode: string, cdn: bool) {
     if mode == "minimal" || !cdn {
@@ -91,6 +92,8 @@ dispatch "./src"
 	_ = os.MkdirAll(controllerDir, 0755)
 	controllerRule := `
 from "root" use main::prune
+from "root" use main::mode
+from "root" use main::cdn
 prune("controller", mode, cdn)
 `
 	_ = os.WriteFile(filepath.Join(controllerDir, ".rules.xru"), []byte(controllerRule), 0644)
@@ -159,6 +162,360 @@ prune("controller", mode, cdn)
 	}
 	if !strings.Contains(string(modData), "WORLD Controller") {
 		t.Errorf("Expected 'WORLD Controller', got: %s", string(modData))
+	}
+}
+
+func TestBuildSingleFileModule(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_singlefile_build_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// 1. Create _mod.xru
+	modConf := `map {
+    "rt" -> "./rt"
+}`
+	_ = os.WriteFile(filepath.Join(tempDir, "_mod.xru"), []byte(modConf), 0644)
+
+	// 2. Create rt/cArg.xru
+	_ = os.MkdirAll(filepath.Join(tempDir, "rt"), 0755)
+	cArgContent := `use std
+const dArgVal: string = "hello"
+func run(x: number) -> string {
+    return dArgVal + " " + x
+}`
+	_ = os.WriteFile(filepath.Join(tempDir, "rt", "cArg.xru"), []byte(cArgContent), 0644)
+
+	// 3. Create main.xru that uses cArg as a qualified module
+	mainContent := `use std
+from "rt" use (cArg)
+
+let res = cArg::run(42)
+file "output.txt", (doc, err) -> {
+    doc.replace("INITIAL", res)
+}`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(mainContent), 0644)
+
+	// 4. Create other.xru that uses direct member import
+	otherContent := `use std
+from "rt" use cArg::(dArgVal, run)
+
+let res2 = run(99)
+file "output2.txt", (doc, err) -> {
+    doc.replace("INITIAL", res2)
+}`
+	_ = os.WriteFile(filepath.Join(tempDir, "other.xru"), []byte(otherContent), 0644)
+
+	pkg := packager.New(tempDir, "")
+
+	// Bundle main.xru
+	bundledMain, err := pkg.BundleAndMinifyWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("BundleAndMinifyWithEntry(main.xru) failed: %v", err)
+	}
+	t.Logf("Bundled main:\n%s", bundledMain)
+
+	// Ensure no 'from "rt" use' remains
+	if strings.Contains(bundledMain, "from \"rt\"") {
+		t.Errorf("Expected no 'from \"rt\"' in bundled output, got: %s", bundledMain)
+	}
+
+	// Execute bundledMain in an isolated directory WITHOUT _mod.xru or rt/
+	isolatedDir, err := os.MkdirTemp("", "xru_isolated_eval_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(isolatedDir)
+
+	_ = os.WriteFile(filepath.Join(isolatedDir, "output.txt"), []byte("INITIAL"), 0644)
+	_ = os.WriteFile(filepath.Join(isolatedDir, "output2.txt"), []byte("INITIAL"), 0644)
+
+	l := lexer.New("bundle.xru", bundledMain)
+	pr := parser.New(l)
+	prog := pr.ParseProgram()
+	if len(pr.Errors()) > 0 {
+		t.Fatalf("Parse error on bundledMain: %v", pr.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	env.SetCurrentDir(isolatedDir)
+
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error on bundled code: %v", err)
+	}
+
+	outBytes, err := os.ReadFile(filepath.Join(isolatedDir, "output.txt"))
+	if err != nil {
+		t.Fatalf("Failed to read output.txt: %v", err)
+	}
+	if string(outBytes) != "hello 42" {
+		t.Errorf("Expected 'hello 42', got: %s", string(outBytes))
+	}
+
+	// Bundle other.xru
+	bundledOther, err := pkg.BundleAndMinifyWithEntry("other.xru")
+	if err != nil {
+		t.Fatalf("BundleAndMinifyWithEntry(other.xru) failed: %v", err)
+	}
+	t.Logf("Bundled other:\n%s", bundledOther)
+
+	l2 := lexer.New("bundle2.xru", bundledOther)
+	pr2 := parser.New(l2)
+	prog2 := pr2.ParseProgram()
+	if len(pr2.Errors()) > 0 {
+		t.Fatalf("Parse error on bundledOther: %v", pr2.Errors())
+	}
+
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	env2.SetCurrentDir(isolatedDir)
+
+	if _, err := ev2.Eval(prog2, env2); err != nil {
+		t.Fatalf("Eval error on bundled other code: %v", err)
+	}
+
+	out2Bytes, err := os.ReadFile(filepath.Join(isolatedDir, "output2.txt"))
+	if err != nil {
+		t.Fatalf("Failed to read output2.txt: %v", err)
+	}
+	if string(out2Bytes) != "hello 99" {
+		t.Errorf("Expected 'hello 99', got: %s", string(out2Bytes))
+	}
+}
+
+
+
+func TestBuildMapSyntaxAndPropertyAccess(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_map_build_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	mainContent := `use std
+
+interface ServerConfig @map {
+    host string
+    port number
+    mode string
+}
+
+arg env: string = "prod"
+arg port: number = 8080
+
+const config: ServerConfig = @map {
+    host: "127.0.0.1",
+    port: port,
+    mode: env
+}
+
+let p = config.port
+let h = config.host
+`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(mainContent), 0644)
+
+	pkg := packager.New(tempDir, "")
+	bundled, err := pkg.BundleAndMinifyWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("BundleAndMinifyWithEntry failed: %v", err)
+	}
+	t.Logf("Bundled output:\n%s", bundled)
+
+	// 1. Must use @map{...} syntax, not JS-like raw {...}
+	if !strings.Contains(bundled, "@map{") {
+		t.Errorf("Expected bundled output to contain '@map{', got: %s", bundled)
+	}
+
+	// 2. Must convert config.port to .get("port")
+	if !strings.Contains(bundled, `.get("port")`) {
+		t.Errorf("Expected bundled output to convert map property access to .get(\"port\"), got: %s", bundled)
+	}
+	if !strings.Contains(bundled, `.get("host")`) {
+		t.Errorf("Expected bundled output to convert map property access to .get(\"host\"), got: %s", bundled)
+	}
+
+	// 3. Mangling must use alphanumeric characters (a-z, 1-9) without leading underscore
+	if strings.Contains(bundled, "_a") || strings.Contains(bundled, "_b") {
+		t.Errorf("Expected mangled names to be alphanumeric without underscore, got: %s", bundled)
+	}
+
+	// 4. Bundled code must parse and check with 0 errors
+	l := lexer.New("bundled.xru", bundled)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Bundled code has parse errors: %v", p.Errors())
+	}
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Bundled code has checker errors: %v", c.Errors())
+	}
+}
+
+
+func TestBuildAbortsOnValidationError(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_build_err_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Code with semantic validation error: calling println with 0 arguments or assigning void
+	invalidCode := `use std
+
+const cfg = @map{
+    name: "Seth",
+}
+
+const d = cfg.values().push(@map{test: "ok"})
+
+std.println()
+`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(invalidCode), 0644)
+
+	pkg := packager.New(tempDir, "")
+	_, err = pkg.BundleAndMinifyWithEntry("main.xru")
+	if err == nil {
+		t.Fatalf("Expected build to abort with validation error, but it succeeded")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "validation error in main.xru") {
+		t.Errorf("Expected 'validation error in main.xru', got: %s", errStr)
+	}
+	if !strings.Contains(errStr, "ERR_TYPE_MISMATCH") && !strings.Contains(errStr, "ERR_ARG_COUNT") {
+		t.Errorf("Expected specific checker error in message, got: %s", errStr)
+	}
+}
+
+func TestBundleImportedArgPreservesCleanName(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_bundle_args_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	modCfg := "map {\n    root -> \"./\"\n    dll -> \"./scripts/\"\n}"
+	_ = os.WriteFile(filepath.Join(tempDir, "_mod.xru"), []byte(modCfg), 0644)
+	_ = os.MkdirAll(filepath.Join(tempDir, "scripts"), 0755)
+
+	argsCode := "mod gArgs\nglobal arg mode: string = \"default\"\nglobal arg cdn: bool = true\n"
+	_ = os.WriteFile(filepath.Join(tempDir, "scripts", "args.xru"), []byte(argsCode), 0644)
+
+	mainCode := `mod main
+use std
+from "dll" use gArgs::mode
+from "dll" use gArgs::cdn
+
+if mode == "default" && cdn == true {
+    std.println("OK")
+}
+`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(mainCode), 0644)
+
+	pkg := packager.New(tempDir, "")
+	prog, err := pkg.BuildBundledProgramWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("Expected bundling to succeed without undefined variable errors, got: %v", err)
+	}
+	if prog == nil {
+		t.Fatalf("Expected non-nil program")
+	}
+
+	bundled, err := pkg.BundleAndMinifyWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("Expected minification to succeed, got: %v", err)
+	}
+	if !strings.Contains(bundled, "arg mode") {
+		t.Errorf("Expected bundled code to contain 'arg mode', got: %s", bundled)
+	}
+}
+
+func TestBundleManglingNativeImportsAndUnitMembers(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_bundle_unit_mangling_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	mainCode := `use std;
+use fs as Fs;
+
+unit WorkerPool {
+    declare private secretToken: string = "secret-123"
+    declare public poolSize: number = 4
+
+    func start() {
+        let s = &secretToken
+        &self::recordTask()
+    }
+
+    func recordTask() {
+        &poolSize =: &poolSize + 1
+    }
+}
+
+let pool = @WorkerPool()
+pool.start()
+let sz = pool.poolSize
+if Fs.exists("test.txt") {
+    std.println("Size: $f{pool.poolSize}")
+}
+`
+	_ = os.WriteFile(filepath.Join(tempDir, "main.xru"), []byte(mainCode), 0644)
+
+	pkg := packager.New(tempDir, "")
+	bundled, err := pkg.BundleAndMinifyWithEntry("main.xru")
+	if err != nil {
+		t.Fatalf("Minification failed: %v", err)
+	}
+	t.Logf("Bundled and mangled output:\n%s", bundled)
+
+	// 1. Native imports must be aliased with s1, s2...
+	if !strings.Contains(bundled, "use std as s1") {
+		t.Errorf("Expected 'use std as s1', got: %s", bundled)
+	}
+	if !strings.Contains(bundled, "use fs as s2") {
+		t.Errorf("Expected 'use fs as s2', got: %s", bundled)
+	}
+	if strings.Contains(bundled, "Fs.exists") {
+		t.Errorf("Expected 'Fs.exists' to be mangled to 's2.exists', got: %s", bundled)
+	}
+	if !strings.Contains(bundled, "s2.exists") {
+		t.Errorf("Expected 's2.exists', got: %s", bundled)
+	}
+	if strings.Contains(bundled, "std.println") {
+		t.Errorf("Expected 'std.println' to be mangled to 's1.println', got: %s", bundled)
+	}
+	if !strings.Contains(bundled, "s1.println") {
+		t.Errorf("Expected 's1.println', got: %s", bundled)
+	}
+
+	// 2. Unit properties must be mangled (secretToken and poolSize should not appear verbatim)
+	if strings.Contains(bundled, "secretToken") {
+		t.Errorf("Expected 'secretToken' to be mangled, got: %s", bundled)
+	}
+	if strings.Contains(bundled, "poolSize") {
+		t.Errorf("Expected 'poolSize' to be mangled, got: %s", bundled)
+	}
+
+	// 3. Unit methods must be mangled (start and recordTask should not appear verbatim)
+	if strings.Contains(bundled, "recordTask") {
+		t.Errorf("Expected 'recordTask' to be mangled, got: %s", bundled)
+	}
+
+	// 4. Bundled code must parse cleanly
+	l := lexer.New("bundled.xru", bundled)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Bundled code has parse errors: %v", p.Errors())
+	}
+	if len(prog.Statements) == 0 {
+		t.Fatalf("Expected non-empty program statements")
 	}
 }
 

@@ -41,7 +41,7 @@ func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
 	}
 
 	reVar := regexp.MustCompile(fmt.Sprintf(`^\s*(?:global\s+)?(?:let|const|var)\s+%s(?:\s*:\s*([^=]+?))?(?:\s*=\s*(.*))?$`, regexp.QuoteMeta(varName)))
-	for _, line := range lines {
+	for lineIdx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") {
 			continue
@@ -100,9 +100,18 @@ func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
 				return &varTargetInfo{isMap: true, mapFields: fields}
 			}
 
-			// 6. Inline map literal or @map literal: { a: 1, b: 2 } or @map{ a: 1 }
+			// 6. Inline map literal or @map literal: { a: 1, b: 2 } or @map{ a: 1 } (including multiline)
 			if strings.HasPrefix(valClean, "{") || strings.HasPrefix(valClean, "@map") {
-				fields := extractMapLiteralFields(valClean)
+				multiVal := valClean
+				if !strings.Contains(valClean, "}") {
+					depth := strings.Count(valClean, "{") - strings.Count(valClean, "}")
+					for nextIdx := lineIdx + 1; nextIdx < len(lines) && depth > 0; nextIdx++ {
+						nextL := lines[nextIdx]
+						depth += strings.Count(nextL, "{") - strings.Count(nextL, "}")
+						multiVal += "\n" + nextL
+					}
+				}
+				fields := extractMapLiteralFields(multiVal)
 				if len(fields) > 0 || typeStr == "map" || typeStr == "" {
 					return &varTargetInfo{isMap: true, mapFields: fields}
 				}
@@ -153,16 +162,87 @@ func findVariableTargetInfo(lines []string, varName string) *varTargetInfo {
 		}
 	}
 
-	// 9. Check file statement parameters (doc: Document, err: string)
+	// 9. Check file statement parameters (e, data) or (doc, err)
 	reFileStmt := regexp.MustCompile(`^\s*file\s+.*?(?:,\s*)?\((.*?)\)\s*(?:->|=>)`)
 	for _, line := range lines {
 		if m := reFileStmt.FindStringSubmatch(line); len(m) > 1 {
-			params := strings.Split(m[1], ",")
-			if len(params) > 0 && strings.TrimSpace(params[0]) == varName {
-				return &varTargetInfo{unitType: "Document"}
+			rawParams := strings.Split(m[1], ",")
+			var pNames []string
+			var pTypes []string
+			for _, p := range rawParams {
+				pTrim := strings.TrimSpace(p)
+				if colon := strings.Index(pTrim, ":"); colon != -1 {
+					pNames = append(pNames, strings.TrimSpace(pTrim[:colon]))
+					pTypes = append(pTypes, strings.TrimSpace(pTrim[colon+1:]))
+				} else {
+					pNames = append(pNames, pTrim)
+					pTypes = append(pTypes, "")
+				}
 			}
-			if len(params) > 1 && strings.TrimSpace(params[1]) == varName {
+			isErrFirst := false
+			if len(pNames) >= 2 {
+				p0Low := strings.ToLower(pNames[0])
+				p1Low := strings.ToLower(pNames[1])
+				if pTypes[1] == "Document" || ((p0Low == "e" || p0Low == "err" || p0Low == "error") && (p1Low == "data" || p1Low == "d" || p1Low == "doc" || p1Low == "content" || pTypes[1] == "Document")) {
+					isErrFirst = true
+				}
+			}
+			hasLocalInterface := func(ifaceName string) bool {
+				reIface := regexp.MustCompile(fmt.Sprintf(`^\s*interface\s+%s(?:\s+@map)?\s*\{`, regexp.QuoteMeta(ifaceName)))
+				for _, line := range lines {
+					if reIface.MatchString(line) {
+						return true
+					}
+				}
+				return false
+			}
+
+			resolveDocOrCustomTarget := func(typeName string) *varTargetInfo {
+				if typeName == "" {
+					typeName = "Document"
+				}
+				if hasLocalInterface(typeName) {
+					return &varTargetInfo{interfaceName: typeName}
+				}
+				if typeName == "Document" {
+					return &varTargetInfo{unitType: "Document"}
+				}
+				return &varTargetInfo{interfaceName: typeName}
+			}
+
+			resolveErrTarget := func(typeName string) *varTargetInfo {
+				if typeName != "" && typeName != "any" && typeName != "string" {
+					if len(collectInterfaceMembers(lines, typeName, "")) > 0 {
+						return &varTargetInfo{interfaceName: typeName}
+					}
+				}
 				return &varTargetInfo{isString: true}
+			}
+
+			if len(pNames) == 1 {
+				if pNames[0] == varName {
+					p0Low := strings.ToLower(pNames[0])
+					if p0Low == "e" || p0Low == "err" || p0Low == "error" {
+						return resolveErrTarget(pTypes[0])
+					}
+					return resolveDocOrCustomTarget(pTypes[0])
+				}
+			} else if len(pNames) >= 2 {
+				if isErrFirst {
+					if pNames[0] == varName {
+						return resolveErrTarget(pTypes[0])
+					}
+					if pNames[1] == varName {
+						return resolveDocOrCustomTarget(pTypes[1])
+					}
+				} else {
+					if pNames[0] == varName {
+						return resolveDocOrCustomTarget(pTypes[0])
+					}
+					if pNames[1] == varName {
+						return resolveErrTarget(pTypes[1])
+					}
+				}
 			}
 		}
 	}

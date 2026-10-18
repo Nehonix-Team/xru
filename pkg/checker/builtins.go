@@ -78,6 +78,10 @@ func (c *Checker) initBuiltinUnits() {
 			"Sleep":   {Name: "Sleep", Kind: SymFunc, Type: "void", Params: []*ast.Parameter{{Name: "duration", Type: "any"}}},
 			"fatal":   {Name: "fatal", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "message", Type: "any"}, {Name: "code", Type: "number"}}, MinArgs: 1, HasOptional: true},
 			"Fatal":   {Name: "Fatal", Kind: SymFunc, Type: "never", Params: []*ast.Parameter{{Name: "message", Type: "any"}, {Name: "code", Type: "number"}}, MinArgs: 1, HasOptional: true},
+			"type":    {Name: "type", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "value", Type: "any"}}},
+			"Type":    {Name: "Type", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "value", Type: "any"}}},
+			"typeof":  {Name: "typeof", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "value", Type: "any"}}},
+			"Typeof":  {Name: "Typeof", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "value", Type: "any"}}},
 		},
 	}
 	sysUnit := &Symbol{
@@ -102,6 +106,8 @@ func (c *Checker) initBuiltinUnits() {
 			"Require": {Name: "Require", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "constraint", Type: "string"}, {Name: "options", Type: "ROpt", Optional: true}}, MinArgs: 1, HasOptional: true},
 			"version": {Name: "version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"Version": {Name: "Version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"cwd":     {Name: "cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"Cwd":     {Name: "Cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 		},
 	}
 	cmdUnit := &Symbol{
@@ -310,6 +316,8 @@ func CreateDocumentSymbol(name string) *Symbol {
 			"insertBefore":   {Name: "insertBefore", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "anchor", Type: "string"}, {Name: "content", Type: "string"}}},
 			"removeBetween":  {Name: "removeBetween", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "startPattern", Type: "string"}, {Name: "endPattern", Type: "string"}}, MinArgs: 2, IsVariadic: true},
 			"removeBalanced": {Name: "removeBalanced", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "startAnchor", Type: "string"}}, MinArgs: 1, IsVariadic: true},
+			"cleanGaps":      {Name: "cleanGaps", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{}, MinArgs: 0},
+			"cleanGap":       {Name: "cleanGap", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{}, MinArgs: 0},
 			"save":           {Name: "save", Kind: SymFunc, Type: "bool"},
 		},
 	}
@@ -327,6 +335,14 @@ type NativeMethodSpec struct {
 }
 
 var StringMethodSpecs = map[string]NativeMethodSpec{
+	"type": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"typeof": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
 	"len": {
 		Params:     []NativeParam{},
 		ReturnType: "number",
@@ -401,6 +417,12 @@ var StringMethodSpecs = map[string]NativeMethodSpec{
 		},
 		ReturnType: "string",
 	},
+	"repeat": {
+		Params: []NativeParam{
+			{Name: "count", Type: "number"},
+		},
+		ReturnType: "string",
+	},
 	"tostring": {
 		Params:     []NativeParam{},
 		ReturnType: "string",
@@ -412,6 +434,14 @@ var StringMethodSpecs = map[string]NativeMethodSpec{
 }
 
 var ListMethodSpecs = map[string]NativeMethodSpec{
+	"type": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"typeof": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
 	"len": {
 		Params:     []NativeParam{},
 		ReturnType: "number",
@@ -484,5 +514,137 @@ func GetStringMethodSpec(name string) (NativeMethodSpec, bool) {
 
 func GetListMethodSpec(name string) (NativeMethodSpec, bool) {
 	spec, ok := ListMethodSpecs[strings.ToLower(name)]
+	return spec, ok
+}
+
+var NumberMethodSpecs = map[string]NativeMethodSpec{
+	"type": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"typeof": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"abs": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"floor": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"ceil": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"round": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"int": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"tostring": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"to_string": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"fixed": {
+		Params: []NativeParam{
+			{Name: "digits", Type: "number", Optional: true},
+		},
+		ReturnType: "string",
+	},
+}
+
+func IsNumberMethod(name string) bool {
+	_, ok := NumberMethodSpecs[strings.ToLower(name)]
+	return ok
+}
+
+func GetNumberMethodSpec(name string) (NativeMethodSpec, bool) {
+	spec, ok := NumberMethodSpecs[strings.ToLower(name)]
+	return spec, ok
+}
+
+var MapMethodSpecs = map[string]NativeMethodSpec{
+	"type": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"typeof": {
+		Params:     []NativeParam{},
+		ReturnType: "string",
+	},
+	"get": {
+		Params: []NativeParam{
+			{Name: "key", Type: "string"},
+			{Name: "default", Type: "any", Optional: true},
+		},
+		ReturnType: "any",
+	},
+	"set": {
+		Params: []NativeParam{
+			{Name: "key", Type: "string"},
+			{Name: "value", Type: "any"},
+		},
+		ReturnType: "map",
+	},
+	"merge": {
+		Params: []NativeParam{
+			{Name: "other", Type: "map"},
+		},
+		ReturnType: "map",
+	},
+	"keys": {
+		Params:     []NativeParam{},
+		ReturnType: "list[string]",
+	},
+	"values": {
+		Params:     []NativeParam{},
+		ReturnType: "list",
+	},
+	"entries": {
+		Params:     []NativeParam{},
+		ReturnType: "list",
+	},
+	"has": {
+		Params: []NativeParam{
+			{Name: "key", Type: "string"},
+		},
+		ReturnType: "bool",
+	},
+	"len": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"size": {
+		Params:     []NativeParam{},
+		ReturnType: "number",
+	},
+	"delete": {
+		Params: []NativeParam{
+			{Name: "key", Type: "string"},
+		},
+		ReturnType: "void",
+	},
+	"clear": {
+		Params:     []NativeParam{},
+		ReturnType: "void",
+	},
+}
+
+func IsMapMethod(name string) bool {
+	_, ok := MapMethodSpecs[strings.ToLower(name)]
+	return ok
+}
+
+func GetMapMethodSpec(name string) (NativeMethodSpec, bool) {
+	spec, ok := MapMethodSpecs[strings.ToLower(name)]
 	return spec, ok
 }

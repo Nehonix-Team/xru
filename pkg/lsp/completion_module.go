@@ -84,7 +84,12 @@ func (s *Server) handleFromCompletion(uri, prefixLine, trimmedPrefix string) []C
 		// User is completing module name in namespace
 		mods, err := modCfg.GetNamespaceModules(ns)
 		if err == nil {
+			seenNames := make(map[string]bool)
 			for _, m := range mods {
+				if seenNames[m.Name] {
+					continue
+				}
+				seenNames[m.Name] = true
 				items = append(items, CompletionItem{
 					Label:            m.Name,
 					Kind:             CompletionItemKindModule,

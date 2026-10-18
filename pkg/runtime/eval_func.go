@@ -28,6 +28,10 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 				return nil, fmt.Errorf("method '%s' not found on task", c.Property)
 			}
 		}
+		propLower := strings.ToLower(c.Property)
+		if (propLower == "type" || propLower == "typeof") && len(call.Arguments) == 0 {
+			return StringValue{Val: string(objVal.Type())}, nil
+		}
 		if strVal, ok := objVal.(StringValue); ok {
 			return ev.evalStringMethod(c, strVal, call.Arguments, env)
 		}
@@ -79,6 +83,9 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		if c.IsUnitSelf {
 			if env.unitRef == nil {
 				return nil, fmt.Errorf("internal unit reference '&%s::%s' cannot be called outside a unit definition", c.Scope, c.Member)
+			}
+			if c.Scope != "self" && !strings.EqualFold(c.Scope, env.unitRef.UnitName) {
+				return nil, fmt.Errorf("cannot reference '&%s::%s' inside unit '%s'; use '&%s::%s' or '&self::%s'", c.Scope, c.Member, env.unitRef.UnitName, env.unitRef.UnitName, c.Member, c.Member)
 			}
 			method, ok := env.unitRef.Methods[c.Member]
 			if !ok {
@@ -143,37 +150,19 @@ func (ev *Evaluator) evalCall(call *ast.CallExpression, env *Environment) (Value
 		}
 		return method(args)
 	case *ast.PropAccess:
-		if env.unitRef == nil {
-			return nil, fmt.Errorf("method '&%s' cannot be called outside a unit definition", c.Name)
+		unitName := "Unit"
+		if env.unitRef != nil {
+			unitName = env.unitRef.UnitName
 		}
-		method, ok := env.unitRef.Methods[c.Name]
-		if !ok {
-			for mName, mFn := range env.unitRef.Methods {
-				if strings.EqualFold(mName, c.Name) {
-					method = mFn
-					ok = true
-					break
-				}
-			}
-		}
-		if !ok {
-			return nil, fmt.Errorf("method '&%s' not found on unit '%s'", c.Name, env.unitRef.UnitName)
-		}
-		var args []Value
-		for _, arg := range call.Arguments {
-			a, err := ev.Eval(arg, env)
-			if err != nil {
-				return nil, err
-			}
-			args = append(args, a)
-		}
-		if env.unitRef.UnitName == "Fs" && env != nil && env.CurrentDir() != "" {
-			resolveFsPathArgs(c.Name, args, env.CurrentDir())
-		}
-		return method(args)
+		return nil, fmt.Errorf("cannot call '&%s()' directly. The '&' symbol is strictly reserved for accessing variables declared via 'declare'. To call unit methods, use '&%s::%s()' or '&self::%s()'", c.Name, unitName, c.Name, c.Name)
 	case *ast.Identifier:
 		val, ok := env.GetLocal(c.Value)
 		if !ok {
+			if env.unitRef != nil {
+				if _, isMethod := env.unitRef.Methods[c.Value]; isMethod {
+					return nil, fmt.Errorf("cannot call unit method '%s' directly: use '&%s::%s()' or '&self::%s()'", c.Value, env.unitRef.UnitName, c.Value, c.Value)
+				}
+			}
 			if _, isGlobal := env.GetGlobal(c.Value); isGlobal {
 				return nil, fmt.Errorf("cannot call global function '%s' as local; use '::%s(...)' or 'global::%s(...)'", c.Value, c.Value, c.Value)
 			}
@@ -504,6 +493,19 @@ func (ev *Evaluator) evalStringMethod(c *ast.MemberExpression, strVal StringValu
 			start = end
 		}
 		return StringValue{Val: s[start:end]}, nil
+	case "repeat":
+		if len(args) != 1 {
+			return nil, fmt.Errorf("method 'repeat' requires 1 argument (count: number), but got %d", len(args))
+		}
+		n, ok := args[0].(NumberValue)
+		if !ok {
+			return nil, fmt.Errorf("method 'repeat' expects number for count, got %s", args[0].Type())
+		}
+		count := int(n.Val)
+		if count < 0 {
+			return nil, fmt.Errorf("method 'repeat' count must be non-negative, got %d", count)
+		}
+		return StringValue{Val: strings.Repeat(s, count)}, nil
 	case "tostring", "to_string":
 		return strVal, nil
 	default:
@@ -703,6 +705,36 @@ func (ev *Evaluator) evalMapMethod(c *ast.MemberExpression, mapVal MapValue, raw
 		args = append(args, a)
 	}
 	switch strings.ToLower(c.Property) {
+	case "get":
+		if len(args) < 1 {
+			return nil, fmt.Errorf("method 'get' requires at least 1 argument (key: string)")
+		}
+		key := args[0].String()
+		if val, exists := mapVal.Pairs[key]; exists {
+			return val, nil
+		}
+		if len(args) >= 2 {
+			return args[1], nil
+		}
+		return NilValue{}, nil
+	case "set":
+		if len(args) < 2 {
+			return nil, fmt.Errorf("method 'set' requires 2 arguments (key: string, value: any)")
+		}
+		key := args[0].String()
+		mapVal.Pairs[key] = args[1]
+		return mapVal, nil
+	case "merge", "update":
+		if len(args) < 1 {
+			return nil, fmt.Errorf("method 'merge' requires 1 argument (other: map)")
+		}
+		if otherMap, ok := args[0].(MapValue); ok {
+			for k, v := range otherMap.Pairs {
+				mapVal.Pairs[k] = v
+			}
+			return mapVal, nil
+		}
+		return nil, fmt.Errorf("argument to 'merge' must be a map, got %s", args[0].Type())
 	case "keys":
 		var keys []Value
 		for k := range mapVal.Pairs {

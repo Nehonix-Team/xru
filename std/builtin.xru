@@ -38,6 +38,9 @@ interface String {
 
 	/// Returns a substring starting from index start up to optional index end.
 	func slice(start: number, end: number = -1) -> string
+
+	/// Returns a new string consisting of the specified number of copies of the string concatenated together.
+	func repeat(count: number) -> string
 }
 
 /// Dynamically sized ordered list collection.
@@ -93,6 +96,15 @@ interface Number {
 
 /// Key-value dictionary associative collection.
 interface Map {
+	/// Returns the value associated with the specified key, or an optional default fallback.
+	func get(key: string, fallback?: any) -> any
+
+	/// Sets or updates the specified key with a new value in the map.
+	func set(key: string, value: any) -> map
+
+	/// Merges another map's key-value pairs into this map.
+	func merge(other: map) -> map
+
 	/// Returns a list containing all the keys in the map.
 	func keys() -> list[string]
 
@@ -168,13 +180,36 @@ interface Document {
 	/// Deletes target using whitespace-insensitive fuzzy token matching.
 	func removeFuzzy(target: string) -> bool
 
+	/// Replaces all occurrences of target string with replacement.
+	func replace(target: string, replacement: string) -> bool
+
+	/// Deletes all occurrences of target string.
+	func remove(target: string) -> bool
+
 	/// Removes content between start and end delimiters.
-	func removeBetween(start: string, end: string, includeBounds: bool = false) -> bool
+	/// Set cleanGap = true to automatically collapse resulting multiple blank lines and empty gaps.
+	func removeBetween(start: string, end: string, includeBounds: bool = true, cleanGap: bool = false) -> bool
 
 	/// Surgically removes a block starting at anchor by counting matched bracket depth, safely ignoring strings and comments.
-	func removeBalanced(anchor: string, openChar: string = "{", closeChar: string = "}") -> bool
+	/// Set cleanGap = true to automatically collapse resulting multiple blank lines.
+	func removeBalanced(anchor: string, openChar: string = "{", closeChar: string = "}", cleanGap: bool = false) -> bool
+
+	/// Collapses multiple consecutive blank lines across the document down to at most one empty line.
+	func cleanGaps() -> bool
 
 	/// Manually flushes document modifications to disk immediately.
 	func save() -> bool
+}
+
+/// Local sandbox orchestration scope providing directory-scoped file pruning and variant control.
+interface LocalScope {
+	/// Drops files or directories matching the glob patterns.
+	func Drop(patterns: list[string]) -> void
+
+	/// Retains only the files or directories matching the specified patterns, deleting all others.
+	func Keep(patterns: list[string]) -> void
+
+	/// Selects and executes a configuration variant block.
+	func UseVariant(name: string) -> void
 }
 

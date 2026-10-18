@@ -81,7 +81,7 @@ func (s *Server) validateAndPublish(uri, text string) {
 			return Range{Start: Position{Line: line, Character: 0}, End: Position{Line: line, Character: end}}
 		}
 
-		// 4. Imports 'use' / 'from ... use' non utilisés (ligne entière grisée)
+		// 4. Imports 'use' / 'from ... use' non utilisés
 		for _, sym := range c.UnusedImports() {
 			line := sym.Pos.Line - 1
 			if line < 0 {
@@ -93,8 +93,36 @@ func (s *Server) validateAndPublish(uri, text string) {
 			} else if sym.Kind == checker.SymConst || sym.Kind == checker.SymVar {
 				msg = fmt.Sprintf("Imported symbol '%s' is never used", sym.Name)
 			}
+
+			rng := fullLine(line)
+			if line >= 0 && line < len(lines) {
+				lineText := lines[line]
+				// Si l'import est destructuré ou groupé ({, (, ::) ou membre individuel,
+				// on cible précisément le nom du symbole pour ne pas griser toute la ligne si d'autres symboles sont utilisés
+				isDestructuredOrMember := strings.Contains(lineText, "{") || strings.Contains(lineText, "(") || strings.Contains(lineText, "::") || sym.Kind != checker.SymUnit
+				if isDestructuredOrMember {
+					if sym.Pos.Column > 0 {
+						col := sym.Pos.Column - 1
+						rng = Range{
+							Start: Position{Line: line, Character: col},
+							End:   Position{Line: line, Character: col + len(sym.Name)},
+						}
+					} else {
+						reWord := regexp.MustCompile(`\b` + regexp.QuoteMeta(sym.Name) + `\b`)
+						locs := reWord.FindAllStringIndex(lineText, -1)
+						if len(locs) > 0 {
+							loc := locs[len(locs)-1]
+							rng = Range{
+								Start: Position{Line: line, Character: loc[0]},
+								End:   Position{Line: line, Character: loc[1]},
+							}
+						}
+					}
+				}
+			}
+
 			diagnostics = append(diagnostics, Diagnostic{
-				Range:    fullLine(line),
+				Range:    rng,
 				Severity: SeverityHint,
 				Source:   "xru",
 				Message:  msg,

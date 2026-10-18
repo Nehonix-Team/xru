@@ -85,23 +85,20 @@
       ]
     },
     "strings_heredoc_chevron": {
-      "name": "string.quoted.triple.chevron.xru",
+      "name": "string.quoted.double.heredoc.xru",
       "begin": "<<<",
       "beginCaptures": {
         "0": {
-          "name": "keyword.operator.heredoc.xru punctuation.definition.string.begin.xru storage.type.string.xru"
+          "name": "keyword.operator.heredoc.xru punctuation.definition.string.begin.xru"
         }
       },
       "end": ">>>",
       "endCaptures": {
         "0": {
-          "name": "keyword.operator.heredoc.xru punctuation.definition.string.end.xru storage.type.string.xru"
+          "name": "keyword.operator.heredoc.xru punctuation.definition.string.end.xru"
         }
       },
-      "patterns": [
-        { "include": "#interpolation" },
-        { "include": "#color_tags" }
-      ]
+      "patterns": []
     },
     "strings_heredoc_triple": {
       "name": "string.quoted.triple.double.xru",

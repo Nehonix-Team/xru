@@ -386,20 +386,14 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	// 4. #UNIT Sys
 	var sysUnit *UnitInstance
 	cwdFn := func(args []Value) (Value, error) {
-		dir := ""
-		if sysUnit != nil && sysUnit.WorkingDir != "" {
-			dir = sysUnit.WorkingDir
-		} else {
-			wd, err := os.Getwd()
-			if err != nil {
-				return StringValue{Val: ""}, err
-			}
-			dir = wd
+		wd, err := os.Getwd()
+		if err != nil {
+			return StringValue{Val: ""}, err
 		}
-		if abs, err := filepath.Abs(dir); err == nil {
+		if abs, err := filepath.Abs(wd); err == nil {
 			return StringValue{Val: abs}, nil
 		}
-		return StringValue{Val: dir}, nil
+		return StringValue{Val: wd}, nil
 	}
 
 	sysUnit = &UnitInstance{

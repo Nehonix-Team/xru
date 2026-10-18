@@ -13,6 +13,7 @@
     { "include": "#strings_single" },
     { "include": "#loops" },
     { "include": "#keywords_control" },
+    { "include": "#modifiers" },
     { "include": "#keywords_declaration" },
     { "include": "#type_annotations" },
     { "include": "#types" },
@@ -162,6 +163,14 @@
         }
       ]
     },
+    "modifiers": {
+      "patterns": [
+        {
+          "name": "storage.modifier.xru",
+          "match": "\\b(public|private)\\b"
+        }
+      ]
+    },
     "keywords_declaration": {
       "patterns": [
         {
@@ -179,6 +188,29 @@
             "2": { "name": "entity.name.type.class.xru" },
             "3": { "name": "keyword.other.xru" },
             "4": { "name": "entity.name.type.class.xru" }
+          }
+        },
+        {
+          "match": "\\b(declare)\\s+(public|private)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "storage.modifier.xru" },
+            "3": { "name": "variable.other.property.xru" }
+          }
+        },
+        {
+          "match": "\\b(declare)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*(public|private)\\b",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "variable.other.property.xru" },
+            "3": { "name": "storage.modifier.xru" }
+          }
+        },
+        {
+          "match": "\\b(declare)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.xru" },
+            "2": { "name": "variable.other.property.xru" }
           }
         },
         {

@@ -8,7 +8,7 @@ import (
 
 // resolveLocalDefinition searches for local declarations in the current document (let, const, arg, func, unit, declare, interface, type, lambdas, func params, for loops, mod).
 func resolveLocalDefinition(lines []string, word, uri string) *Location {
-	reLocalDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare|interface|type)\s+(%s)\b`, regexp.QuoteMeta(word)))
+	reLocalDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare(?:\s+(?:public|private))?|interface|type)\s+(%s)\b`, regexp.QuoteMeta(word)))
 	for idx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") {

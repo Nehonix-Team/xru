@@ -653,6 +653,64 @@ downloadTask.
 	}
 }
 
+func TestUnitMemberVisibilityCompletion(t *testing.T) {
+	uri := "file:///test_visibility.xru"
+	testCode := `unit Service {
+    declare public endpoint: string = "https://api.com"
+    declare private token: string = "secret"
+    declare internalCount, private: number = 0
+
+    func fetch() -> string {
+        let localTask = "not a member"
+        return &endpoint
+    }
+}
+
+let svc = @Service()
+svc.
+`
+	didOpenReq := formatLSPMessage("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "xru",
+			"version":    1,
+			"text":       testCode,
+		},
+	})
+
+	compReq := formatLSPMessage("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": 12, "character": 4},
+	})
+
+	testInput := bytes.NewBufferString(didOpenReq + compReq)
+	testOutput := &bytes.Buffer{}
+
+	srv := lsp.NewServer(testInput, testOutput)
+	_ = srv.Run()
+
+	outStr := testOutput.String()
+	// Public property must be proposed
+	if !strings.Contains(outStr, `"label":"endpoint"`) {
+		t.Errorf("Expected public property 'endpoint' in svc. completions, got: %s", outStr)
+	}
+	// Unit method must be proposed
+	if !strings.Contains(outStr, `"label":"fetch"`) {
+		t.Errorf("Expected method 'fetch' in svc. completions, got: %s", outStr)
+	}
+	// Private property MUST NOT be proposed
+	if strings.Contains(outStr, `"label":"token"`) {
+		t.Errorf("Private property 'token' should NOT be proposed in svc. completions, got: %s", outStr)
+	}
+	if strings.Contains(outStr, `"label":"internalCount"`) {
+		t.Errorf("Private property 'internalCount' should NOT be proposed in svc. completions, got: %s", outStr)
+	}
+	// Local variable inside method MUST NOT be proposed
+	if strings.Contains(outStr, `"label":"localTask"`) {
+		t.Errorf("Local variable 'localTask' inside method should NOT be proposed in svc. completions, got: %s", outStr)
+	}
+}
+
 func TestInterpolationAndCallCompletion(t *testing.T) {
 	uri := "file:///test_interp.xru"
 	testCode := `use std

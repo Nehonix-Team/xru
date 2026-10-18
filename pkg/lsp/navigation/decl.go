@@ -14,7 +14,7 @@ func FindDeclarationInFile(filePath, word string) (line, char int, found bool) {
 		return 0, 0, false
 	}
 	lines := strings.Split(string(content), "\n")
-	reDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare|interface|type)\s+(%s)\b`, regexp.QuoteMeta(word)))
+	reDecl := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*(?:global\s+|export\s+)?(?:let|const|arg|func|unit|declare(?:\s+(?:public|private))?|interface|type)\s+(%s)\b`, regexp.QuoteMeta(word)))
 	for lIdx, l := range lines {
 		lTrim := strings.TrimSpace(l)
 		if strings.HasPrefix(lTrim, "//") {

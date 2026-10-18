@@ -123,7 +123,6 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 	reLetConst := regexp.MustCompile(`^\s*(?:global\s+)?(let|const|arg)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*:\s*([^=]+?))?(?:\s*=|$)`)
 	reFunc := regexp.MustCompile(`^\s*(?:global\s+)?func\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*?)\)(?:\s*->\s*([a-zA-Z0-9_]+))?`)
 	reUnit := regexp.MustCompile(`^\s*unit\s+([a-zA-Z_][a-zA-Z0-9_]*)`)
-	reDeclare := regexp.MustCompile(`^\s*(?:declare|prop)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*:\s*([^=]+?))?(?:\s*=|$)`)
 	reUse := regexp.MustCompile(`^\s*use\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?`)
 	reFromUse := regexp.MustCompile(`^\s*from\s+"[^"]+"\s+use\s+(.+)$`)
 	reForLoop := regexp.MustCompile(`^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*,\s*([a-zA-Z_][a-zA-Z0-9_]*))?\s+in\b`)
@@ -273,23 +272,22 @@ func collectLocalSymbols(lines []string, currentLine int) []CompletionItem {
 		}
 
 		// 6. declare &prop inside unit
-		if m := reDeclare.FindStringSubmatch(line); len(m) > 1 {
-			name := m[1]
-			typeStr := strings.TrimSpace(m[2])
-			if typeStr == "" {
-				typeStr = "any"
-			}
-			ampName := "&" + name
+		if pInfo := parseDeclareLine(line); pInfo != nil {
+			ampName := "&" + pInfo.name
 			if !seen[ampName] {
 				seen[ampName] = true
+				vis := "public"
+				if pInfo.isPrivate {
+					vis = "private"
+				}
 				items = append(items, CompletionItem{
 					Label:            ampName,
 					Kind:             CompletionItemKindField,
-					Detail:           fmt.Sprintf("(&prop) %s: %s", name, typeStr),
+					Detail:           fmt.Sprintf("(&prop, %s) %s: %s", vis, pInfo.name, pInfo.propType),
 					Documentation:    MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Internal unit property at line %d", idx+1)},
 					InsertText:       ampName,
 					InsertTextFormat: InsertTextFormatPlainText,
-					SortText:         fmt.Sprintf("01_%s", name),
+					SortText:         fmt.Sprintf("01_%s", pInfo.name),
 				})
 			}
 		}

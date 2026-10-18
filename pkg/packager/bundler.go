@@ -69,6 +69,18 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 		return nil, fmt.Errorf("syntax error in %s: %s", filepath.Base(entryPath), pr.Errors()[0])
 	}
 
+	// Semantic validation: validate source file before bundling or inlining
+	srcChk := checker.New()
+	srcChk.SetCurrentFile(entryPath)
+	srcChk.Check(mainProg)
+	if len(srcChk.Errors()) > 0 {
+		var errMsgs []string
+		for _, e := range srcChk.Errors() {
+			errMsgs = append(errMsgs, fmt.Sprintf("  • %s", e))
+		}
+		return nil, fmt.Errorf("validation error in %s:\n%s", filepath.Base(entryPath), strings.Join(errMsgs, "\n"))
+	}
+
 	modFilePath := modules.FindModConfigFile(filepath.Dir(entryPath))
 	if modFilePath == "" {
 		modFilePath = modules.FindModConfigFile(p.rootDir)
@@ -145,6 +157,18 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 		subProg := subParser.ParseProgram()
 		if len(subParser.Errors()) > 0 {
 			return fmt.Errorf("syntax error in module '%s': %s", modDetails.FilePath, subParser.Errors()[0])
+		}
+
+		// Validation sémantique stricte du module importé
+		subChk := checker.New()
+		subChk.SetCurrentFile(modDetails.FilePath)
+		subChk.Check(subProg)
+		if len(subChk.Errors()) > 0 {
+			var errMsgs []string
+			for _, e := range subChk.Errors() {
+				errMsgs = append(errMsgs, fmt.Sprintf("  • %s", e))
+			}
+			return fmt.Errorf("validation error in module '%s' (%s):\n%s", modName, filepath.Base(modDetails.FilePath), strings.Join(errMsgs, "\n"))
 		}
 
 		for _, st := range subProg.Statements {

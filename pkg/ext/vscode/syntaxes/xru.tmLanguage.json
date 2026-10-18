@@ -87,7 +87,17 @@
     "strings_heredoc_chevron": {
       "name": "string.quoted.triple.chevron.xru",
       "begin": "<<<",
+      "beginCaptures": {
+        "0": {
+          "name": "keyword.operator.heredoc.xru punctuation.definition.string.begin.xru storage.type.string.xru"
+        }
+      },
       "end": ">>>",
+      "endCaptures": {
+        "0": {
+          "name": "keyword.operator.heredoc.xru punctuation.definition.string.end.xru storage.type.string.xru"
+        }
+      },
       "patterns": [
         { "include": "#interpolation" },
         { "include": "#color_tags" }

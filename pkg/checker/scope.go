@@ -53,6 +53,10 @@ func NewScope(parent *Scope, isUnit bool) *Scope {
 	}
 }
 
+func (s *Scope) HasParent() bool {
+	return s != nil && s.parent != nil
+}
+
 func (s *Scope) GetEnclosingUnit() *Symbol {
 	if s.unitSym != nil {
 		return s.unitSym

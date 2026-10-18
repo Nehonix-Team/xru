@@ -136,6 +136,7 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 
 	// 3. Type Checking & Strict Validation
 	c := checker.New()
+	c.SetCurrentFile(ruleFile)
 	c.Check(prog)
 	if len(c.Errors()) > 0 {
 		fmt.Printf("\033[31m[VALIDATION ERROR]\033[0m in %s:\n", ruleFile)

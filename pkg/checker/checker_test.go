@@ -1135,6 +1135,19 @@ let x = 10
 	if len(chk5.Errors()) > 0 {
 		t.Errorf("Expected 0 errors for valid import order, got: %v", chk5.Errors())
 	}
+
+	// 6. Nested mod inside function -> ERR_MOD_ORDER
+	c6 := `
+func test() {
+    mod inner
+}
+`
+	p6 := parser.New(lexer.New("t6.xru", c6))
+	chk6 := checker.New()
+	chk6.Check(p6.ParseProgram())
+	if !strings.Contains(strings.Join(chk6.Errors(), " "), "ERR_MOD_ORDER") {
+		t.Errorf("Expected ERR_MOD_ORDER when mod is nested, got: %v", chk6.Errors())
+	}
 }
 
 func TestCheckStdFiles(t *testing.T) {

@@ -192,3 +192,92 @@ arg internalFlag: bool = false
 	}
 }
 
+func TestCustomModNameAndFallback(t *testing.T) {
+	tempDir := t.TempDir()
+	modFile := filepath.Join(tempDir, "_mod.xru")
+	modContent := `map {
+    scripts -> "./scripts/*"
+}`
+	if err := os.WriteFile(modFile, []byte(modContent), 0644); err != nil {
+		t.Fatalf("Failed to write _mod.xru: %v", err)
+	}
+
+	scriptsDir := filepath.Join(tempDir, "scripts")
+	if err := os.MkdirAll(scriptsDir, 0755); err != nil {
+		t.Fatalf("Failed to create scripts dir: %v", err)
+	}
+
+	// 1. File with explicit 'mod arch' and fileName 'archPrune.xru'
+	archFile := filepath.Join(scriptsDir, "archPrune.xru")
+	archContent := `mod arch
+global func archPrune() {}
+`
+	if err := os.WriteFile(archFile, []byte(archContent), 0644); err != nil {
+		t.Fatalf("Failed to write archPrune.xru: %v", err)
+	}
+
+	// 2. File with spaces in filename and NO 'mod' declaration
+	utilFile := filepath.Join(scriptsDir, "my util.xru")
+	utilContent := `global func helper() {}
+`
+	if err := os.WriteFile(utilFile, []byte(utilContent), 0644); err != nil {
+		t.Fatalf("Failed to write my util.xru: %v", err)
+	}
+
+	// 3. File with invalid mod order (mod after import)
+	badOrderFile := filepath.Join(scriptsDir, "badOrder.xru")
+	badOrderContent := `use std
+mod shouldFail
+global func bad() {}
+`
+	if err := os.WriteFile(badOrderFile, []byte(badOrderContent), 0644); err != nil {
+		t.Fatalf("Failed to write badOrder.xru: %v", err)
+	}
+
+	cfg, errs := modules.LoadModConfig(modFile)
+	if len(errs) > 0 {
+		t.Fatalf("Errors loading _mod.xru: %v", errs)
+	}
+
+	// Test 1: Should resolve as 'arch', but NOT as 'archPrune'
+	modArch, err := cfg.ResolveModule("scripts", "arch")
+	if err != nil {
+		t.Fatalf("Expected 'arch' to resolve successfully, got: %v", err)
+	}
+	if modArch.Name != "arch" {
+		t.Errorf("Expected module name 'arch', got '%s'", modArch.Name)
+	}
+	if !modArch.HasCustomName {
+		t.Errorf("Expected HasCustomName to be true for 'arch'")
+	}
+
+	// Crucial: 'archPrune' must FAIL to resolve!
+	_, errPrune := cfg.ResolveModule("scripts", "archPrune")
+	if errPrune == nil {
+		t.Errorf("Expected 'archPrune' to FAIL resolution because 'mod arch' renamed the module, but it succeeded!")
+	}
+
+	// Test 2: 'my util.xru' should resolve as 'myutil' (spaces stripped)
+	modUtil, errUtil := cfg.ResolveModule("scripts", "myutil")
+	if errUtil != nil {
+		t.Fatalf("Expected 'myutil' to resolve for 'my util.xru', got: %v", errUtil)
+	}
+	if modUtil.Name != "myutil" {
+		t.Errorf("Expected module name 'myutil', got '%s'", modUtil.Name)
+	}
+
+	// Test 3: 'badOrder.xru' had mod after use std -> mod shouldFail is ignored, defaults to 'badOrder'
+	_, errShouldFail := cfg.ResolveModule("scripts", "shouldFail")
+	if errShouldFail == nil {
+		t.Errorf("Expected 'shouldFail' to NOT be registered because 'mod' was not at the top")
+	}
+	modBad, errBad := cfg.ResolveModule("scripts", "badOrder")
+	if errBad != nil {
+		t.Fatalf("Expected 'badOrder' to resolve as default name, got: %v", errBad)
+	}
+	if modBad.HasCustomName {
+		t.Errorf("Expected HasCustomName to be false when mod order was invalid")
+	}
+}
+
+

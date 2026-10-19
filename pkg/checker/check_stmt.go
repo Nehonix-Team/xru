@@ -21,6 +21,9 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.UseStatement:
 		if s == nil { return }
 		c.checkUse(s)
+	case *ast.TrapStatement:
+		if s == nil { return }
+		c.checkTrap(s)
 	case *ast.ArgStatement:
 		if s == nil { return }
 		c.checkArg(s)
@@ -987,4 +990,43 @@ func (c *Checker) checkDispatchTree(s *ast.DispatchTreeStatement) {
 			}
 		}
 	}
+}
+
+func (c *Checker) checkTrap(s *ast.TrapStatement) {
+	if s == nil {
+		return
+	}
+	validTargets := map[string]bool{
+		"interrupt": true,
+		"sigint":    true,
+		"terminate": true,
+		"sigterm":   true,
+		"hangup":    true,
+		"sighup":    true,
+		"exit":      true,
+		"error":     true,
+	}
+	if len(s.Targets) == 0 {
+		c.addError(s.Position, "ERR_INVALID_TRAP_TARGET", "trap statement requires at least one target (e.g. interrupt, exit, error)")
+	}
+	for _, target := range s.Targets {
+		lower := strings.ToLower(target)
+		if !validTargets[lower] {
+			c.addError(s.Position, "ERR_INVALID_TRAP_TARGET", fmt.Sprintf("invalid trap target '%s'. Valid targets: interrupt, terminate, hangup, exit, error", target))
+		}
+	}
+
+	c.scope = NewScope(c.scope, false)
+	if s.Alias != "" {
+		_ = c.scope.Define(&Symbol{
+			Name: s.Alias,
+			Kind: SymVar,
+			Type: "any",
+			Pos:  s.Position,
+		})
+	}
+	if s.Body != nil {
+		c.checkStatementList(s.Body.Statements)
+	}
+	c.scope = c.scope.parent
 }

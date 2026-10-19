@@ -109,13 +109,17 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			msg = args[0].String()
 		}
 		fmt.Fprintln(os.Stderr, formatTerminalColors("<red>[FATAL]</> "+msg))
-		os.Exit(exitCodeArg(args, 1, 1))
+		code := exitCodeArg(args, 1, 1)
+		TriggerExitHooks(code)
+		os.Exit(code)
 		return NilValue{}, nil
 	}
 
 	// exitFn : arrêt immédiat du processus sans message.
 	exitFn := func(args []Value) (Value, error) {
-		os.Exit(exitCodeArg(args, 0, 0))
+		code := exitCodeArg(args, 0, 0)
+		TriggerExitHooks(code)
+		os.Exit(code)
 		return NilValue{}, nil
 	}
 

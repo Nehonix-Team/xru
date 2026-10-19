@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -25,6 +26,13 @@ type Evaluator struct {
 	loadedModules  map[string]*UnitInstance
 	loadingModules map[string]bool
 	interfaces     map[string]*ast.InterfaceStatement
+
+	signalTraps  []*TrapHandler
+	exitTraps    []*TrapHandler
+	errorTraps   []*TrapHandler
+	sigChan      chan os.Signal
+	sigListening bool
+	trapMu       sync.Mutex
 }
 
 func isBuiltinUnit(name string) bool {
@@ -307,6 +315,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return clone, nil
 	case *ast.BlockStatement:
 		return ev.evalBlockStatement(n, env)
+	case *ast.TrapStatement:
+		return ev.evalTrapStatement(n, env)
 	case *ast.ExpressionStatement:
 		return ev.Eval(n.Expression, env)
 	case *ast.FileStatement:

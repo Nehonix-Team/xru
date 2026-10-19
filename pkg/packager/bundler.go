@@ -249,7 +249,11 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 					if targetMod, ok := moduleAliases[sa.Scope]; ok {
 						return &ast.Identifier{Position: sa.Position, Value: targetMod + "__" + sa.Member}
 					}
-					return &ast.Identifier{Position: sa.Position, Value: sa.Scope + "__" + sa.Member}
+					return &ast.MemberExpression{
+						Position: sa.Position,
+						Object:   &ast.Identifier{Position: sa.Position, Value: sa.Scope},
+						Property: sa.Member,
+					}
 				}
 				if inst, ok := expr.(*ast.InstantiationExpression); ok {
 					if declNames[inst.UnitName] {
@@ -340,7 +344,11 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 				if targetMod, ok := moduleAliases[sa.Scope]; ok {
 					return &ast.Identifier{Position: sa.Position, Value: targetMod + "__" + sa.Member}
 				}
-				return &ast.Identifier{Position: sa.Position, Value: sa.Scope + "__" + sa.Member}
+				return &ast.MemberExpression{
+					Position: sa.Position,
+					Object:   &ast.Identifier{Position: sa.Position, Value: sa.Scope},
+					Property: sa.Member,
+				}
 			}
 			if inst, ok := expr.(*ast.InstantiationExpression); ok {
 				if target, ok := importedMembers[inst.UnitName]; ok {
@@ -557,6 +565,12 @@ func transformStmt(stmt ast.Statement, fn func(ast.Expression) ast.Expression) a
 	case *ast.BlockStatement:
 		for i, st := range s.Statements {
 			s.Statements[i] = transformStmt(st, fn)
+		}
+	case *ast.TrapStatement:
+		if s.Body != nil {
+			for i, st := range s.Body.Statements {
+				s.Body.Statements[i] = transformStmt(st, fn)
+			}
 		}
 	}
 	return stmt
@@ -1098,6 +1112,26 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		}
 		return fmt.Sprintf("in%s{%s}", pathStr, strings.Join(bodyParts, ";"))
 
+	case *ast.TrapStatement:
+		targetStr := strings.Join(s.Targets, ", ")
+		if len(s.Targets) > 1 {
+			targetStr = "[" + targetStr + "]"
+		}
+		aliasStr := ""
+		if s.Alias != "" {
+			aliasStr = " as " + s.Alias
+		}
+		var bodyParts []string
+		if s.Body != nil {
+			for _, st := range s.Body.Statements {
+				ms := m.minifyStatement(st)
+				if ms != "" {
+					bodyParts = append(bodyParts, ms)
+				}
+			}
+		}
+		return fmt.Sprintf("trap %s%s{%s}", targetStr, aliasStr, strings.Join(bodyParts, ";"))
+
 	case *ast.FileStatement:
 		pathStr := s.Path
 		if s.PathExpr != nil {
@@ -1382,7 +1416,17 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 			}
 			return fmt.Sprintf("&%s::%s", scope, member)
 		}
+		scope := e.Scope
+		if resolved := m.resolveName(scope); resolved != "" {
+			scope = resolved
+		}
 		member := e.Member
+		if mangled, ok := m.unitMethods[member]; ok {
+			member = mangled
+		}
+		if scope != "" {
+			return fmt.Sprintf("%s.%s", scope, member)
+		}
 		if !m.reserved[member] {
 			member = m.getMangledName(member)
 		}

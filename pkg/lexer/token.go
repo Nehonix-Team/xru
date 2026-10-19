@@ -59,6 +59,7 @@ const (
 	INCLUDES      TokenType = "includes"
 	PUBLIC        TokenType = "public"
 	PRIVATE       TokenType = "private"
+	TRAP          TokenType = "trap"
 
 	// Operators & Symbols
 	ASSIGN     TokenType = "="
@@ -165,6 +166,7 @@ var keywords = map[string]TokenType{
 	"includes":      INCLUDES,
 	"public":        PUBLIC,
 	"private":       PRIVATE,
+	"trap":          TRAP,
 }
 
 func LookupIdent(ident string) TokenType {

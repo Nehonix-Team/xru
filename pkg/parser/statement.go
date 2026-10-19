@@ -13,6 +13,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseBlockStatement()
 	case lexer.USE:
 		return p.parseUseStatement()
+	case lexer.TRAP:
+		return p.parseTrapStatement()
 	case lexer.ARG:
 		return p.parseArgStatement()
 	case lexer.LET, lexer.CONST:
@@ -334,6 +336,47 @@ func (p *Parser) parseInStatement() *ast.InStatement {
 		p.addError(pos, "unclosed 'in' block (missing '}')")
 	}
 
+	return stmt
+}
+
+func (p *Parser) parseTrapStatement() *ast.TrapStatement {
+	stmt := &ast.TrapStatement{Position: p.curToken.Pos}
+	p.nextToken() // consomme 'trap'
+
+	// Parsing des cibles : soit [target1, target2] soit un identifiant unique (ex: interrupt, exit, error)
+	if p.curTokenIs(lexer.LBRACKET) {
+		p.nextToken() // consomme '['
+		for !p.curTokenIs(lexer.RBRACKET) && !p.curTokenIs(lexer.EOF) {
+			if p.curTokenIs(lexer.COMMA) {
+				p.nextToken()
+				continue
+			}
+			stmt.Targets = append(stmt.Targets, p.curToken.Literal)
+			p.nextToken()
+		}
+		if p.curTokenIs(lexer.RBRACKET) {
+			p.nextToken() // consomme ']'
+		}
+	} else if p.curTokenIs(lexer.IDENT) || (p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.LBRACE && p.curToken.Type != lexer.AS) {
+		stmt.Targets = append(stmt.Targets, p.curToken.Literal)
+		p.nextToken()
+	}
+
+	// Optionnel : as <alias>
+	if p.curTokenIs(lexer.AS) {
+		p.nextToken() // consomme 'as'
+		if p.curTokenIs(lexer.IDENT) {
+			stmt.Alias = p.curToken.Literal
+			p.nextToken()
+		}
+	}
+
+	if !p.curTokenIs(lexer.LBRACE) {
+		p.addError(p.curToken.Pos, "expected '{' after trap declaration")
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
 	return stmt
 }
 

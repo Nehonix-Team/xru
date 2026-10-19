@@ -567,6 +567,32 @@ func (s *ExpressionStatement) statementNode()      {}
 func (s *ExpressionStatement) Pos() lexer.Position { return s.Position }
 func (s *ExpressionStatement) String() string      { return s.Expression.String() }
 
+// TrapStatement : trap target [as alias] { ... }
+type TrapStatement struct {
+	Position lexer.Position
+	Targets  []string
+	Alias    string
+	Body     *BlockStatement
+}
+
+func (s *TrapStatement) statementNode()      {}
+func (s *TrapStatement) Pos() lexer.Position { return s.Position }
+func (s *TrapStatement) String() string {
+	targetStr := strings.Join(s.Targets, ", ")
+	if len(s.Targets) > 1 {
+		targetStr = "[" + targetStr + "]"
+	}
+	aliasStr := ""
+	if s.Alias != "" {
+		aliasStr = " as " + s.Alias
+	}
+	bodyStr := "{}"
+	if s.Body != nil {
+		bodyStr = s.Body.String()
+	}
+	return fmt.Sprintf("trap %s%s %s", targetStr, aliasStr, bodyStr)
+}
+
 // -----------------------------------------------------------------------------
 // Expressions (Littéraux, Variables, Appels, Instanciations, Collections)
 // -----------------------------------------------------------------------------

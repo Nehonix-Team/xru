@@ -357,9 +357,13 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 
 	// Exécution du programme
 	if _, err := eval.Eval(prog, env); err != nil {
-		fmt.Printf("\033[31m[RUNTIME ERROR]\033[0m %v\n", err)
+		if !eval.RunErrorTraps(err) {
+			fmt.Printf("\033[31m[RUNTIME ERROR]\033[0m %v\n", err)
+		}
+		eval.RunExitTraps(1)
 		os.Exit(1)
 	}
+	eval.RunExitTraps(0)
 }
 
 func handlePack(args []string, verbose bool) {

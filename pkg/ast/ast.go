@@ -49,10 +49,11 @@ func (p *Program) String() string {
 // Déclarations de tête (#USE, #ARG, let, const)
 // -----------------------------------------------------------------------------
 
-// UseStatement : #USE module as Alias
+// UseStatement : use module [as Alias] / use module::@map{ ... }
 type UseStatement struct {
 	Position lexer.Position
 	Module   string
+	Members  []string
 	Alias    string
 	CatchVar string
 }
@@ -60,10 +61,13 @@ type UseStatement struct {
 func (s *UseStatement) statementNode()      {}
 func (s *UseStatement) Pos() lexer.Position { return s.Position }
 func (s *UseStatement) String() string {
-	if s.Alias != "" {
-		return fmt.Sprintf("#USE %s as %s", s.Module, s.Alias)
+	if len(s.Members) > 0 {
+		return fmt.Sprintf("use %s::@map{%s}", s.Module, strings.Join(s.Members, ", "))
 	}
-	return fmt.Sprintf("#USE %s", s.Module)
+	if s.Alias != "" {
+		return fmt.Sprintf("use %s as %s", s.Module, s.Alias)
+	}
+	return fmt.Sprintf("use %s", s.Module)
 }
 
 // ArgStatement : [global/export] arg NAME [as ALIAS]: type = default  /  #ARG NAME: type or default
@@ -567,9 +571,10 @@ func (s *ExpressionStatement) statementNode()      {}
 func (s *ExpressionStatement) Pos() lexer.Position { return s.Position }
 func (s *ExpressionStatement) String() string      { return s.Expression.String() }
 
-// TrapStatement : trap target [as alias] { ... }
+// TrapStatement : trap [scope::]target / trap [scope::]@map{...} [as alias] { ... }
 type TrapStatement struct {
 	Position lexer.Position
+	Scope    string
 	Targets  []string
 	Alias    string
 	Body     *BlockStatement
@@ -578,9 +583,18 @@ type TrapStatement struct {
 func (s *TrapStatement) statementNode()      {}
 func (s *TrapStatement) Pos() lexer.Position { return s.Position }
 func (s *TrapStatement) String() string {
-	targetStr := strings.Join(s.Targets, ", ")
-	if len(s.Targets) > 1 {
-		targetStr = "[" + targetStr + "]"
+	targetStr := ""
+	if s.Scope != "" {
+		if len(s.Targets) == 1 {
+			targetStr = fmt.Sprintf("%s::%s", s.Scope, s.Targets[0])
+		} else {
+			targetStr = fmt.Sprintf("%s::@map{%s}", s.Scope, strings.Join(s.Targets, ", "))
+		}
+	} else {
+		targetStr = strings.Join(s.Targets, ", ")
+		if len(s.Targets) > 1 {
+			targetStr = "(" + targetStr + ")"
+		}
 	}
 	aliasStr := ""
 	if s.Alias != "" {

@@ -1038,6 +1038,22 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	units["Date"] = dateUnit
 	units["date"] = dateUnit
 
+	// 12. #UNIT sig (Signal handling & process lifecycle)
+	sigUnit := &UnitInstance{
+		UnitName: "Sig",
+		Properties: map[string]Value{
+			"interrupt": StringValue{Val: "interrupt"},
+			"terminate": StringValue{Val: "terminate"},
+			"hangup":    StringValue{Val: "hangup"},
+			"exit":      StringValue{Val: "exit"},
+			"error":     StringValue{Val: "error"},
+		},
+		Methods:    make(map[string]NativeMethod),
+		Directives: make(map[string]NativeDirective),
+	}
+	units["Sig"] = sigUnit
+	units["sig"] = sigUnit
+
 	return units
 }
 

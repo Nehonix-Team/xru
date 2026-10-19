@@ -40,6 +40,33 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 	}
 
 	if sourceSym != nil {
+		if len(s.Members) > 0 {
+			for _, mem := range s.Members {
+				var memSym *Symbol
+				if pSym, ok := sourceSym.Properties[mem]; ok {
+					memSym = pSym
+				} else if mSym, ok := sourceSym.Methods[mem]; ok {
+					memSym = mSym
+				}
+				if memSym != nil {
+					imported := &Symbol{
+						Name: mem,
+						Kind: memSym.Kind,
+						Type: memSym.Type,
+						Pos:  s.Pos(),
+					}
+					if err := c.scope.Define(imported); err != nil {
+						c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())
+					} else {
+						c.importedSyms = append(c.importedSyms, imported)
+					}
+				} else {
+					c.addError(s.Pos(), "ERR_UNKNOWN_MEMBER", fmt.Sprintf("Member '%s' does not exist on module '%s'", mem, s.Module))
+				}
+			}
+			return
+		}
+
 		aliasSym := &Symbol{
 			Name:       alias,
 			Kind:       SymUnit,
@@ -47,6 +74,7 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 			Pos:        s.Pos(),
 			Directives: sourceSym.Directives,
 			Methods:    sourceSym.Methods,
+			Properties: sourceSym.Properties,
 		}
 		if err := c.scope.Define(aliasSym); err != nil {
 			c.addError(s.Pos(), "ERR_DUPLICATE_SYMBOL", err.Error())

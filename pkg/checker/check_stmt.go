@@ -1009,10 +1009,22 @@ func (c *Checker) checkTrap(s *ast.TrapStatement) {
 	if len(s.Targets) == 0 {
 		c.addError(s.Position, "ERR_INVALID_TRAP_TARGET", "trap statement requires at least one target (e.g. interrupt, exit, error)")
 	}
+	if s.Scope != "" {
+		if sym, ok := c.scope.Resolve(s.Scope); ok {
+			sym.Used = true
+		} else {
+			c.addError(s.Position, "ERR_UNDEFINED_VARIABLE", fmt.Sprintf("Module or unit '%s' is not defined in current scope (did you forget 'use %s'?)", s.Scope, s.Scope))
+		}
+	}
+
 	for _, target := range s.Targets {
 		lower := strings.ToLower(target)
 		if !validTargets[lower] {
 			c.addError(s.Position, "ERR_INVALID_TRAP_TARGET", fmt.Sprintf("invalid trap target '%s'. Valid targets: interrupt, terminate, hangup, exit, error", target))
+		} else if s.Scope == "" {
+			if sym, ok := c.scope.Resolve(target); ok {
+				sym.Used = true
+			}
 		}
 	}
 

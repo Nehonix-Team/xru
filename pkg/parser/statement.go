@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
@@ -343,19 +344,65 @@ func (p *Parser) parseTrapStatement() *ast.TrapStatement {
 	stmt := &ast.TrapStatement{Position: p.curToken.Pos}
 	p.nextToken() // consomme 'trap'
 
-	// Parsing des cibles : soit [target1, target2] soit un identifiant unique (ex: interrupt, exit, error)
-	if p.curTokenIs(lexer.LBRACKET) {
-		p.nextToken() // consomme '['
-		for !p.curTokenIs(lexer.RBRACKET) && !p.curTokenIs(lexer.EOF) {
-			if p.curTokenIs(lexer.COMMA) {
-				p.nextToken()
-				continue
+	// Cas 1: trap sig::@map{...} ou trap sig::interrupt ou trap sig.interrupt
+	if p.curTokenIs(lexer.IDENT) && (p.peekTokenIs(lexer.DOUBLE_COLON) || p.peekTokenIs(lexer.DOT)) {
+		stmt.Scope = p.curToken.Literal
+		p.nextToken() // saute l'identifiant scope (ex: "sig")
+		p.nextToken() // saute '::' ou '.'
+
+		// Est-ce un groupement @map{...} ?
+		if p.curTokenIs(lexer.AT) {
+			p.nextToken() // saute '@'
+			if p.curTokenIs(lexer.MAP) || (p.curTokenIs(lexer.IDENT) && strings.ToLower(p.curToken.Literal) == "map") {
+				p.nextToken() // saute 'map'
 			}
+			if p.curTokenIs(lexer.LBRACE) {
+				p.nextToken() // saute '{'
+				for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+					if p.curTokenIs(lexer.COMMA) || p.curTokenIs(lexer.SEMICOLON) {
+						p.nextToken()
+						continue
+					}
+					if p.curTokenIs(lexer.IDENT) {
+						stmt.Targets = append(stmt.Targets, p.curToken.Literal)
+					}
+					p.nextToken()
+				}
+				if p.curTokenIs(lexer.RBRACE) {
+					p.nextToken() // saute '}'
+				}
+			}
+		} else if p.curTokenIs(lexer.IDENT) {
 			stmt.Targets = append(stmt.Targets, p.curToken.Literal)
 			p.nextToken()
 		}
-		if p.curTokenIs(lexer.RBRACKET) {
-			p.nextToken() // consomme ']'
+	} else if p.curTokenIs(lexer.LPAREN) || p.curTokenIs(lexer.LBRACKET) {
+		closeTok := lexer.RPAREN
+		if p.curTokenIs(lexer.LBRACKET) {
+			closeTok = lexer.RBRACKET
+		}
+		p.nextToken() // saute '(' ou '['
+		for !p.curTokenIs(closeTok) && !p.curTokenIs(lexer.EOF) {
+			if p.curTokenIs(lexer.COMMA) || p.curTokenIs(lexer.SEMICOLON) {
+				p.nextToken()
+				continue
+			}
+			if p.curTokenIs(lexer.IDENT) {
+				ident := p.curToken.Literal
+				if p.peekTokenIs(lexer.DOUBLE_COLON) || p.peekTokenIs(lexer.DOT) {
+					p.nextToken() // saute scope
+					p.nextToken() // saute '::' ou '.'
+					if p.curTokenIs(lexer.IDENT) {
+						stmt.Targets = append(stmt.Targets, p.curToken.Literal)
+					}
+				} else {
+					stmt.Targets = append(stmt.Targets, ident)
+				}
+			}
+			p.nextToken()
+		}
+		if p.curTokenIs(closeTok) {
+			p.nextToken() // saute ')' ou ']'
 		}
 	} else if p.curTokenIs(lexer.IDENT) || (p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.LBRACE && p.curToken.Type != lexer.AS) {
 		stmt.Targets = append(stmt.Targets, p.curToken.Literal)

@@ -210,6 +210,21 @@ func (c *Checker) initBuiltinUnits() {
 	c.availableModules["Math"] = mathUnit
 	c.availableModules["math"] = mathUnit
 
+	sigUnit := &Symbol{
+		Name: "sig",
+		Kind: SymUnit,
+		Properties: map[string]*Symbol{
+			"interrupt": {Name: "interrupt", Kind: SymVar, Type: "string"},
+			"terminate": {Name: "terminate", Kind: SymVar, Type: "string"},
+			"hangup":    {Name: "hangup", Kind: SymVar, Type: "string"},
+			"exit":      {Name: "exit", Kind: SymVar, Type: "string"},
+			"error":     {Name: "error", Kind: SymVar, Type: "string"},
+		},
+		Methods: make(map[string]*Symbol),
+	}
+	c.availableModules["sig"] = sigUnit
+	c.availableModules["Sig"] = sigUnit
+
 	stdInterfaces := []string{
 		"Document", "SysNative", "FsNative", "NetNative", "CryptoNative",
 		"JsonNative", "MathNative", "DateNative", "CmdNative", "PathNative", "StdNative",

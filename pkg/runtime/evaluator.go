@@ -190,6 +190,23 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		found := false
 		for bName, bUnit := range ev.builtins {
 			if strings.EqualFold(bName, unitName) {
+				if len(n.Members) > 0 {
+					for _, mem := range n.Members {
+						if prop, ok := bUnit.Properties[mem]; ok {
+							if err := env.Set(mem, prop, true); err != nil {
+								return nil, err
+							}
+						} else if fn, ok := bUnit.Methods[mem]; ok {
+							if err := env.Set(mem, FunctionValue{Name: mem, Fn: fn}, true); err != nil {
+								return nil, err
+							}
+						} else {
+							return nil, fmt.Errorf("member '%s' not found on module '%s'", mem, unitName)
+						}
+					}
+					found = true
+					break
+				}
 				if existingVal, ok := env.store[alias]; ok {
 					if existingUnit, isUnit := existingVal.(*UnitInstance); isUnit && strings.EqualFold(existingUnit.UnitName, bUnit.UnitName) {
 						found = true

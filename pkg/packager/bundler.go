@@ -411,8 +411,21 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 		}
 	}
 
+	var nativeUses []ast.Statement
+	var aliasedUses []ast.Statement
+	for _, u := range useStmts {
+		if us, ok := u.(*ast.UseStatement); ok && us.Alias == "" && len(us.Members) == 0 {
+			nativeUses = append(nativeUses, u)
+		} else {
+			aliasedUses = append(aliasedUses, u)
+		}
+	}
+	var orderedUses []ast.Statement
+	orderedUses = append(orderedUses, nativeUses...)
+	orderedUses = append(orderedUses, aliasedUses...)
+
 	var finalStmts []ast.Statement
-	finalStmts = append(finalStmts, useStmts...)
+	finalStmts = append(finalStmts, orderedUses...)
 	finalStmts = append(finalStmts, argStmts...)
 	finalStmts = append(finalStmts, unitStmts...)
 	finalStmts = append(finalStmts, varStmts...)
@@ -938,6 +951,9 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		return fmt.Sprintf("%sarg %s: %s", prefix, namePart, s.Type)
 
 	case *ast.UseStatement:
+		if len(s.Members) > 0 {
+			return fmt.Sprintf("use %s::@map{%s}", s.Module, strings.Join(s.Members, ", "))
+		}
 		alias := m.moduleAliases[s.Module]
 		if alias != "" {
 			return fmt.Sprintf("use %s as %s", s.Module, alias)
@@ -1113,9 +1129,22 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		return fmt.Sprintf("in%s{%s}", pathStr, strings.Join(bodyParts, ";"))
 
 	case *ast.TrapStatement:
-		targetStr := strings.Join(s.Targets, ", ")
-		if len(s.Targets) > 1 {
-			targetStr = "[" + targetStr + "]"
+		targetStr := ""
+		if s.Scope != "" {
+			scope := s.Scope
+			if resolved := m.resolveName(scope); resolved != "" {
+				scope = resolved
+			}
+			if len(s.Targets) == 1 {
+				targetStr = fmt.Sprintf("%s::%s", scope, s.Targets[0])
+			} else {
+				targetStr = fmt.Sprintf("%s::@map{%s}", scope, strings.Join(s.Targets, ", "))
+			}
+		} else {
+			targetStr = strings.Join(s.Targets, ", ")
+			if len(s.Targets) > 1 {
+				targetStr = "(" + targetStr + ")"
+			}
 		}
 		aliasStr := ""
 		if s.Alias != "" {

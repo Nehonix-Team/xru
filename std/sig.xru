@@ -1,0 +1,11 @@
+// Package sig provides process signal constants and lifecycle trap primitives.
+
+interface SigNative @map {
+	interrupt string
+	terminate string
+	hangup string
+	exit string
+	error string
+}
+
+unit sig includes SigNative {}

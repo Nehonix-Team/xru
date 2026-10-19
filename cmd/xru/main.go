@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Nehonix-Team/xru/internal/utils"
@@ -170,6 +171,9 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 	// Extraction des #ARG déclarés dans le fichier racine et les modules importés pour validation stricte
 	declaredArgs := make(map[string]*ast.ArgStatement)
 	rootArgs := make(map[string]bool)
+	var orderedArgs []*ast.ArgStatement
+	seenOrdered := make(map[string]bool)
+
 	collectArgsFromProg := func(p *ast.Program) {
 		if p == nil {
 			return
@@ -177,8 +181,12 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 		for _, stmt := range p.Statements {
 			if argStmt, ok := stmt.(*ast.ArgStatement); ok {
 				declaredArgs[strings.ToUpper(argStmt.Name)] = argStmt
-				if argStmt.Alias != "" {
-					declaredArgs[strings.ToUpper(argStmt.Alias)] = argStmt
+				if argStmt.Short != "" {
+					declaredArgs[strings.ToUpper(argStmt.Short)] = argStmt
+				}
+				if !seenOrdered[argStmt.Name] {
+					seenOrdered[argStmt.Name] = true
+					orderedArgs = append(orderedArgs, argStmt)
 				}
 			}
 		}
@@ -187,8 +195,8 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 	for _, stmt := range prog.Statements {
 		if argStmt, ok := stmt.(*ast.ArgStatement); ok {
 			rootArgs[strings.ToUpper(argStmt.Name)] = true
-			if argStmt.Alias != "" {
-				rootArgs[strings.ToUpper(argStmt.Alias)] = true
+			if argStmt.Short != "" {
+				rootArgs[strings.ToUpper(argStmt.Short)] = true
 			}
 		}
 	}
@@ -245,12 +253,42 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 		}
 	}
 
-	// Parsing et validation des arguments CLI (--name=val, --xems false, -mode minimal, --no-xems, etc.)
+	// Interception de l'aide dynamique (--help ou -h)
+	for _, a := range cliArgs {
+		if a == "--help" || a == "-h" {
+			printScriptHelp(ruleFile, declaredArgs)
+			os.Exit(0)
+		}
+	}
+
+	// Parsing et validation des arguments CLI (--name=val, -m minimal, positionnels, etc.)
+	boundArgs := make(map[string]bool)
+	posArgIdx := 0
+
 	for i := 0; i < len(cliArgs); i++ {
 		arg := cliArgs[i]
 		if !strings.HasPrefix(arg, "-") {
-			fmt.Printf("\033[31m[CLI ERROR]\033[0m Unexpected argument '%s'\n", arg)
-			os.Exit(1)
+			// Argument positionnel : bind au prochain argument déclaré non encore assigné
+			for posArgIdx < len(orderedArgs) && boundArgs[orderedArgs[posArgIdx].Name] {
+				posArgIdx++
+			}
+			if posArgIdx >= len(orderedArgs) {
+				fmt.Printf("\033[31m[CLI ERROR]\033[0m Unexpected positional argument '%s'\n", arg)
+				os.Exit(1)
+			}
+			declArg := orderedArgs[posArgIdx]
+			posArgIdx++
+			boundArgs[declArg.Name] = true
+			actualKey := declArg.VarName()
+			assignedVal := parseCliVal(arg)
+
+			if rootArgs[strings.ToUpper(declArg.Name)] {
+				env.Set(declArg.Name, assignedVal, false)
+				env.Set(actualKey, assignedVal, false)
+			}
+			env.SetGlobal(declArg.Name, assignedVal)
+			env.SetGlobal(actualKey, assignedVal)
+			continue
 		}
 
 		trimmed := strings.TrimLeft(arg, "-")
@@ -291,6 +329,7 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 		}
 
 		declArg := declaredArgs[targetKey]
+		boundArgs[declArg.Name] = true
 		actualKey := declArg.VarName()
 		var assignedVal runtime.Value
 		if isNegative {
@@ -421,6 +460,48 @@ func parseCliVal(val string) runtime.Value {
 	if lower == "simple" || lower == "minimal" {
 		return runtime.StringValue{Val: "minimal"}
 	}
+	if n, err := strconv.ParseFloat(val, 64); err == nil {
+		return runtime.NumberValue{Val: n}
+	}
 	return runtime.StringValue{Val: val}
+}
+
+func printScriptHelp(ruleFile string, declaredArgs map[string]*ast.ArgStatement) {
+	baseName := filepath.Base(ruleFile)
+	if baseName == "init.xru" {
+		fmt.Printf("\nUsage: xfpm init [name] [options]\n\n")
+	} else {
+		fmt.Printf("\nUsage: xru run %s [options]\n\n", baseName)
+	}
+	if len(declaredArgs) > 0 {
+		fmt.Println("Options:")
+		seen := make(map[*ast.ArgStatement]bool)
+		var list []*ast.ArgStatement
+		for _, arg := range declaredArgs {
+			if !seen[arg] {
+				seen[arg] = true
+				list = append(list, arg)
+			}
+		}
+		sort.Slice(list, func(i, j int) bool {
+			return list[i].Name < list[j].Name
+		})
+		for _, arg := range list {
+			flagStr := fmt.Sprintf("--%s", arg.Name)
+			if arg.Short != "" {
+				flagStr = fmt.Sprintf("--%s, -%s", arg.Name, arg.Short)
+			}
+			typeStr := arg.Type
+			if typeStr == "" {
+				typeStr = "any"
+			}
+			defaultStr := ""
+			if arg.DefaultValue != nil {
+				defaultStr = fmt.Sprintf(" (default: %s)", arg.DefaultValue.String())
+			}
+			fmt.Printf("  %-28s <%s>%s\n", flagStr, typeStr, defaultStr)
+		}
+		fmt.Printf("  %-28s Show this help message\n\n", "--help, -h")
+	}
 }
 

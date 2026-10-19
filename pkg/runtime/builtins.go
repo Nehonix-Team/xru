@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -386,20 +387,14 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	// 4. #UNIT Sys
 	var sysUnit *UnitInstance
 	cwdFn := func(args []Value) (Value, error) {
-		dir := ""
-		if sysUnit != nil && sysUnit.WorkingDir != "" {
-			dir = sysUnit.WorkingDir
-		} else {
-			wd, err := os.Getwd()
-			if err != nil {
-				return StringValue{Val: ""}, err
-			}
-			dir = wd
+		wd, err := os.Getwd()
+		if err != nil {
+			return StringValue{Val: ""}, err
 		}
-		if abs, err := filepath.Abs(dir); err == nil {
+		if abs, err := filepath.Abs(wd); err == nil {
 			return StringValue{Val: abs}, nil
 		}
-		return StringValue{Val: dir}, nil
+		return StringValue{Val: wd}, nil
 	}
 
 	sysUnit = &UnitInstance{
@@ -466,6 +461,20 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Version": sysVersionFn,
 			"cwd":     cwdFn,
 			"Cwd":     cwdFn,
+			"homeDir": func(args []Value) (Value, error) {
+				h, err := os.UserHomeDir()
+				if err != nil {
+					return StringValue{Val: ""}, err
+				}
+				return StringValue{Val: h}, nil
+			},
+			"HomeDir": func(args []Value) (Value, error) {
+				h, err := os.UserHomeDir()
+				if err != nil {
+					return StringValue{Val: ""}, err
+				}
+				return StringValue{Val: h}, nil
+			},
 		},
 		Directives: make(map[string]NativeDirective),
 	}
@@ -504,17 +513,14 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 
 		var stdoutBuf, stderrBuf bytes.Buffer
 		cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
-		cmd.Stderr = &stderrBuf
+		cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
 		err := cmd.Run()
 		if err != nil {
-			errMsg := strings.TrimSpace(stderrBuf.String())
-			if errMsg == "" {
-				errMsg = strings.TrimSpace(stdoutBuf.String())
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				return StringValue{Val: stdoutBuf.String()}, fmt.Errorf("command '%s' exited with code %d", commandLine, exitErr.ExitCode())
 			}
-			if errMsg == "" {
-				errMsg = err.Error()
-			}
-			return StringValue{Val: stdoutBuf.String()}, fmt.Errorf("%s", errMsg)
+			return StringValue{Val: stdoutBuf.String()}, err
 		}
 		return StringValue{Val: stdoutBuf.String()}, nil
 	}

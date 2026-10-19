@@ -69,6 +69,18 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 		return nil, fmt.Errorf("syntax error in %s: %s", filepath.Base(entryPath), pr.Errors()[0])
 	}
 
+	// Semantic validation: validate source file before bundling or inlining
+	srcChk := checker.New()
+	srcChk.SetCurrentFile(entryPath)
+	srcChk.Check(mainProg)
+	if len(srcChk.Errors()) > 0 {
+		var errMsgs []string
+		for _, e := range srcChk.Errors() {
+			errMsgs = append(errMsgs, fmt.Sprintf("  • %s", e))
+		}
+		return nil, fmt.Errorf("validation error in %s:\n%s", filepath.Base(entryPath), strings.Join(errMsgs, "\n"))
+	}
+
 	modFilePath := modules.FindModConfigFile(filepath.Dir(entryPath))
 	if modFilePath == "" {
 		modFilePath = modules.FindModConfigFile(p.rootDir)
@@ -98,6 +110,9 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 	for _, st := range mainProg.Statements {
 		if s, ok := st.(*ast.ArgStatement); ok {
 			knownArgs[s.Name] = true
+			if s.Short != "" {
+				knownArgs[s.Short] = true
+			}
 			if s.Alias != "" {
 				knownArgs[s.Alias] = true
 			}
@@ -147,9 +162,24 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 			return fmt.Errorf("syntax error in module '%s': %s", modDetails.FilePath, subParser.Errors()[0])
 		}
 
+		// Validation sémantique stricte du module importé
+		subChk := checker.New()
+		subChk.SetCurrentFile(modDetails.FilePath)
+		subChk.Check(subProg)
+		if len(subChk.Errors()) > 0 {
+			var errMsgs []string
+			for _, e := range subChk.Errors() {
+				errMsgs = append(errMsgs, fmt.Sprintf("  • %s", e))
+			}
+			return fmt.Errorf("validation error in module '%s' (%s):\n%s", modName, filepath.Base(modDetails.FilePath), strings.Join(errMsgs, "\n"))
+		}
+
 		for _, st := range subProg.Statements {
 			if s, ok := st.(*ast.ArgStatement); ok {
 				knownArgs[s.Name] = true
+				if s.Short != "" {
+					knownArgs[s.Short] = true
+				}
 				if s.Alias != "" {
 					knownArgs[s.Alias] = true
 				}
@@ -877,17 +907,21 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		if s.IsGlobal {
 			prefix = "global "
 		}
+		namePart := s.Name
+		if s.Short != "" {
+			namePart = fmt.Sprintf("%s, %s", s.Name, s.Short)
+		}
 		alias := s.VarName()
 		if alias != s.Name {
 			if s.DefaultValue != nil {
-				return fmt.Sprintf("%sarg %s as %s: %s = %s", prefix, s.Name, alias, s.Type, m.minifyExpression(s.DefaultValue))
+				return fmt.Sprintf("%sarg %s as %s: %s = %s", prefix, namePart, alias, s.Type, m.minifyExpression(s.DefaultValue))
 			}
-			return fmt.Sprintf("%sarg %s as %s: %s", prefix, s.Name, alias, s.Type)
+			return fmt.Sprintf("%sarg %s as %s: %s", prefix, namePart, alias, s.Type)
 		}
 		if s.DefaultValue != nil {
-			return fmt.Sprintf("%sarg %s: %s = %s", prefix, s.Name, s.Type, m.minifyExpression(s.DefaultValue))
+			return fmt.Sprintf("%sarg %s: %s = %s", prefix, namePart, s.Type, m.minifyExpression(s.DefaultValue))
 		}
-		return fmt.Sprintf("%sarg %s: %s", prefix, s.Name, s.Type)
+		return fmt.Sprintf("%sarg %s: %s", prefix, namePart, s.Type)
 
 	case *ast.UseStatement:
 		alias := m.moduleAliases[s.Module]

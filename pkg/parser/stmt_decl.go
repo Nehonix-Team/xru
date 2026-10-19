@@ -36,7 +36,7 @@ func (p *Parser) parseUseStatement() *ast.UseStatement {
 	return stmt
 }
 
-// arg name [as alias]: type = default  /  arg name: type or default
+// arg name [, short] [alias short] [as alias]: type = default  /  arg name: type or default
 func (p *Parser) parseArgStatement() *ast.ArgStatement {
 	stmt := &ast.ArgStatement{Position: p.curToken.Pos}
 	if !p.expectPeek(lexer.IDENT) {
@@ -44,6 +44,22 @@ func (p *Parser) parseArgStatement() *ast.ArgStatement {
 	}
 	stmt.Name = p.curToken.Literal
 
+	// Syntaxe court CLI : arg port, p  OU  arg port alias p
+	if p.peekTokenIs(lexer.COMMA) {
+		p.nextToken() // saute ','
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.Short = p.curToken.Literal
+	} else if p.peekTokenIs(lexer.IDENT) && strings.ToLower(p.peekToken.Literal) == "alias" {
+		p.nextToken() // saute 'alias'
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		stmt.Short = p.curToken.Literal
+	}
+
+	// Syntaxe minifiée / interne : [as internalAlias]
 	if p.peekTokenIs(lexer.AS) {
 		p.nextToken() // mange 'as'
 		if !p.expectPeek(lexer.IDENT) {

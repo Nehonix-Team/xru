@@ -35,6 +35,9 @@ interface SysNative {
 
 	/// Returns the current working directory of the process (equivalent to process.cwd() in JS).
 	func cwd() -> string
+
+	/// Returns the absolute path to the current user's home directory (e.g. "/home/username" or "C:\Users\username").
+	func homeDir() -> string
 }
 
 unit sys includes SysNative {}

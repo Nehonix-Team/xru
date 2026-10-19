@@ -108,14 +108,16 @@ func (c *Checker) initBuiltinUnits() {
 			"Version": {Name: "Version", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"cwd":     {Name: "cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"Cwd":     {Name: "Cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"homeDir": {Name: "homeDir", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
+			"HomeDir": {Name: "HomeDir", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 		},
 	}
 	cmdUnit := &Symbol{
 		Name: "Cmd",
 		Kind: SymUnit,
 		Methods: map[string]*Symbol{
-			"Exec": {Name: "Exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}}},
-			"exec": {Name: "exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}}},
+			"Exec": {Name: "Exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}, {Name: "dir", Type: "string"}}, MinArgs: 1, HasOptional: true},
+			"exec": {Name: "exec", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "command", Type: "string"}, {Name: "dir", Type: "string"}}, MinArgs: 1, HasOptional: true},
 		},
 	}
 	cryptoUnit := &Symbol{

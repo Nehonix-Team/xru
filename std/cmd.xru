@@ -3,7 +3,8 @@
 /// Native shell command runner primitives.
 interface CmdNative {
 	/// Executes a system shell command and returns its standard output as a string.
-	func exec(command: string) -> string
+	/// Accepts an optional working directory path where the command should be executed.
+	func exec(command: string, dir: string = "") -> string
 }
 
 unit cmd includes CmdNative {}

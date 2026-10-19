@@ -1,7 +1,7 @@
 # XRU (XyPriss Rule Unit)
 
 [![Specification Version](https://img.shields.io/badge/version-2.0.0-0969da.svg)](./docs/releases.md)
-[![License](https://img.shields.io/badge/license-MIT-gray.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-NOSL-gray.svg)](LICENSE)
 [![Architecture](https://img.shields.io/badge/architecture-Strict%20Types%20%7C%20Fail--Safe-2da44e.svg)](./docs/types.md)
 
 XRU (XyPriss Rule Unit) is a strongly typed, deterministic domain-specific language designed for surgical text and source code transformation, hierarchical rule orchestration, and automated project scaffolding within the Nehonix ecosystem.
@@ -160,5 +160,5 @@ XRU includes a reference Language Server Protocol implementation (`pkg/lsp`) pro
 
 ## License
 
-Distributed under the **MIT** License. Refer to [LICENSE](LICENSE) for terms and conditions.  
+Distributed under the **NOSL** License. Refer to [LICENSE](LICENSE) for terms and conditions.  
 Nehonix Organization.

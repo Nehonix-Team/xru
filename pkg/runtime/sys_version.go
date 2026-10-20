@@ -210,7 +210,20 @@ func autoUpdateXRU(silent bool) error {
 			execPath = "xru"
 		}
 	}
-	execPath, _ = filepath.EvalSymlinks(execPath)
+
+	// Resolve active/updated binary location (in case previous binary was cleaned/relocated by installer)
+	targetExec := execPath
+	if _, statErr := os.Stat(targetExec); statErr != nil {
+		if p, err := exec.LookPath("xru"); err == nil {
+			targetExec = p
+		} else if home, err := os.UserHomeDir(); err == nil {
+			candidate := filepath.Join(home, ".xfpm", "bin", "xru")
+			if _, err := os.Stat(candidate); err == nil {
+				targetExec = candidate
+			}
+		}
+	}
+	targetExec, _ = filepath.EvalSymlinks(targetExec)
 
 	if !silent {
 		fmt.Printf("\n\033[32m[XRU AUTO-UPDATE]\033[0m Successfully updated XRU runtime and standard library.\n")
@@ -219,10 +232,10 @@ func autoUpdateXRU(silent bool) error {
 
 	// Restart process seamlessly
 	if !isWindows {
-		return syscall.Exec(execPath, os.Args, os.Environ())
+		return syscall.Exec(targetExec, os.Args, os.Environ())
 	}
 
-	restartCmd := exec.Command(execPath, os.Args[1:]...)
+	restartCmd := exec.Command(targetExec, os.Args[1:]...)
 	restartCmd.Stdin = os.Stdin
 	restartCmd.Stdout = os.Stdout
 	restartCmd.Stderr = os.Stderr

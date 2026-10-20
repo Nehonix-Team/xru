@@ -120,7 +120,7 @@ func isStatementStarter(t lexer.TokenType) bool {
 		lexer.LET, lexer.CONST, lexer.UNIT, lexer.INTERFACE, lexer.TYPE,
 		lexer.FUNC, lexer.DIRECTIVE, lexer.DECLARE, lexer.IF, lexer.FOR,
 		lexer.WHILE, lexer.MATCH, lexer.RETURN, lexer.PASS, lexer.FILE,
-		lexer.IN, lexer.WITH, lexer.DISPATCH, lexer.DISPATCH_TREE:
+		lexer.IN, lexer.WITH, lexer.DISPATCH, lexer.DISPATCH_TREE, lexer.TRAP:
 		return true
 	}
 	return false
@@ -128,7 +128,7 @@ func isStatementStarter(t lexer.TokenType) bool {
 
 func isBlockBrace(context string) bool {
 	switch context {
-	case "unit", "func", "directive", "if", "elif", "else", "for", "while", "match", "case", "default", "file", "in", "with", "interface":
+	case "unit", "func", "directive", "if", "elif", "else", "for", "while", "match", "case", "default", "file", "in", "with", "interface", "trap":
 		return true
 	}
 	return false
@@ -155,7 +155,7 @@ func (f *fmtEngine) format() string {
 			f.inForHeader = true
 			f.inHeader = true
 		} else if tok.Type == lexer.IF || tok.Type == lexer.ELIF || tok.Type == lexer.WHILE ||
-			tok.Type == lexer.MATCH || tok.Type == lexer.FILE || tok.Type == lexer.WITH {
+			tok.Type == lexer.MATCH || tok.Type == lexer.FILE || tok.Type == lexer.WITH || tok.Type == lexer.TRAP {
 			f.inHeader = true
 		} else if tok.Type == lexer.ARROW {
 			f.inArrowExpr = true
@@ -170,7 +170,7 @@ func (f *fmtEngine) format() string {
 		}
 
 		if f.prevTokType == lexer.AT && tok.Type == lexer.MAP {
-			if f.lastStarter != "interface" {
+			if f.lastStarter != "interface" && f.lastStarter != "trap" && f.lastStarter != "from" && f.lastStarter != "use" {
 				f.lastStarter = "map"
 			}
 		}
@@ -180,6 +180,11 @@ func (f *fmtEngine) format() string {
 			f.handleComment(tok)
 			f.pos++
 			continue
+
+		case lexer.AS:
+			f.writeSpace()
+			f.write("as")
+			f.writeSpace()
 
 		case lexer.LPAREN:
 			f.inParen++
@@ -205,6 +210,35 @@ func (f *fmtEngine) format() string {
 			f.write("]")
 
 		case lexer.LBRACE:
+			if f.isInlineMapBrace() {
+				f.write("{")
+				f.pos++
+				isFirst := true
+				for f.pos < len(f.tokens) && f.cur().Type != lexer.RBRACE {
+					if f.cur().Type == lexer.COMMA {
+						f.write(",")
+						f.writeSpace()
+					} else {
+						if !isFirst && f.prevTokType != lexer.COMMA && f.needsSpaceBefore(f.cur()) {
+							f.writeSpace()
+						}
+						f.write(f.cur().Literal)
+					}
+					isFirst = false
+					f.prevTokType = f.cur().Type
+					f.pos++
+				}
+				if f.pos < len(f.tokens) && f.cur().Type == lexer.RBRACE {
+					f.write("}")
+					f.prevTokType = lexer.RBRACE
+					if f.peek().Type == lexer.AS || f.peek().Type == lexer.LBRACE {
+						f.writeSpace()
+					}
+				}
+				f.pos++
+				continue
+			}
+
 			f.inHeader = false
 			f.inForHeader = false
 			f.inArrowExpr = false
@@ -443,8 +477,8 @@ func (f *fmtEngine) shouldInsertSemicolon(cur, next lexer.Token) bool {
 		return false
 	}
 
-	// Never insert semicolon right before 'in' keyword
-	if next.Type == lexer.IN {
+	// Never insert semicolon right before 'in' keyword or around 'as'
+	if next.Type == lexer.IN || next.Type == lexer.AS || cur.Type == lexer.AS {
 		return false
 	}
 
@@ -474,6 +508,21 @@ func isTerminatingToken(t lexer.TokenType) bool {
 	switch t {
 	case lexer.IDENT, lexer.STRING, lexer.NUMBER, lexer.BOOL, lexer.DURATION,
 		lexer.RPAREN, lexer.RBRACKET, lexer.PASS, lexer.RETURN, lexer.QUESTION:
+		return true
+	}
+	return false
+}
+
+func (f *fmtEngine) isInlineMapBrace() bool {
+	if f.prevTokType != lexer.MAP {
+		return false
+	}
+	if f.pos >= 3 && f.tokens[f.pos-2].Type == lexer.MAP && f.tokens[f.pos-3].Type == lexer.AT {
+		if f.pos >= 4 && f.tokens[f.pos-4].Type == lexer.DOUBLE_COLON {
+			return true
+		}
+	}
+	if f.inHeader || f.lastStarter == "trap" || f.lastStarter == "from" || f.lastStarter == "use" {
 		return true
 	}
 	return false

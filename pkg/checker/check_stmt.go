@@ -233,6 +233,7 @@ func (c *Checker) checkReassign(s *ast.ReassignStatement) {
 		c.checkExpression(s.Value)
 		return
 	}
+	sym.Used = true
 
 	if sym.Kind == SymConst {
 		c.addError(s.Pos(), "ERR_CONST_REASSIGNMENT",

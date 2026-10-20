@@ -111,6 +111,7 @@ func main() {
 }
 
 func handleRun(ruleFile string, cliArgs []string, verbose bool) {
+	runtime.SetGlobalCliArgs(cliArgs)
 	content, err := os.ReadFile(ruleFile)
 	if err != nil {
 		fmt.Printf("\033[31m[ERROR]\033[0m Cannot read file '%s': %v\n", ruleFile, err)

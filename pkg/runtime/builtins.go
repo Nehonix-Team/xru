@@ -22,8 +22,26 @@ import (
 	goRuntime "runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
+
+var (
+	globalCliArgsMu sync.RWMutex
+	globalCliArgs   []string
+)
+
+func SetGlobalCliArgs(args []string) {
+	globalCliArgsMu.Lock()
+	defer globalCliArgsMu.Unlock()
+	globalCliArgs = args
+}
+
+func GetGlobalCliArgs() []string {
+	globalCliArgsMu.RLock()
+	defer globalCliArgsMu.RUnlock()
+	return globalCliArgs
+}
 
 func NewBuiltinUnits() map[string]*UnitInstance {
 	units := make(map[string]*UnitInstance)
@@ -626,6 +644,22 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 					return StringValue{Val: ""}, err
 				}
 				return StringValue{Val: h}, nil
+			},
+			"args": func(args []Value) (Value, error) {
+				raw := GetGlobalCliArgs()
+				var elems []Value
+				for _, a := range raw {
+					elems = append(elems, StringValue{Val: a})
+				}
+				return ListValue{Elements: elems}, nil
+			},
+			"Args": func(args []Value) (Value, error) {
+				raw := GetGlobalCliArgs()
+				var elems []Value
+				for _, a := range raw {
+					elems = append(elems, StringValue{Val: a})
+				}
+				return ListValue{Elements: elems}, nil
 			},
 		},
 		Directives: make(map[string]NativeDirective),

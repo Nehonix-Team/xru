@@ -816,7 +816,7 @@ let part = "hello".slice(1, 3)
 
 func TestFromUseUnusedImports(t *testing.T) {
 	code := `
-from "dll" use XpackD::downloadRelease
+from "dll" use XpackD::resolveBundle
 from "dll" use gArgs::name
 let myName = name
 `
@@ -832,10 +832,10 @@ let myName = name
 
 	unused := c.UnusedImports()
 	if len(unused) != 1 {
-		t.Fatalf("Expected 1 unused import (downloadRelease), got %d: %v", len(unused), unused)
+		t.Fatalf("Expected 1 unused import (resolveBundle), got %d: %v", len(unused), unused)
 	}
-	if unused[0].Name != "downloadRelease" {
-		t.Errorf("Expected unused import 'downloadRelease', got '%s'", unused[0].Name)
+	if unused[0].Name != "resolveBundle" {
+		t.Errorf("Expected unused import 'resolveBundle', got '%s'", unused[0].Name)
 	}
 }
 

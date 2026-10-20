@@ -745,6 +745,7 @@ func NewMangler(prog *ast.Program) *Mangler {
 		"func", "let", "const", "use", "mod", "from", "to", "by", "unit", "interface",
 		"type", "set", "get", "has", "delete", "clear", "merge", "keys", "values", "entries",
 		"size", "while", "catch", "on", "header", "directive", "global", "pass", "includes",
+		"input", "select", "confirm",
 	}
 	for _, b := range builtins {
 		m.reserved[b] = true
@@ -1488,6 +1489,13 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 
 	case *ast.GlobalCallExpression:
 		fnName := e.Function
+		if fnName == "input" || fnName == "select" || fnName == "confirm" {
+			var args []string
+			for _, a := range e.Arguments {
+				args = append(args, m.minifyExpression(a))
+			}
+			return fmt.Sprintf("::%s(%s)", fnName, strings.Join(args, ","))
+		}
 		if !m.reserved[fnName] {
 			fnName = m.getMangledName(fnName)
 		}
@@ -1499,6 +1507,9 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 
 	case *ast.GlobalAccessExpression:
 		fnName := e.Name
+		if fnName == "input" || fnName == "select" || fnName == "confirm" {
+			return "::" + fnName
+		}
 		if !m.reserved[fnName] {
 			fnName = m.getMangledName(fnName)
 		}

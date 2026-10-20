@@ -431,7 +431,7 @@ func (p *Parser) parseTrapStatement() *ast.TrapStatement {
 }
 
 func (p *Parser) isStdInStatement() bool {
-	if !p.curTokenIs(lexer.IDENT) || (!strings.EqualFold(p.curToken.Literal, "std")) {
+	if !p.curTokenIs(lexer.IDENT) {
 		return false
 	}
 	if !p.peekTokenIs(lexer.DOUBLE_COLON) && !p.peekTokenIs(lexer.DOT) {

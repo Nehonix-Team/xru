@@ -239,39 +239,6 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 		}
 		exp, ok := modDetails.Exports[s.Member]
 		if !ok {
-			if parentSym, hasParent := c.scope.Resolve(s.Member); hasParent {
-				targetName := s.Member
-				if s.Alias != "" {
-					targetName = s.Alias
-				}
-				memberSym := &Symbol{
-					Name:   targetName,
-					Kind:   parentSym.Kind,
-					Type:   parentSym.Type,
-					Params: parentSym.Params,
-					Pos:    s.Pos(),
-				}
-				_ = c.scope.Define(memberSym)
-				c.importedSyms = append(c.importedSyms, memberSym)
-				return
-			}
-			if s.Source == "root" || s.Module == "main" {
-				if argExp := findExportedArg(modCfg, s.Member); argExp != nil {
-					targetName := s.Member
-					if s.Alias != "" {
-						targetName = s.Alias
-					}
-					memberSym := &Symbol{
-						Name: targetName,
-						Kind: SymVar,
-						Type: argExp.Type,
-						Pos:  s.Pos(),
-					}
-					_ = c.scope.Define(memberSym)
-					c.importedSyms = append(c.importedSyms, memberSym)
-					return
-				}
-			}
 			if s.CatchVar == "" {
 				c.addError(s.Pos(), "ERR_MEMBER_NOT_FOUND", fmt.Sprintf("Member '%s' is not exported by module '%s'", s.Member, s.Module))
 			} else {

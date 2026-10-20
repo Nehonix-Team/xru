@@ -202,24 +202,38 @@ func autoUpdateXRU(silent bool) error {
 		return fmt.Errorf("update sequence execution failed: %w", err)
 	}
 
+	binName := "xru"
+	if isWindows {
+		binName = "xru.exe"
+	}
+
 	execPath, err := os.Executable()
 	if err != nil {
-		if isWindows {
-			execPath = "xru.exe"
-		} else {
-			execPath = "xru"
-		}
+		execPath = binName
 	}
 
 	// Resolve active/updated binary location (in case previous binary was cleaned/relocated by installer)
 	targetExec := execPath
 	if _, statErr := os.Stat(targetExec); statErr != nil {
-		if p, err := exec.LookPath("xru"); err == nil {
+		if p, err := exec.LookPath(binName); err == nil {
 			targetExec = p
 		} else if home, err := os.UserHomeDir(); err == nil {
-			candidate := filepath.Join(home, ".xfpm", "bin", "xru")
-			if _, err := os.Stat(candidate); err == nil {
-				targetExec = candidate
+			candidates := []string{
+				filepath.Join(home, ".xfpm", "bin", binName),
+				filepath.Join(home, ".local", "bin", binName),
+			}
+			if isWindows {
+				if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+					candidates = append(candidates, filepath.Join(localAppData, "xfpm", "bin", binName))
+				}
+			} else {
+				candidates = append(candidates, filepath.Join("/usr/local/bin", binName))
+			}
+			for _, candidate := range candidates {
+				if _, err := os.Stat(candidate); err == nil {
+					targetExec = candidate
+					break
+				}
 			}
 		}
 	}
@@ -239,7 +253,12 @@ func autoUpdateXRU(silent bool) error {
 	restartCmd.Stdin = os.Stdin
 	restartCmd.Stdout = os.Stdout
 	restartCmd.Stderr = os.Stderr
-	_ = restartCmd.Run()
+	if err := restartCmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			os.Exit(exitErr.ExitCode())
+		}
+		os.Exit(1)
+	}
 	os.Exit(0)
 	return nil
 }

@@ -378,7 +378,7 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		if len(args) < 1 {
 			return BoolValue{Val: false}, nil
 		}
-		_, err := os.Stat(args[0].String())
+		_, err := os.Lstat(args[0].String())
 		return BoolValue{Val: err == nil}, nil
 	}
 	readFn := func(args []Value) (Value, error) {
@@ -661,6 +661,72 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 				}
 				return ListValue{Elements: elems}, nil
 			},
+			"hasArg": func(args []Value) (Value, error) {
+				raw := GetGlobalCliArgs()
+				if len(args) == 0 {
+					return BoolValue{Val: len(raw) > 0}, nil
+				}
+				for _, argVal := range args {
+					target := strings.TrimSpace(argVal.String())
+					if target == "" {
+						continue
+					}
+					targetClean := strings.TrimLeft(target, "-")
+					targetLower := strings.ToLower(targetClean)
+
+					for _, cliArg := range raw {
+						cliArgTrimmed := strings.TrimSpace(cliArg)
+						if cliArgTrimmed == target {
+							return BoolValue{Val: true}, nil
+						}
+						if strings.HasPrefix(cliArgTrimmed, target+"=") {
+							return BoolValue{Val: true}, nil
+						}
+						cliClean := strings.TrimLeft(cliArgTrimmed, "-")
+						cliKey := cliClean
+						if idx := strings.Index(cliClean, "="); idx != -1 {
+							cliKey = cliClean[:idx]
+						}
+						if strings.EqualFold(cliKey, targetLower) {
+							return BoolValue{Val: true}, nil
+						}
+					}
+				}
+				return BoolValue{Val: false}, nil
+			},
+			"HasArg": func(args []Value) (Value, error) {
+				raw := GetGlobalCliArgs()
+				if len(args) == 0 {
+					return BoolValue{Val: len(raw) > 0}, nil
+				}
+				for _, argVal := range args {
+					target := strings.TrimSpace(argVal.String())
+					if target == "" {
+						continue
+					}
+					targetClean := strings.TrimLeft(target, "-")
+					targetLower := strings.ToLower(targetClean)
+
+					for _, cliArg := range raw {
+						cliArgTrimmed := strings.TrimSpace(cliArg)
+						if cliArgTrimmed == target {
+							return BoolValue{Val: true}, nil
+						}
+						if strings.HasPrefix(cliArgTrimmed, target+"=") {
+							return BoolValue{Val: true}, nil
+						}
+						cliClean := strings.TrimLeft(cliArgTrimmed, "-")
+						cliKey := cliClean
+						if idx := strings.Index(cliClean, "="); idx != -1 {
+							cliKey = cliClean[:idx]
+						}
+						if strings.EqualFold(cliKey, targetLower) {
+							return BoolValue{Val: true}, nil
+						}
+					}
+				}
+				return BoolValue{Val: false}, nil
+			},
 		},
 		Directives: make(map[string]NativeDirective),
 	}
@@ -704,6 +770,16 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		if err != nil {
 			var exitErr *exec.ExitError
 			if errors.As(err, &exitErr) {
+				exitCode := exitErr.ExitCode()
+				if exitCode == -1 || exitCode == 130 || exitCode == 143 || IsSignalHandling() {
+					// Si un signal est en cours de traitement, laisser la priorité absolue au trap goroutine
+					for i := 0; i < 30; i++ {
+						if IsSignalHandling() {
+							select {} // Bloque le thread principal : le trap effectuera le cleanup et appellera os.Exit
+						}
+						time.Sleep(10 * time.Millisecond)
+					}
+				}
 				return StringValue{Val: stdoutBuf.String()}, fmt.Errorf("command '%s' exited with code %d", commandLine, exitErr.ExitCode())
 			}
 			return StringValue{Val: stdoutBuf.String()}, err

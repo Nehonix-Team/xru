@@ -358,6 +358,9 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 
 	// Exécution du programme
 	if _, err := eval.Eval(prog, env); err != nil {
+		if runtime.IsSignalHandling() {
+			select {}
+		}
 		if !eval.RunErrorTraps(err) {
 			fmt.Printf("\033[31m[RUNTIME ERROR]\033[0m %v\n", err)
 		}

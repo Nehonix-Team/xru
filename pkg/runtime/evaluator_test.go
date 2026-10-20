@@ -2267,6 +2267,69 @@ trap (hangup) as s3 {
 	}
 }
 
+func TestSysHasArg(t *testing.T) {
+	// 1. Without any CLI args
+	runtime.SetGlobalCliArgs([]string{})
+	code1 := `
+let noArgs = Sys.hasArg()
+let hasMode = Sys.hasArg("--mode")
+`
+	l1 := lexer.New("hasarg1.xru", code1)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	ev1 := runtime.NewEvaluator()
+	env1 := runtime.NewEnvironment(nil)
+	if _, err := ev1.Eval(prog1, env1); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if v, _ := env1.Get("noArgs"); v.String() != "false" {
+		t.Errorf("Expected noArgs to be false, got %v", v)
+	}
+	if v, _ := env1.Get("hasMode"); v.String() != "false" {
+		t.Errorf("Expected hasMode to be false, got %v", v)
+	}
+
+	// 2. With CLI args
+	runtime.SetGlobalCliArgs([]string{"--mode=default", "-f", "--name", "my-app"})
+	code2 := `
+let anyArgs = Sys.hasArg()
+let modeLong = Sys.hasArg("--mode")
+let modeName = Sys.hasArg("mode")
+let modeShort = Sys.hasArg("-m")
+let forceShort = Sys.hasArg("-f")
+let forceName = Sys.hasArg("force", "f")
+let nameLong = Sys.hasArg("--name")
+let nonexistent = Sys.hasArg("--port", "-p", "port")
+`
+	l2 := lexer.New("hasarg2.xru", code2)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev2.Eval(prog2, env2); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	expectations := map[string]string{
+		"anyArgs":     "true",
+		"modeLong":    "true",
+		"modeName":    "true",
+		"modeShort":   "false",
+		"forceShort":  "true",
+		"forceName":   "true",
+		"nameLong":    "true",
+		"nonexistent": "false",
+	}
+
+	for k, expected := range expectations {
+		v, ok := env2.Get(k)
+		if !ok || v.String() != expected {
+			t.Errorf("Expected %s to be %s, got %v", k, expected, v)
+		}
+	}
+}
+
+
 
 
 

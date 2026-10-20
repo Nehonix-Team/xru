@@ -396,16 +396,15 @@ func handlePack(args []string, verbose bool) {
 		outputPath = filepath.Join(rootDir, outputPath)
 	}
 
-	// Seul et unique fichier d'ignore officiel : .xruignore
-	ignoreFile := ".xruignore"
-	pkg := packager.New(rootDir, ignoreFile)
+	// Initialisation du packager (auto-détecte .xruinclude en priorité sur .xruignore)
+	pkg := packager.New(rootDir, "")
 	pkg.Verbose = verbose
 
-	// Empaqueter l'ensemble du projet racine en filtrant strictement selon .xruignore
+	// Empaqueter l'ensemble du projet racine en filtrant strictement selon le fichier actif
 	entryDir := "."
 
 	relOutput, _ := filepath.Rel(rootDir, outputPath)
-	fmt.Printf("\033[36m[PACK]\033[0m Packaging project into '\033[1m%s\033[0m' (using %s)...\n", relOutput, ignoreFile)
+	fmt.Printf("\033[36m[PACK]\033[0m Packaging project into '\033[1m%s\033[0m' (using %s)...\n", relOutput, pkg.FilterFile())
 	if err := pkg.Pack(outputPath, entryDir); err != nil {
 		fmt.Printf("\033[31m[PACK ERROR]\033[0m %v\n", err)
 		os.Exit(1)

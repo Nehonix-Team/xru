@@ -13,29 +13,59 @@ import (
 	"github.com/Nehonix-Team/xru/pkg/ast"
 )
 
+const (
+	DefaultIgnoreFile  = ".xruignore"
+	DefaultIncludeFile = ".xruinclude"
+)
+
 type PackageManifest struct {
-	Version      string            `json:"version"`
-	EntryDir     string            `json:"entryDir"`
-	Args         []string          `json:"args,omitempty"`
-	IgnoredPaths []string          `json:"ignoredPaths"`
-	Metadata     map[string]string `json:"metadata"`
+	Version       string            `json:"version"`
+	EntryDir      string            `json:"entryDir"`
+	Args          []string          `json:"args,omitempty"`
+	IgnoredPaths  []string          `json:"ignoredPaths,omitempty"`
+	IncludedPaths []string          `json:"includedPaths,omitempty"`
+	Metadata      map[string]string `json:"metadata"`
 }
 
 type Packager struct {
-	rootDir    string
-	ignoreFile string
-	Verbose    bool
+	rootDir     string
+	ignoreFile  string
+	includeFile string
+	isWhitelist bool
+	Verbose     bool
 }
 
-func New(rootDir string, ignoreFile string) *Packager {
-	if ignoreFile == "" {
-		ignoreFile = ".xruignore"
+func New(rootDir string, filterFile string) *Packager {
+	pkg := &Packager{
+		rootDir:     rootDir,
+		ignoreFile:  DefaultIgnoreFile,
+		includeFile: DefaultIncludeFile,
+		Verbose:     false,
 	}
-	return &Packager{
-		rootDir:    rootDir,
-		ignoreFile: ignoreFile,
-		Verbose:    false,
+
+	if filterFile == DefaultIncludeFile {
+		pkg.isWhitelist = true
+	} else if filterFile != "" && filterFile != DefaultIgnoreFile {
+		pkg.ignoreFile = filterFile
 	}
+
+	// Auto-détection : si .xruinclude existe dans rootDir, il prend automatiquement la priorité sur .xruignore
+	if _, err := os.Stat(filepath.Join(rootDir, pkg.includeFile)); err == nil {
+		pkg.isWhitelist = true
+	}
+
+	return pkg
+}
+
+func (p *Packager) FilterFile() string {
+	if p.isWhitelist {
+		return p.includeFile
+	}
+	return p.ignoreFile
+}
+
+func (p *Packager) IsWhitelist() bool {
+	return p.isWhitelist
 }
 
 // Pack compresse l'arborescence dans un bundle binaire compartimenté :
@@ -43,7 +73,12 @@ func New(rootDir string, ignoreFile string) *Packager {
 // - core/         (template canonique dédoublonné SANS les fichiers .xru)
 // - rules/        (tous les descripteurs *.rules.xru + main.xru)
 func (p *Packager) Pack(outputFile string, entryDir string) error {
-	ignored := p.loadIgnoredPatterns()
+	var filterPatterns []string
+	if p.isWhitelist {
+		filterPatterns = p.loadPatterns(p.includeFile)
+	} else {
+		filterPatterns = p.loadPatterns(p.ignoreFile)
+	}
 
 	outFile, err := os.Create(outputFile)
 	if err != nil {
@@ -75,13 +110,17 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 
 	// Écriture du manifest.json à la racine de l'archive
 	manifest := PackageManifest{
-		Version:      "2.0.0",
-		EntryDir:     "core",
-		Args:         detectedArgs,
-		IgnoredPaths: ignored,
+		Version:  "2.0.0",
+		EntryDir: "core",
+		Args:     detectedArgs,
 		Metadata: map[string]string{
 			"generator": "xru-pack-v2",
 		},
+	}
+	if p.isWhitelist {
+		manifest.IncludedPaths = filterPatterns
+	} else {
+		manifest.IgnoredPaths = filterPatterns
 	}
 	manifestBytes, _ := json.MarshalIndent(manifest, "", "  ")
 	hdr := &tar.Header{
@@ -137,19 +176,17 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 			return nil
 		}
 
-		// Le fichier .xruignore lui-même ne doit JAMAIS être empaqueté
-		if relPath == ".xruignore" || filepath.Base(relPath) == ".xruignore" {
+		// Ni .xruignore ni .xruinclude ne doivent JAMAIS être empaquetés
+		if relPath == ".xruignore" || filepath.Base(relPath) == ".xruignore" ||
+			relPath == ".xruinclude" || filepath.Base(relPath) == ".xruinclude" {
 			if p.Verbose {
 				fmt.Printf("  \033[90m[EXCLUDE]\033[0m %s\n", relPath)
 			}
 			return nil
 		}
 
-		// Vérification d'exclusion par .xruignore
-		if p.isIgnored(relPath, ignored) {
-			if p.Verbose {
-				fmt.Printf("  \033[90m[EXCLUDE]\033[0m %s\n", relPath)
-			}
+		// Ne pas empaqueter .git
+		if relPath == ".git" || strings.HasPrefix(relPath, ".git/") {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
@@ -162,6 +199,38 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 		// Les fichiers .xru sont déjà assemblés et minifiés dans main.xru
 		if strings.HasSuffix(baseName, ".xru") {
 			return nil
+		}
+
+		if p.isWhitelist {
+			if info.IsDir() {
+				if !p.canDirContainIncluded(cleanRel, filterPatterns) {
+					if p.Verbose {
+						fmt.Printf("  \033[90m[EXCLUDE DIR]\033[0m %s\n", relPath)
+					}
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
+			if !p.isIncluded(cleanRel, filterPatterns) {
+				if p.Verbose {
+					fmt.Printf("  \033[90m[EXCLUDE]\033[0m %s\n", relPath)
+				}
+				return nil
+			}
+		} else {
+			if p.isIgnored(cleanRel, filterPatterns) {
+				if p.Verbose {
+					fmt.Printf("  \033[90m[EXCLUDE]\033[0m %s\n", relPath)
+				}
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if info.IsDir() {
+				return nil
+			}
 		}
 
 		targetTarPath := "core/" + cleanRel
@@ -181,11 +250,23 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 							return nil
 						}
 						nestedRel := filepath.ToSlash(filepath.Join(relPath, subRel))
-						if p.isIgnored(nestedRel, ignored) {
+						if p.isWhitelist {
 							if subInfo.IsDir() {
-								return filepath.SkipDir
+								if !p.canDirContainIncluded(nestedRel, filterPatterns) {
+									return filepath.SkipDir
+								}
+								return nil
 							}
-							return nil
+							if !p.isIncluded(nestedRel, filterPatterns) {
+								return nil
+							}
+						} else {
+							if p.isIgnored(nestedRel, filterPatterns) {
+								if subInfo.IsDir() {
+									return filepath.SkipDir
+								}
+								return nil
+							}
 						}
 						if subInfo.Mode().IsRegular() {
 							if strings.HasSuffix(filepath.Base(nestedRel), ".xru") {
@@ -321,9 +402,9 @@ func (p *Packager) Unpack(packFile string, destDir string) (*PackageManifest, er
 	return manifest, nil
 }
 
-func (p *Packager) loadIgnoredPatterns() []string {
+func (p *Packager) loadPatterns(filterFile string) []string {
 	var list []string
-	content, err := os.ReadFile(filepath.Join(p.rootDir, p.ignoreFile))
+	content, err := os.ReadFile(filepath.Join(p.rootDir, filterFile))
 	if err != nil {
 		return []string{}
 	}
@@ -385,6 +466,114 @@ func (p *Packager) isIgnored(relPath string, patterns []string) bool {
 		if matched, _ := filepath.Match(pat, cleanPath); matched {
 			return true
 		}
+	}
+	return false
+}
+
+func (p *Packager) isIncluded(relPath string, patterns []string) bool {
+	cleanPath := filepath.ToSlash(filepath.Clean(relPath))
+	baseName := filepath.Base(cleanPath)
+
+	for _, rawPat := range patterns {
+		pat := filepath.ToSlash(strings.TrimSpace(rawPat))
+		pat = strings.TrimPrefix(pat, "./")
+		if pat == "" || strings.HasPrefix(pat, "#") {
+			continue
+		}
+
+		hasWildcard := strings.ContainsAny(pat, "*?[")
+
+		// 1. Dossier ciblé explicitement avec wildcard ou slash (ex: "src/", "core/**", "configs/*")
+		if strings.HasSuffix(pat, "/*") || strings.HasSuffix(pat, "/**") || strings.HasSuffix(pat, "/") {
+			dirPat := pat
+			dirPat = strings.TrimSuffix(dirPat, "/**")
+			dirPat = strings.TrimSuffix(dirPat, "/*")
+			dirPat = strings.TrimSuffix(dirPat, "/")
+			if cleanPath == dirPat || strings.HasPrefix(cleanPath, dirPat+"/") {
+				return true
+			}
+			continue
+		}
+
+		// 2. Motif avec wildcard (ex: "*.json", "src/*.ts", "**/*.ts")
+		if hasWildcard {
+			if strings.Contains(pat, "/") {
+				dirPart := filepath.Dir(pat)
+				filePart := filepath.Base(pat)
+				if filepath.Dir(cleanPath) == dirPart {
+					if matched, _ := filepath.Match(filePart, baseName); matched {
+						return true
+					}
+				}
+				if matched, _ := filepath.Match(pat, cleanPath); matched {
+					return true
+				}
+			} else {
+				// Glob sans slash (ex: "*.json") -> s'applique au nom de fichier
+				if matched, _ := filepath.Match(pat, baseName); matched {
+					return true
+				}
+			}
+			continue
+		}
+
+		// 3. Fichier ou chemin littéral sans wildcard (ex: "package.json", "scripts/meta.json")
+		if cleanPath == pat {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Packager) canDirContainIncluded(relDir string, patterns []string) bool {
+	cleanDir := filepath.ToSlash(filepath.Clean(relDir))
+
+	for _, rawPat := range patterns {
+		pat := filepath.ToSlash(strings.TrimSpace(rawPat))
+		pat = strings.TrimPrefix(pat, "./")
+		if pat == "" || strings.HasPrefix(pat, "#") {
+			continue
+		}
+
+		hasWildcard := strings.ContainsAny(pat, "*?[")
+
+		// 1. Dossier explicite (ex: "src/", "src/**")
+		if strings.HasSuffix(pat, "/*") || strings.HasSuffix(pat, "/**") || strings.HasSuffix(pat, "/") {
+			dirPat := pat
+			dirPat = strings.TrimSuffix(dirPat, "/**")
+			dirPat = strings.TrimSuffix(dirPat, "/*")
+			dirPat = strings.TrimSuffix(dirPat, "/")
+			if cleanDir == dirPat || strings.HasPrefix(cleanDir, dirPat+"/") || strings.HasPrefix(dirPat, cleanDir+"/") {
+				return true
+			}
+			continue
+		}
+
+		// 2. Motif avec wildcard
+		if hasWildcard {
+			if strings.Contains(pat, "/") {
+				dirPart := filepath.Dir(pat)
+				if strings.HasPrefix(dirPart, cleanDir) || cleanDir == dirPart || strings.HasPrefix(cleanDir, dirPart+"/") {
+					return true
+				}
+			} else {
+				// Un glob général comme "*.ts" peut se trouver dans n'importe quel dossier
+				return true
+			}
+			continue
+		}
+
+		// 3. Fichier littéral avec chemin relatif (ex: "scripts/meta.json")
+		if strings.Contains(pat, "/") {
+			dirPart := filepath.Dir(pat)
+			if strings.HasPrefix(dirPart, cleanDir) || cleanDir == dirPart || strings.HasPrefix(cleanDir, dirPart+"/") {
+				return true
+			}
+			continue
+		}
+
+		// 4. Fichier littéral racine (ex: "package.json", "tsconfig.json")
+		// Ne peut PAS être contenu dans un sous-dossier, donc on ne traverse pas de sous-dossier pour lui
 	}
 	return false
 }

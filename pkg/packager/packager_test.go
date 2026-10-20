@@ -519,3 +519,66 @@ if Fs.exists("test.txt") {
 	}
 }
 
+func TestPackWithXruInclude(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "xru_include_test_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	srcDir := filepath.Join(tempDir, "src")
+	testsDir := filepath.Join(tempDir, "tests")
+	_ = os.MkdirAll(srcDir, 0755)
+	_ = os.MkdirAll(testsDir, 0755)
+
+	_ = os.WriteFile(filepath.Join(srcDir, "server.ts"), []byte("// server code"), 0644)
+	_ = os.WriteFile(filepath.Join(srcDir, "controller.ts"), []byte("// controller code"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "package.json"), []byte("{\"name\": \"test\"}"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "random_scratch.txt"), []byte("scratch note"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "secret.env"), []byte("KEY=123"), 0644)
+	_ = os.WriteFile(filepath.Join(testsDir, "unit_test.ts"), []byte("// test"), 0644)
+
+	// Écrire à la fois .xruinclude ET .xruignore
+	_ = os.WriteFile(filepath.Join(tempDir, ".xruinclude"), []byte("src/\npackage.json\n"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, ".xruignore"), []byte("secret.env\n"), 0644)
+
+	pkg := packager.New(tempDir, "")
+	if !pkg.IsWhitelist() {
+		t.Fatalf("Expected packager to be in whitelist mode when .xruinclude is present")
+	}
+	if pkg.FilterFile() != ".xruinclude" {
+		t.Fatalf("Expected FilterFile() to be .xruinclude, got: %s", pkg.FilterFile())
+	}
+
+	packPath := filepath.Join(tempDir, "bundle.xpack")
+	if err := pkg.Pack(packPath, "."); err != nil {
+		t.Fatalf("Pack failed: %v", err)
+	}
+
+	destDir := filepath.Join(tempDir, "extracted")
+	manifest, err := pkg.Unpack(packPath, destDir)
+	if err != nil {
+		t.Fatalf("Unpack failed: %v", err)
+	}
+
+	if len(manifest.IncludedPaths) != 2 {
+		t.Errorf("Expected 2 included paths in manifest, got: %v", manifest.IncludedPaths)
+	}
+
+	// 1. Fichiers devant être INCLUS
+	for _, expectedFile := range []string{"src/server.ts", "src/controller.ts", "package.json"} {
+		p := filepath.Join(destDir, expectedFile)
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			t.Errorf("Expected included file '%s' to exist in package, but it was missing", expectedFile)
+		}
+	}
+
+	// 2. Fichiers devant être EXCLUS
+	for _, excludedFile := range []string{"random_scratch.txt", "secret.env", "tests/unit_test.ts", ".xruinclude", ".xruignore"} {
+		p := filepath.Join(destDir, excludedFile)
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("Expected file '%s' to be EXCLUDED by .xruinclude, but it was found", excludedFile)
+		}
+	}
+}
+

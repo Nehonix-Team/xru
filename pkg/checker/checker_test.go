@@ -1842,3 +1842,74 @@ dispatch "./src"
 	}
 }
 
+func TestStdInStatementChecker(t *testing.T) {
+	// 1. Valid stdin usage
+	codeValid := `
+use std
+let ext = ""
+std::in {
+	let a = ::input("your name : ")
+	ext =: a
+	std.println("hello $f{a}")
+	const sel = ::select("choose an image", ["img_01", "img_02"])
+	const ok = ::confirm("confirm?")
+}
+`
+	l := lexer.New("valid_stdin.xru", codeValid)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser errors: %v", p.Errors())
+	}
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Expected 0 checker errors for valid std::in, got: %v", c.Errors())
+	}
+
+	// 2. Unknown function inside std::in block
+	codeInvalidFn := `
+use std
+std::in {
+	let a = ::input("name: ")
+	let b = ::unknownFunc()
+}
+`
+	l2 := lexer.New("invalid_stdin.xru", codeInvalidFn)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	c2 := checker.New()
+	c2.Check(prog2)
+	foundErr := false
+	for _, err := range c2.Errors() {
+		if strings.Contains(err, "ERR_UNKNOWN_STDIN_FUNCTION") {
+			foundErr = true
+			break
+		}
+	}
+	if !foundErr {
+		t.Errorf("Expected ERR_UNKNOWN_STDIN_FUNCTION for ::unknownFunc, got: %v", c2.Errors())
+	}
+
+	// 3. Stdin primitive outside std::in block
+	codeOutside := `
+use std
+let a = ::input("name: ")
+`
+	l3 := lexer.New("outside_stdin.xru", codeOutside)
+	p3 := parser.New(l3)
+	prog3 := p3.ParseProgram()
+	c3 := checker.New()
+	c3.Check(prog3)
+	foundOutsideErr := false
+	for _, err := range c3.Errors() {
+		if strings.Contains(err, "ERR_STDIN_OUTSIDE_BLOCK") {
+			foundOutsideErr = true
+			break
+		}
+	}
+	if !foundOutsideErr {
+		t.Errorf("Expected ERR_STDIN_OUTSIDE_BLOCK for ::input outside std::in, got: %v", c3.Errors())
+	}
+}
+

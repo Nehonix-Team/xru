@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
@@ -19,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	goRuntime "runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -130,6 +132,146 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 		return StringValue{Val: string(args[0].Type())}, nil
 	}
 
+	terminalReader := bufio.NewReader(os.Stdin)
+
+	inputFn := func(args []Value) (Value, error) {
+		prompt := ""
+		defVal := ""
+		if len(args) > 0 {
+			prompt = args[0].String()
+		}
+		if len(args) > 1 {
+			defVal = args[1].String()
+		}
+
+		if prompt != "" {
+			fmt.Print(formatTerminalColors(prompt))
+		}
+		line, err := terminalReader.ReadString('\n')
+		if err != nil && len(line) == 0 {
+			return StringValue{Val: defVal}, nil
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" && defVal != "" {
+			return StringValue{Val: defVal}, nil
+		}
+		return StringValue{Val: line}, nil
+	}
+
+	selectFn := func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("select requires at least (prompt, options)")
+		}
+		prompt := args[0].String()
+		var options []string
+		if arr, ok := args[1].(ListValue); ok {
+			for _, item := range arr.Elements {
+				options = append(options, item.String())
+			}
+		} else {
+			return NilValue{}, fmt.Errorf("select: second argument must be a list of options")
+		}
+
+		if len(options) == 0 {
+			return StringValue{Val: ""}, nil
+		}
+
+		defaultIdx := 0
+		if len(args) > 2 {
+			if n, ok := args[2].(NumberValue); ok {
+				defaultIdx = int(n.Val)
+			}
+		}
+
+		if prompt != "" {
+			fmt.Println(formatTerminalColors(prompt))
+		}
+		for i, opt := range options {
+			displayOpt := opt
+			if displayOpt == "" {
+				displayOpt = "(empty)"
+			}
+			marker := "  "
+			if i == defaultIdx {
+				marker = "* "
+			}
+			fmt.Println(formatTerminalColors(fmt.Sprintf("  <cyan>%s%d)</cyan> %s", marker, i+1, displayOpt)))
+		}
+
+		fmt.Print(formatTerminalColors(fmt.Sprintf("<dim>Select [1-%d] (default: %d): </dim>", len(options), defaultIdx+1)))
+		line, err := terminalReader.ReadString('\n')
+		if err != nil && len(line) == 0 {
+			if defaultIdx >= 0 && defaultIdx < len(options) {
+				return StringValue{Val: options[defaultIdx]}, nil
+			}
+			return StringValue{Val: ""}, nil
+		}
+		line = strings.TrimSpace(strings.TrimRight(line, "\r\n"))
+		if line == "" {
+			if defaultIdx >= 0 && defaultIdx < len(options) {
+				return StringValue{Val: options[defaultIdx]}, nil
+			}
+			return StringValue{Val: ""}, nil
+		}
+
+		if num, err := strconv.Atoi(line); err == nil {
+			if num >= 1 && num <= len(options) {
+				return StringValue{Val: options[num-1]}, nil
+			}
+		}
+
+		for _, opt := range options {
+			if strings.EqualFold(opt, line) {
+				return StringValue{Val: opt}, nil
+			}
+		}
+
+		if defaultIdx >= 0 && defaultIdx < len(options) {
+			return StringValue{Val: options[defaultIdx]}, nil
+		}
+		return StringValue{Val: line}, nil
+	}
+
+	confirmFn := func(args []Value) (Value, error) {
+		prompt := ""
+		defVal := true
+		if len(args) > 0 {
+			prompt = args[0].String()
+		}
+		if len(args) > 1 {
+			if b, ok := args[1].(BoolValue); ok {
+				defVal = b.Val
+			}
+		}
+
+		hint := "(Y/n)"
+		if !defVal {
+			hint = "(y/N)"
+		}
+
+		if prompt != "" {
+			fmt.Print(formatTerminalColors(fmt.Sprintf("%s <dim>%s</dim> ", prompt, hint)))
+		} else {
+			fmt.Print(formatTerminalColors(fmt.Sprintf("<dim>%s</dim> ", hint)))
+		}
+
+		line, err := terminalReader.ReadString('\n')
+		if err != nil && len(line) == 0 {
+			return BoolValue{Val: defVal}, nil
+		}
+		line = strings.TrimSpace(strings.ToLower(strings.TrimRight(line, "\r\n")))
+		if line == "" {
+			return BoolValue{Val: defVal}, nil
+		}
+		if line == "y" || line == "yes" || line == "o" || line == "oui" || line == "1" || line == "true" {
+			return BoolValue{Val: true}, nil
+		}
+		if line == "n" || line == "no" || line == "non" || line == "0" || line == "false" {
+			return BoolValue{Val: false}, nil
+		}
+		return BoolValue{Val: defVal}, nil
+	}
+
 	stdUnit := &UnitInstance{
 		UnitName:   "std",
 		Properties: make(map[string]Value),
@@ -140,6 +282,12 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 			"Println": printlnFn,
 			"print":   printFn,
 			"Print":   printFn,
+			"input":   inputFn,
+			"Input":   inputFn,
+			"select":  selectFn,
+			"Select":  selectFn,
+			"confirm": confirmFn,
+			"Confirm": confirmFn,
 			"info":    infoFn,
 			"Info":    infoFn,
 			"success": successFn,

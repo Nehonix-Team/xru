@@ -334,6 +334,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return ev.evalBlockStatement(n, env)
 	case *ast.TrapStatement:
 		return ev.evalTrapStatement(n, env)
+	case *ast.StdInStatement:
+		return ev.evalStdInStatement(n, env)
 	case *ast.ExpressionStatement:
 		return ev.Eval(n.Expression, env)
 	case *ast.FileStatement:

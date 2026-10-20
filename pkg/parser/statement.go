@@ -157,6 +157,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		}
 		return p.parseExpressionStatement()
 	case lexer.IDENT:
+		if p.isStdInStatement() {
+			return p.parseStdInStatement()
+		}
 		if p.peekTokenIs(lexer.MUT_ASSIGN) {
 			return p.parseReassignStatement()
 		}
@@ -425,5 +428,32 @@ func (p *Parser) parseTrapStatement() *ast.TrapStatement {
 
 	stmt.Body = p.parseBlockStatement()
 	return stmt
+}
+
+func (p *Parser) isStdInStatement() bool {
+	if !p.curTokenIs(lexer.IDENT) || (!strings.EqualFold(p.curToken.Literal, "std")) {
+		return false
+	}
+	if !p.peekTokenIs(lexer.DOUBLE_COLON) && !p.peekTokenIs(lexer.DOT) {
+		return false
+	}
+	lexerClone := p.l.Clone()
+	tok1 := lexerClone.NextToken()
+	tok2 := lexerClone.NextToken()
+	return tok1.Type == lexer.IN && tok2.Type == lexer.LBRACE
+}
+
+func (p *Parser) parseStdInStatement() *ast.StdInStatement {
+	pos := p.curToken.Pos
+	scope := p.curToken.Literal
+	p.nextToken() // saute "std" -> curToken est "::" ou "."
+	p.nextToken() // saute "::" ou "." -> curToken est "in"
+	p.nextToken() // saute "in" -> curToken est "{"
+	block := p.parseBlockStatement()
+	return &ast.StdInStatement{
+		Position: pos,
+		Scope:    scope,
+		Body:     block,
+	}
 }
 

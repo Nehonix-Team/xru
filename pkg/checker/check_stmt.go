@@ -24,6 +24,9 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.TrapStatement:
 		if s == nil { return }
 		c.checkTrap(s)
+	case *ast.StdInStatement:
+		if s == nil { return }
+		c.checkStdIn(s)
 	case *ast.ArgStatement:
 		if s == nil { return }
 		c.checkArg(s)
@@ -1037,6 +1040,29 @@ func (c *Checker) checkTrap(s *ast.TrapStatement) {
 			Pos:  s.Position,
 		})
 	}
+	if s.Body != nil {
+		c.checkStatementList(s.Body.Statements)
+	}
+	c.scope = c.scope.parent
+}
+
+func (c *Checker) checkStdIn(s *ast.StdInStatement) {
+	if s == nil {
+		return
+	}
+	if s.Scope != "" {
+		if sym, ok := c.scope.Resolve(s.Scope); ok {
+			sym.Used = true
+		} else if !strings.EqualFold(s.Scope, "std") {
+			c.addError(s.Position, "ERR_UNDEFINED_VARIABLE", fmt.Sprintf("Module or unit '%s' is not defined in current scope (did you forget 'use %s'?)", s.Scope, s.Scope))
+		}
+	}
+
+	prevInStdIn := c.inStdInBlock
+	c.inStdInBlock = true
+	defer func() { c.inStdInBlock = prevInStdIn }()
+
+	c.scope = NewScope(c.scope, false)
 	if s.Body != nil {
 		c.checkStatementList(s.Body.Statements)
 	}

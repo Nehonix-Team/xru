@@ -585,6 +585,12 @@ func transformStmt(stmt ast.Statement, fn func(ast.Expression) ast.Expression) a
 				s.Body.Statements[i] = transformStmt(st, fn)
 			}
 		}
+	case *ast.StdInStatement:
+		if s.Body != nil {
+			for i, st := range s.Body.Statements {
+				s.Body.Statements[i] = transformStmt(st, fn)
+			}
+		}
 	}
 	return stmt
 }
@@ -1160,6 +1166,25 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 			}
 		}
 		return fmt.Sprintf("trap %s%s{%s}", targetStr, aliasStr, strings.Join(bodyParts, ";"))
+
+	case *ast.StdInStatement:
+		scope := s.Scope
+		if scope == "" {
+			scope = "std"
+		}
+		if resolved := m.resolveName(scope); resolved != "" {
+			scope = resolved
+		}
+		var bodyParts []string
+		if s.Body != nil {
+			for _, st := range s.Body.Statements {
+				ms := m.minifyStatement(st)
+				if ms != "" {
+					bodyParts = append(bodyParts, ms)
+				}
+			}
+		}
+		return fmt.Sprintf("%s::in{%s}", scope, strings.Join(bodyParts, ";"))
 
 	case *ast.FileStatement:
 		pathStr := s.Path

@@ -13,6 +13,7 @@
     { "include": "#strings_single" },
     { "include": "#loops" },
     { "include": "#trap_statement" },
+    { "include": "#stdin_statement" },
     { "include": "#keywords_control" },
     { "include": "#modifiers" },
     { "include": "#keywords_declaration" },
@@ -274,6 +275,25 @@
           "captures": {
             "1": { "name": "keyword.control.as.xru keyword.control.xru" },
             "2": { "name": "variable.parameter.trap.xru" }
+          }
+        }
+      ]
+    },
+    "stdin_statement": {
+      "patterns": [
+        {
+          "match": "\\b(std)(::|\\.)(in)\\s*(?=\\{)",
+          "captures": {
+            "1": { "name": "support.class.builtin.xru" },
+            "2": { "name": "punctuation.accessor.xru" },
+            "3": { "name": "keyword.control.stdin.xru keyword.control.xru" }
+          }
+        },
+        {
+          "match": "(::)(input|select|confirm)\\b",
+          "captures": {
+            "1": { "name": "punctuation.accessor.global.xru" },
+            "2": { "name": "support.function.builtin.stdin.xru entity.name.function.xru" }
           }
         }
       ]

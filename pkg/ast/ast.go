@@ -607,6 +607,23 @@ func (s *TrapStatement) String() string {
 	return fmt.Sprintf("trap %s%s %s", targetStr, aliasStr, bodyStr)
 }
 
+// StdInStatement : std::in { ... } or std.in { ... }
+type StdInStatement struct {
+	Position lexer.Position
+	Scope    string // "std"
+	Body     *BlockStatement
+}
+
+func (s *StdInStatement) statementNode()      {}
+func (s *StdInStatement) Pos() lexer.Position { return s.Position }
+func (s *StdInStatement) String() string {
+	bodyStr := "{}"
+	if s.Body != nil {
+		bodyStr = s.Body.String()
+	}
+	return fmt.Sprintf("%s::in %s", s.Scope, bodyStr)
+}
+
 // -----------------------------------------------------------------------------
 // Expressions (Littéraux, Variables, Appels, Instanciations, Collections)
 // -----------------------------------------------------------------------------

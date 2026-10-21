@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/Nehonix-Team/xru/internal/utils"
+	"github.com/Nehonix-Team/xru/pkg/ast"
 )
 
 // parseSemVer parses semantic version strings like "v2.0.67", "2.0.67", "2.1"
@@ -38,7 +39,7 @@ func parseSemVer(v string) (major, minor, patch int, err error) {
 		if err != nil {
 			return 0, 0, 0, fmt.Errorf("invalid semver minor: %s", parts[1])
 		}
-	}
+	} 
 	if len(parts) >= 3 && parts[2] != "" {
 		patch, err = strconv.Atoi(parts[2])
 		if err != nil {
@@ -330,3 +331,147 @@ func sysRequireFn(args []Value) (Value, error) {
 func sysVersionFn(args []Value) (Value, error) {
 	return StringValue{Val: utils.BinVersion}, nil
 }
+
+// CheckAndEnforceAstRequire pre-scans the program AST for top-level Sys.require(...) declarations
+// and validates or auto-updates the XRU engine BEFORE the strict type checker runs.
+func CheckAndEnforceAstRequire(prog *ast.Program) error {
+	if prog == nil {
+		return nil
+	}
+
+	sysAliases := map[string]bool{
+		"sys": true,
+		"Sys": true,
+	}
+
+	// 1. Scan use statements to track aliases (e.g. `use sys as s6`)
+	for _, stmt := range prog.Statements {
+		if useStmt, ok := stmt.(*ast.UseStatement); ok {
+			if strings.EqualFold(useStmt.Module, "sys") {
+				if useStmt.Alias != "" {
+					sysAliases[useStmt.Alias] = true
+				}
+				sysAliases[useStmt.Module] = true
+			}
+		}
+	}
+
+	// 2. Scan statements for Sys.require(...)
+	for _, stmt := range prog.Statements {
+		exprStmt, ok := stmt.(*ast.ExpressionStatement)
+		if !ok {
+			continue
+		}
+		callExpr, ok := exprStmt.Expression.(*ast.CallExpression)
+		if !ok {
+			continue
+		}
+
+		isRequireCall := false
+		if memberExpr, ok := callExpr.Caller.(*ast.MemberExpression); ok {
+			if strings.EqualFold(memberExpr.Property, "require") {
+				if ident, ok := memberExpr.Object.(*ast.Identifier); ok {
+					if sysAliases[ident.Value] || strings.EqualFold(ident.Value, "sys") {
+						isRequireCall = true
+					}
+				}
+			}
+		} else if scopeExpr, ok := callExpr.Caller.(*ast.ScopeAccessExpression); ok {
+			if strings.EqualFold(scopeExpr.Member, "require") {
+				if sysAliases[scopeExpr.Scope] || strings.EqualFold(scopeExpr.Scope, "sys") {
+					isRequireCall = true
+				}
+			}
+		}
+
+		if !isRequireCall {
+			continue
+		}
+
+		// Found Sys.require(constraint, options?)
+		if len(callExpr.Arguments) < 1 {
+			continue
+		}
+
+		strLit, ok := callExpr.Arguments[0].(*ast.StringLiteral)
+		if !ok {
+			continue
+		}
+		constraint := strLit.Value
+
+		onMismatch := "fatal"
+		mode := "log"
+
+		if len(callExpr.Arguments) > 1 {
+			if mapLit, ok := callExpr.Arguments[1].(*ast.MapLiteral); ok {
+				for _, pair := range mapLit.Pairs {
+					keyStr := ""
+					if kIdent, ok := pair.Key.(*ast.Identifier); ok {
+						keyStr = kIdent.Value
+					} else if kStr, ok := pair.Key.(*ast.StringLiteral); ok {
+						keyStr = kStr.Value
+					}
+
+					valStr := ""
+					if vIdent, ok := pair.Value.(*ast.Identifier); ok {
+						valStr = vIdent.Value
+					} else if vStr, ok := pair.Value.(*ast.StringLiteral); ok {
+						valStr = vStr.Value
+					}
+
+					if strings.EqualFold(keyStr, "onMismatch") {
+						onMismatch = strings.ToLower(valStr)
+					}
+					if strings.EqualFold(keyStr, "mode") {
+						mode = strings.ToLower(valStr)
+					}
+				}
+			}
+		}
+
+		// Enforce version requirement immediately!
+		currentVer := utils.BinVersion
+		matched, err := checkVersionConstraint(currentVer, constraint)
+		if err != nil {
+			return fmt.Errorf("invalid version constraint '%s': %w", constraint, err)
+		}
+
+		if matched {
+			return nil
+		}
+
+		// Version mismatch handling
+		switch onMismatch {
+		case "auto-update", "update":
+			err := autoUpdateXRU(mode == "silent")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\033[31m[XRU AUTO-UPDATE ERROR]\033[0m %v\n", err)
+				os.Exit(1)
+			}
+			return nil
+
+		case "warn":
+			if mode != "silent" {
+				fmt.Fprintf(os.Stderr, "\033[33m[XRU VERSION WARNING]\033[0m !:XRU %s, currently running %s.\n", constraint, currentVer)
+			}
+			return nil
+
+		default: // "fatal"
+			fmt.Fprintf(os.Stderr, "\n\033[1;31m[XRU VERSION ERROR]\033[0m This script requires XRU \033[1m%s\033[0m (current version: \033[33m%s\033[0m).\n", constraint, currentVer)
+			if goRuntime.GOOS == "windows" {
+				fmt.Fprintf(os.Stderr, "To update XRU on Windows (PowerShell):\n")
+				fmt.Fprintf(os.Stderr, "  \033[36m• powershell -ExecutionPolicy Bypass -Command \"irm https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.ps1 | iex\" -Action xru\033[0m\n")
+				fmt.Fprintf(os.Stderr, "  \033[36m• or install full suite: irm https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.ps1 | iex\033[0m\n\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "To update XRU on Linux / macOS:\n")
+				fmt.Fprintf(os.Stderr, "  \033[36m• curl -fsSL https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.sh | bash -s -- xru\033[0m\n")
+				fmt.Fprintf(os.Stderr, "  \033[36m• or install full suite: curl -fsSL https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.sh | bash\033[0m\n\n")
+			}
+			os.Exit(1)
+			return fmt.Errorf("XRU version %s does not satisfy %s", currentVer, constraint)
+		}
+	}
+
+	return nil
+}
+

@@ -136,6 +136,12 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 		os.Exit(1)
 	}
 
+	// 2.5 Priorité absolue : Vérification et auto-update de version Sys.require avant la validation des types
+	if err := runtime.CheckAndEnforceAstRequire(prog); err != nil {
+		fmt.Fprintf(os.Stderr, "\033[31m[VERSION ERROR]\033[0m %v\n", err)
+		os.Exit(1)
+	}
+
 	if verbose {
 		fmt.Printf("\033[36m[DEBUG]\033[0m Validating AST & Checking Types...\n")
 	}

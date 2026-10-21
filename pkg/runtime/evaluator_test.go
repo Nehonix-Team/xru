@@ -2329,6 +2329,24 @@ let nonexistent = Sys.hasArg("--port", "-p", "port")
 	}
 }
 
+func TestAstRequirePreCheck(t *testing.T) {
+	code := `
+use sys as s
+s.require(">= 2.0.0", @map{onMismatch: "fatal", mode: "silent"})
+`
+	l := lexer.New("test_require.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+
+	if err := runtime.CheckAndEnforceAstRequire(prog); err != nil {
+		t.Fatalf("Expected valid require to pass, got: %v", err)
+	}
+}
+
+
 
 
 

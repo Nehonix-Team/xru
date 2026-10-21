@@ -127,3 +127,28 @@ if s2.exists(".env"){file ".env",(ae,af)->{if af!=nil{return};if e=="minimal"{le
 	}
 	t.Logf("Formatted output:\n%s", formatted)
 }
+
+func TestFormatTrapStatement(t *testing.T) {
+	code := `trap s2::@map{interrupt, terminate} as s {
+s1.println("Process interrupted");
+if s4.exists(v) {
+s4.remove(v);
+}
+}`
+	formatted, err := Format(code)
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+
+	t.Logf("Formatted output:\n%s", formatted)
+
+	// Ensure trap is on one header line
+	if !strings.Contains(formatted, "trap s2::@map{interrupt, terminate} as s {") {
+		t.Errorf("Expected 'trap s2::@map{interrupt, terminate} as s {', got:\n%s", formatted)
+	}
+
+	// Ensure no semicolon after closing brace
+	if strings.Contains(formatted, "};") {
+		t.Errorf("Expected no semicolon after trap body closing brace, got:\n%s", formatted)
+	}
+}

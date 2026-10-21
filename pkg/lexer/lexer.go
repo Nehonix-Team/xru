@@ -528,3 +528,9 @@ func (l *Lexer) readNumberAndSuffix() (TokenType, string) {
 func isLetter(ch rune) bool {
 	return unicode.IsLetter(ch) || ch == '_'
 }
+
+// Clone returns an exact copy of the Lexer state for non-destructive lookahead.
+func (l *Lexer) Clone() *Lexer {
+	clone := *l
+	return &clone
+}

@@ -16,6 +16,32 @@ func (p *Parser) parseUseStatement() *ast.UseStatement {
 	}
 	stmt.Module = p.curToken.Literal
 
+	// Support de `use sig::@map{interrupt, terminate}`
+	if p.peekTokenIs(lexer.DOUBLE_COLON) || p.peekTokenIs(lexer.DOT) {
+		p.nextToken() // saute '::' ou '.'
+		if p.peekTokenIs(lexer.AT) {
+			p.nextToken() // saute '@'
+			if !p.peekTokenIs(lexer.MAP) && !(p.peekTokenIs(lexer.IDENT) && strings.ToLower(p.peekToken.Literal) == "map") {
+				p.addError(p.curToken.Pos, "expected 'map' after '@'")
+				return nil
+			}
+			p.nextToken() // saute 'map'
+			if p.peekTokenIs(lexer.LBRACE) {
+				p.nextToken() // saute '{'
+				p.nextToken()
+				for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+					if p.curTokenIs(lexer.IDENT) {
+						stmt.Members = append(stmt.Members, p.curToken.Literal)
+					}
+					if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
+						p.nextToken()
+					}
+					p.nextToken()
+				}
+			}
+		}
+	}
+
 	if p.peekTokenIs(lexer.AS) {
 		p.nextToken() // mange 'as'
 		if !p.expectPeek(lexer.IDENT) {

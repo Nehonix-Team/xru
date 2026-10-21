@@ -325,4 +325,46 @@ func TestSemicolonSeparatedStatements(t *testing.T) {
 	}
 }
 
+func TestStdInStatementParsing(t *testing.T) {
+	input := `
+std::in {
+	let a = ::input("your name : ")
+	const sel = ::select("choose an image", ["img_01", "img_02"])
+	let ok = ::confirm("are you sure?")
+}
+std.in {
+	let b = ::input()
+}
+`
+	l := lexer.New("test_stdin.xru", input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Unexpected parser errors: %v", p.Errors())
+	}
+	if len(prog.Statements) != 2 {
+		t.Fatalf("Expected 2 statements, got %d", len(prog.Statements))
+	}
+
+	st1, ok1 := prog.Statements[0].(*ast.StdInStatement)
+	if !ok1 {
+		t.Fatalf("Expected first statement to be StdInStatement, got %T", prog.Statements[0])
+	}
+	if st1.Scope != "std" {
+		t.Errorf("Expected Scope 'std', got '%s'", st1.Scope)
+	}
+	if len(st1.Body.Statements) != 3 {
+		t.Errorf("Expected 3 statements in body, got %d", len(st1.Body.Statements))
+	}
+
+	st2, ok2 := prog.Statements[1].(*ast.StdInStatement)
+	if !ok2 {
+		t.Fatalf("Expected second statement to be StdInStatement, got %T", prog.Statements[1])
+	}
+	if len(st2.Body.Statements) != 1 {
+		t.Errorf("Expected 1 statement in body, got %d", len(st2.Body.Statements))
+	}
+}
+
 

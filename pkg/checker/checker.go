@@ -17,9 +17,10 @@ type Checker struct {
 	hasModStmt       bool
 	declaredVars     []*Symbol
 	interfaces       map[string]*ast.InterfaceStatement
-	importedSyms     []*Symbol        // Alias créés par 'use' (pour détecter les imports inutilisés)
-	unreachable      []lexer.Position // Instructions situées après un appel 'never' (std.fatal, Sys.exit)
+	importedSyms      []*Symbol        // Alias créés par 'use' (pour détecter les imports inutilisés)
+	unreachable       []lexer.Position // Instructions situées après un appel 'never' (std.fatal, Sys.exit)
 	visitedDispatches map[string]bool
+	inStdInBlock      bool
 }
 
 func New() *Checker {

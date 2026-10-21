@@ -49,6 +49,18 @@ var NetFetchDirectives = []DirectiveDoc{
 // SyntaxSnippets contains statement & control flow snippets
 var SyntaxSnippets = []DirectiveDoc{
 	{
+		Name:    "std::in",
+		Snippet: "std::in {\n\tlet ${1:a} = ::input(\"${2:prompt: }\")\n\t$0\n}",
+		Detail:  "std::in { ... }",
+		Doc:     "Open an interactive terminal input block with ::input, ::select, and ::confirm.",
+	},
+	{
+		Name:    "trap signal",
+		Snippet: "trap sig::@map{interrupt, terminate} as ${1:s} {\n\tstd.println(\"<yellow>Caught signal: </yellow>\\$f{${1:s}}\")\n\t$0\n}",
+		Detail:  "trap sig::@map{interrupt, ...} as s { ... }",
+		Doc:     "Trap OS signals gracefully with custom cleanup block.",
+	},
+	{
 		Name:    "with Net.fetch",
 		Snippet: "with Net.fetch(\"${1:url}\") {\n\tset method = \"GET\"\n\tset timeout = 30s\n\n\ton progress -> (percent, speed) => Utils.log(\"<cyan>[PROGRESS]</> {percent}% à {speed}\")\n\ton complete -> (data, err) => {\n\t\tif err != nil {\n\t\t\tUtils.log(\"<red>[ERROR]</> {err}\")\n\t\t} else {\n\t\t\tUtils.log(\"<green>[DONE]</> Download complete\")\n\t\t}\n\t}\n}",
 		Detail:  "with Net.fetch(url) { directives... }",

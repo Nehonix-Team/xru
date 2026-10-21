@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -25,6 +26,13 @@ type Evaluator struct {
 	loadedModules  map[string]*UnitInstance
 	loadingModules map[string]bool
 	interfaces     map[string]*ast.InterfaceStatement
+
+	signalTraps  []*TrapHandler
+	exitTraps    []*TrapHandler
+	errorTraps   []*TrapHandler
+	sigChan      chan os.Signal
+	sigListening bool
+	trapMu       sync.Mutex
 }
 
 func isBuiltinUnit(name string) bool {
@@ -182,6 +190,23 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		found := false
 		for bName, bUnit := range ev.builtins {
 			if strings.EqualFold(bName, unitName) {
+				if len(n.Members) > 0 {
+					for _, mem := range n.Members {
+						if prop, ok := bUnit.Properties[mem]; ok {
+							if err := env.Set(mem, prop, true); err != nil {
+								return nil, err
+							}
+						} else if fn, ok := bUnit.Methods[mem]; ok {
+							if err := env.Set(mem, FunctionValue{Name: mem, Fn: fn}, true); err != nil {
+								return nil, err
+							}
+						} else {
+							return nil, fmt.Errorf("member '%s' not found on module '%s'", mem, unitName)
+						}
+					}
+					found = true
+					break
+				}
 				if existingVal, ok := env.store[alias]; ok {
 					if existingUnit, isUnit := existingVal.(*UnitInstance); isUnit && strings.EqualFold(existingUnit.UnitName, bUnit.UnitName) {
 						found = true
@@ -307,6 +332,10 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return clone, nil
 	case *ast.BlockStatement:
 		return ev.evalBlockStatement(n, env)
+	case *ast.TrapStatement:
+		return ev.evalTrapStatement(n, env)
+	case *ast.StdInStatement:
+		return ev.evalStdInStatement(n, env)
 	case *ast.ExpressionStatement:
 		return ev.Eval(n.Expression, env)
 	case *ast.FileStatement:

@@ -49,10 +49,11 @@ func (p *Program) String() string {
 // Déclarations de tête (#USE, #ARG, let, const)
 // -----------------------------------------------------------------------------
 
-// UseStatement : #USE module as Alias
+// UseStatement : use module [as Alias] / use module::@map{ ... }
 type UseStatement struct {
 	Position lexer.Position
 	Module   string
+	Members  []string
 	Alias    string
 	CatchVar string
 }
@@ -60,10 +61,13 @@ type UseStatement struct {
 func (s *UseStatement) statementNode()      {}
 func (s *UseStatement) Pos() lexer.Position { return s.Position }
 func (s *UseStatement) String() string {
-	if s.Alias != "" {
-		return fmt.Sprintf("#USE %s as %s", s.Module, s.Alias)
+	if len(s.Members) > 0 {
+		return fmt.Sprintf("use %s::@map{%s}", s.Module, strings.Join(s.Members, ", "))
 	}
-	return fmt.Sprintf("#USE %s", s.Module)
+	if s.Alias != "" {
+		return fmt.Sprintf("use %s as %s", s.Module, s.Alias)
+	}
+	return fmt.Sprintf("use %s", s.Module)
 }
 
 // ArgStatement : [global/export] arg NAME [as ALIAS]: type = default  /  #ARG NAME: type or default
@@ -566,6 +570,59 @@ type ExpressionStatement struct {
 func (s *ExpressionStatement) statementNode()      {}
 func (s *ExpressionStatement) Pos() lexer.Position { return s.Position }
 func (s *ExpressionStatement) String() string      { return s.Expression.String() }
+
+// TrapStatement : trap [scope::]target / trap [scope::]@map{...} [as alias] { ... }
+type TrapStatement struct {
+	Position lexer.Position
+	Scope    string
+	Targets  []string
+	Alias    string
+	Body     *BlockStatement
+}
+
+func (s *TrapStatement) statementNode()      {}
+func (s *TrapStatement) Pos() lexer.Position { return s.Position }
+func (s *TrapStatement) String() string {
+	targetStr := ""
+	if s.Scope != "" {
+		if len(s.Targets) == 1 {
+			targetStr = fmt.Sprintf("%s::%s", s.Scope, s.Targets[0])
+		} else {
+			targetStr = fmt.Sprintf("%s::@map{%s}", s.Scope, strings.Join(s.Targets, ", "))
+		}
+	} else {
+		targetStr = strings.Join(s.Targets, ", ")
+		if len(s.Targets) > 1 {
+			targetStr = "(" + targetStr + ")"
+		}
+	}
+	aliasStr := ""
+	if s.Alias != "" {
+		aliasStr = " as " + s.Alias
+	}
+	bodyStr := "{}"
+	if s.Body != nil {
+		bodyStr = s.Body.String()
+	}
+	return fmt.Sprintf("trap %s%s %s", targetStr, aliasStr, bodyStr)
+}
+
+// StdInStatement : std::in { ... } or std.in { ... }
+type StdInStatement struct {
+	Position lexer.Position
+	Scope    string // "std"
+	Body     *BlockStatement
+}
+
+func (s *StdInStatement) statementNode()      {}
+func (s *StdInStatement) Pos() lexer.Position { return s.Position }
+func (s *StdInStatement) String() string {
+	bodyStr := "{}"
+	if s.Body != nil {
+		bodyStr = s.Body.String()
+	}
+	return fmt.Sprintf("%s::in %s", s.Scope, bodyStr)
+}
 
 // -----------------------------------------------------------------------------
 // Expressions (Littéraux, Variables, Appels, Instanciations, Collections)

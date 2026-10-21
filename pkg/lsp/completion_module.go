@@ -163,7 +163,49 @@ func (s *Server) handleScopeMemberCompletion(uri, beforeColon string) []Completi
 		}
 	}
 	if modIdent == "" {
+		// Global / std::in function completions: ::input, ::select, ::confirm
+		items = append(items,
+			CompletionItem{
+				Label:            "input",
+				Kind:             CompletionItemKindFunction,
+				Detail:           "::input(prompt = \"\", default = \"\") -> string",
+				Documentation:    MarkupContent{Kind: "markdown", Value: "Reads interactive text input from the terminal with an optional prompt."},
+				InsertText:       "input(\"${1:prompt: }\")",
+				InsertTextFormat: InsertTextFormatSnippet,
+				SortText:         "00_input",
+			},
+			CompletionItem{
+				Label:            "select",
+				Kind:             CompletionItemKindFunction,
+				Detail:           "::select(prompt, options, defaultIndex = 0) -> string",
+				Documentation:    MarkupContent{Kind: "markdown", Value: "Prompts the user to interactively choose from an array of options in the terminal."},
+				InsertText:       "select(\"${1:Choose an option: }\", [\"${2:opt1}\", \"${3:opt2}\"])",
+				InsertTextFormat: InsertTextFormatSnippet,
+				SortText:         "01_select",
+			},
+			CompletionItem{
+				Label:            "confirm",
+				Kind:             CompletionItemKindFunction,
+				Detail:           "::confirm(prompt = \"\", default = true) -> bool",
+				Documentation:    MarkupContent{Kind: "markdown", Value: "Prompts the user with a yes/no confirmation prompt in the terminal."},
+				InsertText:       "confirm(\"${1:Are you sure?}\")",
+				InsertTextFormat: InsertTextFormatSnippet,
+				SortText:         "02_confirm",
+			},
+		)
 		return items
+	}
+
+	if strings.EqualFold(modIdent, "std") {
+		items = append(items, CompletionItem{
+			Label:            "in",
+			Kind:             CompletionItemKindSnippet,
+			Detail:           "std::in { ... }",
+			Documentation:    MarkupContent{Kind: "markdown", Value: "Interactive terminal input session block with `::input`, `::select`, and `::confirm`."},
+			InsertText:       "in {\n\t$0\n}",
+			InsertTextFormat: InsertTextFormatSnippet,
+			SortText:         "00_in",
+		})
 	}
 
 	// 1. Check if modIdent is a local unit, builtin unit, or self

@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
@@ -13,6 +14,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseBlockStatement()
 	case lexer.USE:
 		return p.parseUseStatement()
+	case lexer.TRAP:
+		return p.parseTrapStatement()
 	case lexer.ARG:
 		return p.parseArgStatement()
 	case lexer.LET, lexer.CONST:
@@ -154,6 +157,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		}
 		return p.parseExpressionStatement()
 	case lexer.IDENT:
+		if p.isStdInStatement() {
+			return p.parseStdInStatement()
+		}
 		if p.peekTokenIs(lexer.MUT_ASSIGN) {
 			return p.parseReassignStatement()
 		}
@@ -335,5 +341,119 @@ func (p *Parser) parseInStatement() *ast.InStatement {
 	}
 
 	return stmt
+}
+
+func (p *Parser) parseTrapStatement() *ast.TrapStatement {
+	stmt := &ast.TrapStatement{Position: p.curToken.Pos}
+	p.nextToken() // consomme 'trap'
+
+	// Cas 1: trap sig::@map{...} ou trap sig::interrupt ou trap sig.interrupt
+	if p.curTokenIs(lexer.IDENT) && (p.peekTokenIs(lexer.DOUBLE_COLON) || p.peekTokenIs(lexer.DOT)) {
+		stmt.Scope = p.curToken.Literal
+		p.nextToken() // saute l'identifiant scope (ex: "sig")
+		p.nextToken() // saute '::' ou '.'
+
+		// Est-ce un groupement @map{...} ?
+		if p.curTokenIs(lexer.AT) {
+			p.nextToken() // saute '@'
+			if p.curTokenIs(lexer.MAP) || (p.curTokenIs(lexer.IDENT) && strings.ToLower(p.curToken.Literal) == "map") {
+				p.nextToken() // saute 'map'
+			}
+			if p.curTokenIs(lexer.LBRACE) {
+				p.nextToken() // saute '{'
+				for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+					if p.curTokenIs(lexer.COMMA) || p.curTokenIs(lexer.SEMICOLON) {
+						p.nextToken()
+						continue
+					}
+					if p.curTokenIs(lexer.IDENT) {
+						stmt.Targets = append(stmt.Targets, p.curToken.Literal)
+					}
+					p.nextToken()
+				}
+				if p.curTokenIs(lexer.RBRACE) {
+					p.nextToken() // saute '}'
+				}
+			}
+		} else if p.curTokenIs(lexer.IDENT) {
+			stmt.Targets = append(stmt.Targets, p.curToken.Literal)
+			p.nextToken()
+		}
+	} else if p.curTokenIs(lexer.LPAREN) || p.curTokenIs(lexer.LBRACKET) {
+		closeTok := lexer.RPAREN
+		if p.curTokenIs(lexer.LBRACKET) {
+			closeTok = lexer.RBRACKET
+		}
+		p.nextToken() // saute '(' ou '['
+		for !p.curTokenIs(closeTok) && !p.curTokenIs(lexer.EOF) {
+			if p.curTokenIs(lexer.COMMA) || p.curTokenIs(lexer.SEMICOLON) {
+				p.nextToken()
+				continue
+			}
+			if p.curTokenIs(lexer.IDENT) {
+				ident := p.curToken.Literal
+				if p.peekTokenIs(lexer.DOUBLE_COLON) || p.peekTokenIs(lexer.DOT) {
+					p.nextToken() // saute scope
+					p.nextToken() // saute '::' ou '.'
+					if p.curTokenIs(lexer.IDENT) {
+						stmt.Targets = append(stmt.Targets, p.curToken.Literal)
+					}
+				} else {
+					stmt.Targets = append(stmt.Targets, ident)
+				}
+			}
+			p.nextToken()
+		}
+		if p.curTokenIs(closeTok) {
+			p.nextToken() // saute ')' ou ']'
+		}
+	} else if p.curTokenIs(lexer.IDENT) || (p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.LBRACE && p.curToken.Type != lexer.AS) {
+		stmt.Targets = append(stmt.Targets, p.curToken.Literal)
+		p.nextToken()
+	}
+
+	// Optionnel : as <alias>
+	if p.curTokenIs(lexer.AS) {
+		p.nextToken() // consomme 'as'
+		if p.curTokenIs(lexer.IDENT) {
+			stmt.Alias = p.curToken.Literal
+			p.nextToken()
+		}
+	}
+
+	if !p.curTokenIs(lexer.LBRACE) {
+		p.addError(p.curToken.Pos, "expected '{' after trap declaration")
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
+	return stmt
+}
+
+func (p *Parser) isStdInStatement() bool {
+	if !p.curTokenIs(lexer.IDENT) {
+		return false
+	}
+	if !p.peekTokenIs(lexer.DOUBLE_COLON) && !p.peekTokenIs(lexer.DOT) {
+		return false
+	}
+	lexerClone := p.l.Clone()
+	tok1 := lexerClone.NextToken()
+	tok2 := lexerClone.NextToken()
+	return tok1.Type == lexer.IN && tok2.Type == lexer.LBRACE
+}
+
+func (p *Parser) parseStdInStatement() *ast.StdInStatement {
+	pos := p.curToken.Pos
+	scope := p.curToken.Literal
+	p.nextToken() // saute "std" -> curToken est "::" ou "."
+	p.nextToken() // saute "::" ou "." -> curToken est "in"
+	p.nextToken() // saute "in" -> curToken est "{"
+	block := p.parseBlockStatement()
+	return &ast.StdInStatement{
+		Position: pos,
+		Scope:    scope,
+		Body:     block,
+	}
 }
 

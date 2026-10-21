@@ -320,6 +320,41 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 		}
 		if sym, ok := c.scope.Resolve(e.Function); ok {
 			sym.Used = true
+		} else if c.inStdInBlock {
+			switch e.Function {
+			case "input":
+				if len(e.Arguments) > 2 {
+					c.addError(e.Pos(), "ERR_TOO_MANY_ARGUMENTS", "::input accepts at most 2 arguments: (prompt = \"\", default = \"\")")
+				}
+			case "select":
+				if len(e.Arguments) < 2 {
+					c.addError(e.Pos(), "ERR_TOO_FEW_ARGUMENTS", "::select requires at least 2 arguments: (prompt, options, [defaultIndex])")
+				} else if len(e.Arguments) > 3 {
+					c.addError(e.Pos(), "ERR_TOO_MANY_ARGUMENTS", "::select accepts at most 3 arguments: (prompt, options, defaultIndex)")
+				}
+			case "confirm":
+				if len(e.Arguments) > 2 {
+					c.addError(e.Pos(), "ERR_TOO_MANY_ARGUMENTS", "::confirm accepts at most 2 arguments: (prompt = \"\", default = true)")
+				}
+			default:
+				c.addError(e.Pos(), "ERR_UNKNOWN_STDIN_FUNCTION",
+					fmt.Sprintf("Function '::%s' is not defined in 'std::in' block. Valid functions are: ::input, ::select, ::confirm", e.Function))
+			}
+		} else {
+			if e.Function == "input" || e.Function == "select" || e.Function == "confirm" {
+				c.addError(e.Pos(), "ERR_STDIN_OUTSIDE_BLOCK",
+					fmt.Sprintf("Function '::%s' is only accessible inside 'std::in { ... }' or via 'std.%s(...)'.", e.Function, e.Function))
+			}
+		}
+
+	case *ast.GlobalAccessExpression:
+		if sym, ok := c.scope.Resolve(e.Name); ok {
+			sym.Used = true
+		} else if c.inStdInBlock {
+			if e.Name != "input" && e.Name != "select" && e.Name != "confirm" {
+				c.addError(e.Pos(), "ERR_UNKNOWN_STDIN_FUNCTION",
+					fmt.Sprintf("Identifier '::%s' is not defined in 'std::in' block. Valid identifiers are: ::input, ::select, ::confirm", e.Name))
+			}
 		}
 
 	case *ast.ScopeAccessExpression:

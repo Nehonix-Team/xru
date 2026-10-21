@@ -12,6 +12,8 @@
     { "include": "#strings" },
     { "include": "#strings_single" },
     { "include": "#loops" },
+    { "include": "#trap_statement" },
+    { "include": "#stdin_statement" },
     { "include": "#keywords_control" },
     { "include": "#modifiers" },
     { "include": "#keywords_declaration" },
@@ -262,11 +264,45 @@
         }
       ]
     },
+    "trap_statement": {
+      "patterns": [
+        {
+          "match": "\\b(trap)\\b",
+          "name": "keyword.control.trap.xru keyword.control.xru"
+        },
+        {
+          "match": "(?<=\\btrap\\b[^\\{]*\\b)(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.as.xru keyword.control.xru" },
+            "2": { "name": "variable.parameter.trap.xru" }
+          }
+        }
+      ]
+    },
+    "stdin_statement": {
+      "patterns": [
+        {
+          "match": "\\b(std)(::|\\.)(in)\\s*(?=\\{)",
+          "captures": {
+            "1": { "name": "support.class.builtin.xru" },
+            "2": { "name": "punctuation.accessor.xru" },
+            "3": { "name": "keyword.control.stdin.xru keyword.control.xru" }
+          }
+        },
+        {
+          "match": "(::)(input|select|confirm)\\b",
+          "captures": {
+            "1": { "name": "punctuation.accessor.global.xru" },
+            "2": { "name": "support.function.builtin.stdin.xru entity.name.function.xru" }
+          }
+        }
+      ]
+    },
     "keywords_control": {
       "patterns": [
         {
           "name": "keyword.control.xru",
-          "match": "\\b(if|elif|else|match|case|default|for|while|in|return|with|catch|or|then|file|dispatch|dispatch_tree|pass)\\b"
+          "match": "\\b(if|elif|else|match|case|default|for|while|in|return|with|catch|trap|or|then|file|dispatch|dispatch_tree|pass)\\b"
         }
       ]
     },
@@ -316,7 +352,7 @@
       "patterns": [
         {
           "name": "support.class.builtin.xru",
-          "match": "\\b(std|Std|Fs|Net|Crypto|Local|Sys|Path|Json|Math|date|Date)\\b"
+          "match": "\\b(std|Std|sig|Sig|cmd|Cmd|fs|Fs|net|Net|crypto|Crypto|local|Local|sys|Sys|path|Path|json|Json|math|Math|date|Date)\\b"
         },
         {
           "name": "support.function.builtin.xru",
@@ -347,6 +383,10 @@
         {
           "name": "constant.language.null.xru",
           "match": "\\b(nil|null)\\b"
+        },
+        {
+          "name": "constant.language.signal.xru variable.other.constant.xru",
+          "match": "\\b(interrupt|terminate|hangup|sigint|sigterm|sighup)\\b"
         }
       ]
     },

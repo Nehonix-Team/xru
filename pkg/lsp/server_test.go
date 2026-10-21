@@ -834,7 +834,7 @@ file "package.json", (content, error) -> {
 
 func TestLSPUnusedFromUseImportDiagnostic(t *testing.T) {
 	uri := "file:///home/idevo/Documents/projects/XTemplates/test_from_unused.xru"
-	code := `from "dll" use XpackD::downloadRelease
+	code := `from "dll" use XpackD::resolveBundle
 from "dll" use gArgs::name
 let myName = name
 myName
@@ -858,8 +858,8 @@ myName
 	if !strings.Contains(outStr, `"tags":[1]`) {
 		t.Errorf("Expected DiagnosticTagUnnecessary (tags:[1]) in publishDiagnostics, got: %s", outStr)
 	}
-	if !strings.Contains(outStr, "downloadRelease") {
-		t.Errorf("Expected diagnostic message mentioning 'downloadRelease', got: %s", outStr)
+	if !strings.Contains(outStr, "resolveBundle") {
+		t.Errorf("Expected diagnostic message mentioning 'resolveBundle', got: %s", outStr)
 	}
 }
 

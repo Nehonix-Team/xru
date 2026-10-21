@@ -21,6 +21,12 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.UseStatement:
 		if s == nil { return }
 		c.checkUse(s)
+	case *ast.TrapStatement:
+		if s == nil { return }
+		c.checkTrap(s)
+	case *ast.StdInStatement:
+		if s == nil { return }
+		c.checkStdIn(s)
 	case *ast.ArgStatement:
 		if s == nil { return }
 		c.checkArg(s)
@@ -227,6 +233,7 @@ func (c *Checker) checkReassign(s *ast.ReassignStatement) {
 		c.checkExpression(s.Value)
 		return
 	}
+	sym.Used = true
 
 	if sym.Kind == SymConst {
 		c.addError(s.Pos(), "ERR_CONST_REASSIGNMENT",
@@ -987,4 +994,78 @@ func (c *Checker) checkDispatchTree(s *ast.DispatchTreeStatement) {
 			}
 		}
 	}
+}
+
+func (c *Checker) checkTrap(s *ast.TrapStatement) {
+	if s == nil {
+		return
+	}
+	validTargets := map[string]bool{
+		"interrupt": true,
+		"sigint":    true,
+		"terminate": true,
+		"sigterm":   true,
+		"hangup":    true,
+		"sighup":    true,
+		"exit":      true,
+		"error":     true,
+	}
+	if len(s.Targets) == 0 {
+		c.addError(s.Position, "ERR_INVALID_TRAP_TARGET", "trap statement requires at least one target (e.g. interrupt, exit, error)")
+	}
+	if s.Scope != "" {
+		if sym, ok := c.scope.Resolve(s.Scope); ok {
+			sym.Used = true
+		} else {
+			c.addError(s.Position, "ERR_UNDEFINED_VARIABLE", fmt.Sprintf("Module or unit '%s' is not defined in current scope (did you forget 'use %s'?)", s.Scope, s.Scope))
+		}
+	}
+
+	for _, target := range s.Targets {
+		lower := strings.ToLower(target)
+		if !validTargets[lower] {
+			c.addError(s.Position, "ERR_INVALID_TRAP_TARGET", fmt.Sprintf("invalid trap target '%s'. Valid targets: interrupt, terminate, hangup, exit, error", target))
+		} else if s.Scope == "" {
+			if sym, ok := c.scope.Resolve(target); ok {
+				sym.Used = true
+			}
+		}
+	}
+
+	c.scope = NewScope(c.scope, false)
+	if s.Alias != "" {
+		_ = c.scope.Define(&Symbol{
+			Name: s.Alias,
+			Kind: SymVar,
+			Type: "any",
+			Pos:  s.Position,
+		})
+	}
+	if s.Body != nil {
+		c.checkStatementList(s.Body.Statements)
+	}
+	c.scope = c.scope.parent
+}
+
+func (c *Checker) checkStdIn(s *ast.StdInStatement) {
+	if s == nil {
+		return
+	}
+	if s.Scope != "" {
+		if sym, ok := c.scope.Resolve(s.Scope); ok {
+			sym.Used = true
+		} else if !strings.EqualFold(s.Scope, "std") {
+			c.addError(s.Position, "ERR_UNDEFINED_VARIABLE", fmt.Sprintf("Module or unit '%s' is not defined in current scope (did you forget 'use %s'?)", s.Scope, s.Scope))
+		}
+	}
+
+	prevInStdIn := c.inStdInBlock
+	c.inStdInBlock = true
+	defer func() { c.inStdInBlock = prevInStdIn }()
+
+	c.scope = NewScope(c.scope, false)
+	if s.Body != nil {
+		c.checkStatementList(s.Body.Statements)
+	}
+	c.scope = c.scope.parent
 }

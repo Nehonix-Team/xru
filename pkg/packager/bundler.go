@@ -249,7 +249,11 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 					if targetMod, ok := moduleAliases[sa.Scope]; ok {
 						return &ast.Identifier{Position: sa.Position, Value: targetMod + "__" + sa.Member}
 					}
-					return &ast.Identifier{Position: sa.Position, Value: sa.Scope + "__" + sa.Member}
+					return &ast.MemberExpression{
+						Position: sa.Position,
+						Object:   &ast.Identifier{Position: sa.Position, Value: sa.Scope},
+						Property: sa.Member,
+					}
 				}
 				if inst, ok := expr.(*ast.InstantiationExpression); ok {
 					if declNames[inst.UnitName] {
@@ -340,7 +344,11 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 				if targetMod, ok := moduleAliases[sa.Scope]; ok {
 					return &ast.Identifier{Position: sa.Position, Value: targetMod + "__" + sa.Member}
 				}
-				return &ast.Identifier{Position: sa.Position, Value: sa.Scope + "__" + sa.Member}
+				return &ast.MemberExpression{
+					Position: sa.Position,
+					Object:   &ast.Identifier{Position: sa.Position, Value: sa.Scope},
+					Property: sa.Member,
+				}
 			}
 			if inst, ok := expr.(*ast.InstantiationExpression); ok {
 				if target, ok := importedMembers[inst.UnitName]; ok {
@@ -403,8 +411,21 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 		}
 	}
 
+	var nativeUses []ast.Statement
+	var aliasedUses []ast.Statement
+	for _, u := range useStmts {
+		if us, ok := u.(*ast.UseStatement); ok && us.Alias == "" && len(us.Members) == 0 {
+			nativeUses = append(nativeUses, u)
+		} else {
+			aliasedUses = append(aliasedUses, u)
+		}
+	}
+	var orderedUses []ast.Statement
+	orderedUses = append(orderedUses, nativeUses...)
+	orderedUses = append(orderedUses, aliasedUses...)
+
 	var finalStmts []ast.Statement
-	finalStmts = append(finalStmts, useStmts...)
+	finalStmts = append(finalStmts, orderedUses...)
 	finalStmts = append(finalStmts, argStmts...)
 	finalStmts = append(finalStmts, unitStmts...)
 	finalStmts = append(finalStmts, varStmts...)
@@ -557,6 +578,18 @@ func transformStmt(stmt ast.Statement, fn func(ast.Expression) ast.Expression) a
 	case *ast.BlockStatement:
 		for i, st := range s.Statements {
 			s.Statements[i] = transformStmt(st, fn)
+		}
+	case *ast.TrapStatement:
+		if s.Body != nil {
+			for i, st := range s.Body.Statements {
+				s.Body.Statements[i] = transformStmt(st, fn)
+			}
+		}
+	case *ast.StdInStatement:
+		if s.Body != nil {
+			for i, st := range s.Body.Statements {
+				s.Body.Statements[i] = transformStmt(st, fn)
+			}
 		}
 	}
 	return stmt
@@ -712,6 +745,7 @@ func NewMangler(prog *ast.Program) *Mangler {
 		"func", "let", "const", "use", "mod", "from", "to", "by", "unit", "interface",
 		"type", "set", "get", "has", "delete", "clear", "merge", "keys", "values", "entries",
 		"size", "while", "catch", "on", "header", "directive", "global", "pass", "includes",
+		"input", "select", "confirm",
 	}
 	for _, b := range builtins {
 		m.reserved[b] = true
@@ -924,6 +958,9 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 		return fmt.Sprintf("%sarg %s: %s", prefix, namePart, s.Type)
 
 	case *ast.UseStatement:
+		if len(s.Members) > 0 {
+			return fmt.Sprintf("use %s::@map{%s}", s.Module, strings.Join(s.Members, ", "))
+		}
 		alias := m.moduleAliases[s.Module]
 		if alias != "" {
 			return fmt.Sprintf("use %s as %s", s.Module, alias)
@@ -1097,6 +1134,58 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 			}
 		}
 		return fmt.Sprintf("in%s{%s}", pathStr, strings.Join(bodyParts, ";"))
+
+	case *ast.TrapStatement:
+		targetStr := ""
+		if s.Scope != "" {
+			scope := s.Scope
+			if resolved := m.resolveName(scope); resolved != "" {
+				scope = resolved
+			}
+			if len(s.Targets) == 1 {
+				targetStr = fmt.Sprintf("%s::%s", scope, s.Targets[0])
+			} else {
+				targetStr = fmt.Sprintf("%s::@map{%s}", scope, strings.Join(s.Targets, ", "))
+			}
+		} else {
+			targetStr = strings.Join(s.Targets, ", ")
+			if len(s.Targets) > 1 {
+				targetStr = "(" + targetStr + ")"
+			}
+		}
+		aliasStr := ""
+		if s.Alias != "" {
+			aliasStr = " as " + s.Alias
+		}
+		var bodyParts []string
+		if s.Body != nil {
+			for _, st := range s.Body.Statements {
+				ms := m.minifyStatement(st)
+				if ms != "" {
+					bodyParts = append(bodyParts, ms)
+				}
+			}
+		}
+		return fmt.Sprintf("trap %s%s{%s}", targetStr, aliasStr, strings.Join(bodyParts, ";"))
+
+	case *ast.StdInStatement:
+		scope := s.Scope
+		if scope == "" {
+			scope = "std"
+		}
+		if resolved := m.resolveName(scope); resolved != "" {
+			scope = resolved
+		}
+		var bodyParts []string
+		if s.Body != nil {
+			for _, st := range s.Body.Statements {
+				ms := m.minifyStatement(st)
+				if ms != "" {
+					bodyParts = append(bodyParts, ms)
+				}
+			}
+		}
+		return fmt.Sprintf("%s::in{%s}", scope, strings.Join(bodyParts, ";"))
 
 	case *ast.FileStatement:
 		pathStr := s.Path
@@ -1382,7 +1471,17 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 			}
 			return fmt.Sprintf("&%s::%s", scope, member)
 		}
+		scope := e.Scope
+		if resolved := m.resolveName(scope); resolved != "" {
+			scope = resolved
+		}
 		member := e.Member
+		if mangled, ok := m.unitMethods[member]; ok {
+			member = mangled
+		}
+		if scope != "" {
+			return fmt.Sprintf("%s.%s", scope, member)
+		}
 		if !m.reserved[member] {
 			member = m.getMangledName(member)
 		}
@@ -1390,6 +1489,13 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 
 	case *ast.GlobalCallExpression:
 		fnName := e.Function
+		if fnName == "input" || fnName == "select" || fnName == "confirm" {
+			var args []string
+			for _, a := range e.Arguments {
+				args = append(args, m.minifyExpression(a))
+			}
+			return fmt.Sprintf("::%s(%s)", fnName, strings.Join(args, ","))
+		}
 		if !m.reserved[fnName] {
 			fnName = m.getMangledName(fnName)
 		}
@@ -1401,6 +1507,9 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 
 	case *ast.GlobalAccessExpression:
 		fnName := e.Name
+		if fnName == "input" || fnName == "select" || fnName == "confirm" {
+			return "::" + fnName
+		}
 		if !m.reserved[fnName] {
 			fnName = m.getMangledName(fnName)
 		}

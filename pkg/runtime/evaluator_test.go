@@ -2183,5 +2183,90 @@ export { r as router };`
 	}
 }
 
+func TestTrapStatements(t *testing.T) {
+	code := `
+let exitCodeCaught = -1
+let errorCaught = ""
+
+trap exit as code {
+    exitCodeCaught =: code
+}
+
+trap error as err {
+    errorCaught =: err
+}
+
+trap [interrupt, terminate] as sig {
+    // Registered signal trap
+}
+`
+	l := lexer.New("trap_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+
+	_, err := ev.Eval(prog, env)
+	if err != nil {
+		t.Fatalf("Runtime evaluation error: %v", err)
+	}
+
+	// Trigger exit trap
+	ev.RunExitTraps(0)
+	val, ok := env.Get("exitCodeCaught")
+	if !ok || val.String() != "0" {
+		t.Errorf("Expected exitCodeCaught to be '0', got '%v'", val)
+	}
+
+	// Trigger error trap
+	handled := ev.RunErrorTraps(fmt.Errorf("simulated panic"))
+	if !handled {
+		t.Errorf("Expected error trap to handle simulated error")
+	}
+	errVal, ok := env.Get("errorCaught")
+	if !ok || errVal.String() != "simulated panic" {
+		t.Errorf("Expected errorCaught to be 'simulated panic', got '%v'", errVal)
+	}
+	// Test use sig with sig::@map{...} and sig::interrupt
+	sigCode := `
+use sig
+
+trap sig::interrupt as s1 {
+    // handled
+}
+
+trap sig::@map{interrupt, terminate} as s2 {
+    // handled
+}
+
+use sig::@map{hangup, exit}
+trap (hangup) as s3 {
+    // handled
+}
+`
+	l2 := lexer.New("trap_sig_test.xru", sigCode)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	if len(p2.Errors()) > 0 {
+		t.Fatalf("Parser error in trap_sig_test: %v", p2.Errors())
+	}
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev2.Eval(prog2, env2); err != nil {
+		t.Fatalf("Runtime evaluation error in trap_sig_test: %v", err)
+	}
+
+	hangupVal, ok := env2.Get("hangup")
+	if !ok || hangupVal.String() != "hangup" {
+		t.Errorf("Expected hangup imported constant to be 'hangup', got '%v'", hangupVal)
+	}
+}
+
+
 
 

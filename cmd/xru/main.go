@@ -111,6 +111,7 @@ func main() {
 }
 
 func handleRun(ruleFile string, cliArgs []string, verbose bool) {
+	runtime.SetGlobalCliArgs(cliArgs)
 	content, err := os.ReadFile(ruleFile)
 	if err != nil {
 		fmt.Printf("\033[31m[ERROR]\033[0m Cannot read file '%s': %v\n", ruleFile, err)
@@ -357,9 +358,13 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 
 	// Exécution du programme
 	if _, err := eval.Eval(prog, env); err != nil {
-		fmt.Printf("\033[31m[RUNTIME ERROR]\033[0m %v\n", err)
+		if !eval.RunErrorTraps(err) {
+			fmt.Printf("\033[31m[RUNTIME ERROR]\033[0m %v\n", err)
+		}
+		eval.RunExitTraps(1)
 		os.Exit(1)
 	}
+	eval.RunExitTraps(0)
 }
 
 func handlePack(args []string, verbose bool) {

@@ -61,33 +61,22 @@ func (p *Parser) parseFileStatement() *ast.FileStatement {
 		return stmt
 	}
 
-	// Cas 3 : Ancien bloc direct { ... } (rétrocompatibilité)
+	// Cas 3 : L'ancien bloc direct { ... } est désormais strictement interdit
 	if p.peekTokenIs(lexer.LBRACE) {
-		p.nextToken() // '{'
-		p.nextToken() // premier token du bloc
-		for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
-			if p.curTokenIs(lexer.SEMICOLON) {
-				p.nextToken()
-				continue
-			}
-			bodyStmt := p.parseStatement()
-			if bodyStmt != nil {
-				stmt.Body = append(stmt.Body, bodyStmt)
-			}
-			if p.peekTokenIs(lexer.SEMICOLON) {
-				p.nextToken()
-			}
+		p.addError(p.peekToken.Pos, "legacy syntax 'file <path> { ... }' is deprecated and unsupported; 'file' requires a callback handler as second argument: file <path>, (doc, err) -> { ... }")
+		p.nextToken() // saute '{'
+		braceDepth := 1
+		for braceDepth > 0 && !p.curTokenIs(lexer.EOF) {
 			p.nextToken()
+			if p.curTokenIs(lexer.LBRACE) {
+				braceDepth++
+			} else if p.curTokenIs(lexer.RBRACE) {
+				braceDepth--
+			}
 		}
-		if p.curTokenIs(lexer.EOF) {
-			p.addError(stmt.Position, "unclosed file block (missing '}')")
-		}
-		if p.peekTokenIs(lexer.SEMICOLON) {
-			p.nextToken()
-		}
-		return stmt
+		return nil
 	}
 
-	p.addError(stmt.Position, fmt.Sprintf("expected ',' with handler lambda or '{' block after file path, got '%s'", p.peekToken.Literal))
-	return stmt
+	p.addError(stmt.Position, fmt.Sprintf("expected ',' with callback handler after file path: file <path>, (doc, err) -> { ... }, got '%s'", p.peekToken.Literal))
+	return nil
 }

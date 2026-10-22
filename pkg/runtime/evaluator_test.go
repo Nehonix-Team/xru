@@ -68,10 +68,10 @@ line 3
 	}
 
 	code := `
-file "` + testFilePath + `" {
-    Replace("line 1", "first line")
-    RemoveBlock("// BEGIN BLOCK", "// END BLOCK")
-    RemoveLines("cdn")
+file "` + testFilePath + `", (doc, err) -> {
+    doc.replace("line 1", "first line")
+    doc.removeBetween("// BEGIN BLOCK", "// END BLOCK")
+    doc.removeLines("cdn")
 }
 `
 	l := lexer.New("test_file_ops.xru", code)
@@ -105,6 +105,23 @@ file "` + testFilePath + `" {
 	}
 	if !strings.Contains(updated, "line 2") || !strings.Contains(updated, "line 3") {
 		t.Errorf("Expected line 2 and line 3 preserved, got: %s", updated)
+	}
+}
+
+func TestFileStatementLegacySyntaxFails(t *testing.T) {
+	code := `
+file "fileonix" {
+    replace("{{NAME}}", "name")
+}
+`
+	l := lexer.New("test_legacy_file.xru", code)
+	p := parser.New(l)
+	p.ParseProgram()
+	if len(p.Errors()) == 0 {
+		t.Fatalf("Expected parser error for legacy 'file <path> { ... }' syntax, got none")
+	}
+	if !strings.Contains(p.Errors()[0], "legacy syntax 'file <path> { ... }' is deprecated and unsupported") {
+		t.Errorf("Expected legacy deprecation error message, got: %s", p.Errors()[0])
 	}
 }
 

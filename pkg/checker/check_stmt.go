@@ -82,6 +82,10 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		if s == nil || s.Expression == nil { return }
 		c.checkExpression(s.Expression)
 	case *ast.FileStatement:
+		if s.Handler == nil {
+			c.addError(s.Pos(), "ERR_MISSING_HANDLER", "'file' statement requires a callback handler as second argument: file <path>, (doc, err) -> { ... }")
+			return
+		}
 		if s.PathExpr != nil {
 			c.checkExpression(s.PathExpr)
 			pType := c.inferType(s.PathExpr)

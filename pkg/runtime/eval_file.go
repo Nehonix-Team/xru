@@ -706,66 +706,7 @@ func (ev *Evaluator) evalFile(fileStmt *ast.FileStatement, env *Environment) (Va
 		return docUnit, nil
 	}
 
-	// 4. Rétrocompatibilité : Ancien bloc direct file "path" { ... }
-	if len(fileStmt.Body) > 0 {
-		if readErr != nil {
-			return NilValue{}, fmt.Errorf("failed to open file '%s': %w", targetPath, readErr)
-		}
-		fileEnv := NewEnvironment(env)
-		fileEnv.SetCurrentDir(filepath.Dir(targetPath))
-
-		// Injection des méthodes avec alias PascalCase et minuscules
-		for mName, mFn := range docUnit.Methods {
-			fn := mFn
-			fileEnv.Set(mName, FunctionValue{Name: mName, Fn: fn}, false)
-			fileEnv.Set(strings.ToLower(mName), FunctionValue{Name: strings.ToLower(mName), Fn: fn}, false)
-			fileEnv.Set(strings.Title(mName), FunctionValue{Name: strings.Title(mName), Fn: fn}, false)
-		}
-
-		fileEnv.Set("RemoveBlock", FunctionValue{
-			Name: "RemoveBlock",
-			Fn: func(args []Value) (Value, error) {
-				return docUnit.Methods["removeBetween"](args)
-			},
-		}, false)
-		fileEnv.Set("removeBlock", FunctionValue{
-			Name: "removeBlock",
-			Fn: func(args []Value) (Value, error) {
-				return docUnit.Methods["removeBetween"](args)
-			},
-		}, false)
-		fileEnv.Set("RemoveLines", FunctionValue{
-			Name: "RemoveLines",
-			Fn: func(args []Value) (Value, error) {
-				if len(args) < 1 {
-					return NilValue{}, fmt.Errorf("RemoveLines requires pattern")
-				}
-				pat := args[0].String()
-				lines := strings.Split(content, "\n")
-				var rem []string
-				for _, l := range lines {
-					if !strings.Contains(l, pat) {
-						rem = append(rem, l)
-					}
-				}
-				updateContent(strings.Join(rem, "\n"))
-				return BoolValue{Val: true}, nil
-			},
-		}, false)
-
-		for _, stmt := range fileStmt.Body {
-			if _, err := ev.Eval(stmt, fileEnv); err != nil {
-				return nil, err
-			}
-		}
-
-		if modified {
-			_ = os.WriteFile(targetPath, []byte(content), 0644)
-		}
-		return docUnit, nil
-	}
-
-	return docUnit, nil
+	return NilValue{}, fmt.Errorf("'file' statement requires a callback handler as second argument: file <path>, (doc, err) -> { ... }")
 }
 
 // makeFuzzyRegex transforme une chaîne en regex tolérante aux espaces multiples et retours à la ligne

@@ -274,6 +274,30 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 						return &ast.Identifier{Position: id.Position, Value: target}
 					}
 				}
+				if strLit, ok := expr.(*ast.StringLiteral); ok {
+					spans := ast.ExtractInterpolations(strLit.Value)
+					if len(spans) > 0 {
+						val := strLit.Value
+						for _, span := range spans {
+							origExpr := span.Expr
+							if knownArgs[origExpr] {
+								continue
+							}
+							if declNames[origExpr] {
+								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+modName+"__"+origExpr+"}", 1)
+							} else if target, ok := importedMembers[origExpr]; ok {
+								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+target+"}", 1)
+							} else if strings.Contains(origExpr, "::") {
+								parts := strings.SplitN(origExpr, "::", 2)
+								if targetMod, ok := moduleAliases[parts[0]]; ok {
+									val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+targetMod+"__"+parts[1]+"}", 1)
+								}
+							}
+						}
+						strLit.Value = val
+					}
+					return strLit
+				}
 				return expr
 			})
 		}
@@ -363,6 +387,28 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 				if target, ok := importedMembers[id.Value]; ok {
 					return &ast.Identifier{Position: id.Position, Value: target}
 				}
+			}
+			if strLit, ok := expr.(*ast.StringLiteral); ok {
+				spans := ast.ExtractInterpolations(strLit.Value)
+				if len(spans) > 0 {
+					val := strLit.Value
+					for _, span := range spans {
+						origExpr := span.Expr
+						if knownArgs[origExpr] {
+							continue
+						}
+						if target, ok := importedMembers[origExpr]; ok {
+							val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+target+"}", 1)
+						} else if strings.Contains(origExpr, "::") {
+							parts := strings.SplitN(origExpr, "::", 2)
+							if targetMod, ok := moduleAliases[parts[0]]; ok {
+								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+targetMod+"__"+parts[1]+"}", 1)
+							}
+						}
+					}
+					strLit.Value = val
+				}
+				return strLit
 			}
 			return expr
 		})

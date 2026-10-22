@@ -246,11 +246,13 @@ func autoUpdateXRU(silent bool) error {
 	}
 
 	// Restart process seamlessly
+	updateEnv := append(os.Environ(), "XRU_AUTO_UPDATE_ATTEMPT=1")
 	if !isWindows {
-		return syscall.Exec(targetExec, os.Args, os.Environ())
+		return syscall.Exec(targetExec, os.Args, updateEnv)
 	}
 
 	restartCmd := exec.Command(targetExec, os.Args[1:]...)
+	restartCmd.Env = updateEnv
 	restartCmd.Stdin = os.Stdin
 	restartCmd.Stdout = os.Stdout
 	restartCmd.Stderr = os.Stderr
@@ -298,6 +300,10 @@ func sysRequireFn(args []Value) (Value, error) {
 	// Mismatch handling
 	switch onMismatch {
 	case "auto-update", "update":
+		if os.Getenv("XRU_AUTO_UPDATE_ATTEMPT") != "" {
+			fmt.Fprintf(os.Stderr, "\n\033[1;31m[XRU VERSION ERROR]\033[0m Successfully updated to latest available release (\033[33m%s\033[0m), but required version \033[1m%s\033[0m is still not satisfied.\nThe requested release may not be published on GitHub yet.\n\n", currentVer, constraint)
+			os.Exit(1)
+		}
 		err := autoUpdateXRU(mode == "silent")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\033[31m[XRU AUTO-UPDATE ERROR]\033[0m %v\n", err)
@@ -443,6 +449,10 @@ func CheckAndEnforceAstRequire(prog *ast.Program) error {
 		// Version mismatch handling
 		switch onMismatch {
 		case "auto-update", "update":
+			if os.Getenv("XRU_AUTO_UPDATE_ATTEMPT") != "" {
+				fmt.Fprintf(os.Stderr, "\n\033[1;31m[XRU VERSION ERROR]\033[0m Successfully updated to latest available release (\033[33m%s\033[0m), but required version \033[1m%s\033[0m is still not satisfied.\nThe requested release may not be published on GitHub yet.\n\n", currentVer, constraint)
+				os.Exit(1)
+			}
 			err := autoUpdateXRU(mode == "silent")
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "\033[31m[XRU AUTO-UPDATE ERROR]\033[0m %v\n", err)

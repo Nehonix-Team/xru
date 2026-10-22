@@ -22,6 +22,12 @@ func (ev *Evaluator) evalBlockStatement(block *ast.BlockStatement, env *Environm
 		if ret, ok := res.(ReturnValue); ok {
 			return ret, nil
 		}
+		if _, ok := res.(BreakValue); ok {
+			return res, nil
+		}
+		if _, ok := res.(ContinueValue); ok {
+			return res, nil
+		}
 		result = res
 	}
 	return result, nil
@@ -42,6 +48,12 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 			if ret, ok := res.(ReturnValue); ok {
 				return ret, nil
 			}
+			if _, ok := res.(BreakValue); ok {
+				return res, nil
+			}
+			if _, ok := res.(ContinueValue); ok {
+				return res, nil
+			}
 		}
 		return NilValue{}, nil
 	}
@@ -61,6 +73,12 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 				if ret, ok := res.(ReturnValue); ok {
 					return ret, nil
 				}
+				if _, ok := res.(BreakValue); ok {
+					return res, nil
+				}
+				if _, ok := res.(ContinueValue); ok {
+					return res, nil
+				}
 			}
 			return NilValue{}, nil
 		}
@@ -75,6 +93,12 @@ func (ev *Evaluator) evalIf(ifStmt *ast.IfStatement, env *Environment) (Value, e
 			}
 			if ret, ok := res.(ReturnValue); ok {
 				return ret, nil
+			}
+			if _, ok := res.(BreakValue); ok {
+				return res, nil
+			}
+			if _, ok := res.(ContinueValue); ok {
+				return res, nil
 			}
 		}
 	}
@@ -414,6 +438,7 @@ func (ev *Evaluator) evalWhile(w *ast.WhileStatement, env *Environment) (Value, 
 			break
 		}
 
+		shouldBreak := false
 		for _, stmt := range w.Body {
 			res, err := ev.Eval(stmt, loopEnv)
 			if err != nil {
@@ -422,6 +447,16 @@ func (ev *Evaluator) evalWhile(w *ast.WhileStatement, env *Environment) (Value, 
 			if ret, ok := res.(ReturnValue); ok {
 				return ret, nil
 			}
+			if _, ok := res.(BreakValue); ok {
+				shouldBreak = true
+				break
+			}
+			if _, ok := res.(ContinueValue); ok {
+				break
+			}
+		}
+		if shouldBreak {
+			break
 		}
 	}
 	return NilValue{}, nil
@@ -449,6 +484,7 @@ func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, erro
 			if f.Index != "" {
 				_ = loopEnv.Set(f.Index, NumberValue{Val: float64(idx)}, false)
 			}
+			shouldBreak := false
 			for _, stmt := range f.Body {
 				res, err := ev.Eval(stmt, loopEnv)
 				if err != nil {
@@ -457,8 +493,15 @@ func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, erro
 				if ret, ok := res.(ReturnValue); ok {
 					return ret, nil
 				}
+				if _, ok := res.(BreakValue); ok {
+					shouldBreak = true
+					break
+				}
+				if _, ok := res.(ContinueValue); ok {
+					break
+				}
 			}
-			if current == end {
+			if shouldBreak || current == end {
 				break
 			}
 			idx++
@@ -469,6 +512,7 @@ func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, erro
 			if f.Index != "" {
 				_ = loopEnv.Set(f.Index, NumberValue{Val: float64(idx)}, false)
 			}
+			shouldBreak := false
 			for _, stmt := range f.Body {
 				res, err := ev.Eval(stmt, loopEnv)
 				if err != nil {
@@ -477,6 +521,16 @@ func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, erro
 				if ret, ok := res.(ReturnValue); ok {
 					return ret, nil
 				}
+				if _, ok := res.(BreakValue); ok {
+					shouldBreak = true
+					break
+				}
+				if _, ok := res.(ContinueValue); ok {
+					break
+				}
+			}
+			if shouldBreak {
+				break
 			}
 		}
 	case MapValue:
@@ -491,6 +545,7 @@ func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, erro
 			if f.Index != "" {
 				_ = loopEnv.Set(f.Index, v, false)
 			}
+			shouldBreak := false
 			for _, stmt := range f.Body {
 				res, err := ev.Eval(stmt, loopEnv)
 				if err != nil {
@@ -499,6 +554,16 @@ func (ev *Evaluator) evalFor(f *ast.ForStatement, env *Environment) (Value, erro
 				if ret, ok := res.(ReturnValue); ok {
 					return ret, nil
 				}
+				if _, ok := res.(BreakValue); ok {
+					shouldBreak = true
+					break
+				}
+				if _, ok := res.(ContinueValue); ok {
+					break
+				}
+			}
+			if shouldBreak {
+				break
 			}
 		}
 	default:

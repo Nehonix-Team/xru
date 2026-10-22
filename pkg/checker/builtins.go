@@ -24,8 +24,16 @@ func (c *Checker) initBuiltinUnits() {
 			"fetch": {Name: "fetch", Kind: SymFunc, Type: "any"},
 			"Clone": {Name: "Clone", Kind: SymFunc, Type: "bool"},
 			"clone": {Name: "clone", Kind: SymFunc, Type: "bool"},
-			"Get":   {Name: "Get", Kind: SymFunc, Type: "string"},
-			"get":   {Name: "get", Kind: SymFunc, Type: "string"},
+			"Get":             {Name: "Get", Kind: SymFunc, Type: "string"},
+			"get":             {Name: "get", Kind: SymFunc, Type: "string"},
+			"isPortBusy":      {Name: "isPortBusy", Kind: SymFunc, Type: "bool"},
+			"IsPortBusy":      {Name: "IsPortBusy", Kind: SymFunc, Type: "bool"},
+			"isPortFree":      {Name: "isPortFree", Kind: SymFunc, Type: "bool"},
+			"IsPortFree":      {Name: "IsPortFree", Kind: SymFunc, Type: "bool"},
+			"isPortAvailable": {Name: "isPortAvailable", Kind: SymFunc, Type: "bool"},
+			"IsPortAvailable": {Name: "IsPortAvailable", Kind: SymFunc, Type: "bool"},
+			"isPortInUse":     {Name: "isPortInUse", Kind: SymFunc, Type: "bool"},
+			"IsPortInUse":     {Name: "IsPortInUse", Kind: SymFunc, Type: "bool"},
 		},
 	}
 	fsUnit := &Symbol{

@@ -625,6 +625,8 @@ func transformStmt(stmt ast.Statement, fn func(ast.Expression) ast.Expression) a
 		for i, st := range s.Body {
 			s.Body[i] = transformStmt(st, fn)
 		}
+	case *ast.BreakStatement, *ast.ContinueStatement:
+		return s
 	case *ast.MatchStatement:
 		s.Target = transformExpr(s.Target, fn)
 		for i, c := range s.Cases {

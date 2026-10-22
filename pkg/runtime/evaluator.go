@@ -382,6 +382,10 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 		return ev.evalFor(n, env)
 	case *ast.WhileStatement:
 		return ev.evalWhile(n, env)
+	case *ast.BreakStatement:
+		return BreakValue{}, nil
+	case *ast.ContinueStatement:
+		return ContinueValue{}, nil
 	case *ast.RangeExpression:
 		return ev.evalRange(n, env)
 	case *ast.CatchExpression:

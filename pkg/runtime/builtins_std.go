@@ -67,8 +67,11 @@ func newStdUnit() *UnitInstance {
 			fmt.Println()
 			return NilValue{}, nil
 		}
-		msg := formatTerminalColors(args[0].String())
-		fmt.Println(msg)
+		var parts []string
+		for _, arg := range args {
+			parts = append(parts, formatTerminalColors(arg.String()))
+		}
+		fmt.Println(strings.Join(parts, " "))
 		return NilValue{}, nil
 	}
 
@@ -76,8 +79,11 @@ func newStdUnit() *UnitInstance {
 		if len(args) == 0 {
 			return NilValue{}, nil
 		}
-		msg := formatTerminalColors(args[0].String())
-		fmt.Print(msg)
+		var parts []string
+		for _, arg := range args {
+			parts = append(parts, formatTerminalColors(arg.String()))
+		}
+		fmt.Print(strings.Join(parts, " "))
 		return NilValue{}, nil
 	}
 

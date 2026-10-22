@@ -53,6 +53,10 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseForStatement()
 	case lexer.WHILE:
 		return p.parseWhileStatement()
+	case lexer.BREAK:
+		return p.parseBreakStatement()
+	case lexer.CONTINUE:
+		return p.parseContinueStatement()
 	case lexer.IN:
 		return p.parseInStatement()
 	case lexer.SEMICOLON:
@@ -455,5 +459,21 @@ func (p *Parser) parseStdInStatement() *ast.StdInStatement {
 		Scope:    scope,
 		Body:     block,
 	}
+}
+
+func (p *Parser) parseBreakStatement() *ast.BreakStatement {
+	stmt := &ast.BreakStatement{Position: p.curToken.Pos}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
+	return stmt
+}
+
+func (p *Parser) parseContinueStatement() *ast.ContinueStatement {
+	stmt := &ast.ContinueStatement{Position: p.curToken.Pos}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
+	return stmt
 }
 

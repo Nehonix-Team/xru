@@ -3,10 +3,14 @@ package runtime
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 )
 
 func newNetUnit() *UnitInstance {
@@ -74,14 +78,94 @@ func newNetUnit() *UnitInstance {
 		return BoolValue{Val: err == nil}, err
 	}
 
+	portBusyCheck := func(portStr string, host string) bool {
+		targetHost := "127.0.0.1"
+		if host != "" {
+			targetHost = host
+		}
+		// Try active TCP dial
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(targetHost, portStr), 200*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+		// Try binding
+		addr := ":" + portStr
+		if host != "" {
+			addr = net.JoinHostPort(host, portStr)
+		}
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			return true
+		}
+		_ = ln.Close()
+		return false
+	}
+
+	parsePortVal := func(v Value) (string, error) {
+		switch val := v.(type) {
+		case NumberValue:
+			p := int(val.Val)
+			if p <= 0 || p > 65535 {
+				return "", fmt.Errorf("invalid port number: %d", p)
+			}
+			return strconv.Itoa(p), nil
+		default:
+			s := strings.TrimSpace(v.String())
+			p, err := strconv.Atoi(s)
+			if err != nil || p <= 0 || p > 65535 {
+				return "", fmt.Errorf("invalid port: %s", s)
+			}
+			return strconv.Itoa(p), nil
+		}
+	}
+
+	isPortBusyFn := func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("Net.isPortBusy requires port")
+		}
+		portStr, err := parsePortVal(args[0])
+		if err != nil {
+			return NilValue{}, err
+		}
+		host := ""
+		if len(args) >= 2 {
+			host = strings.TrimSpace(args[1].String())
+		}
+		return BoolValue{Val: portBusyCheck(portStr, host)}, nil
+	}
+
+	isPortFreeFn := func(args []Value) (Value, error) {
+		if len(args) < 1 {
+			return NilValue{}, fmt.Errorf("Net.isPortFree requires port")
+		}
+		portStr, err := parsePortVal(args[0])
+		if err != nil {
+			return NilValue{}, err
+		}
+		host := ""
+		if len(args) >= 2 {
+			host = strings.TrimSpace(args[1].String())
+		}
+		return BoolValue{Val: !portBusyCheck(portStr, host)}, nil
+	}
+
 	netUnit = &UnitInstance{
 		UnitName:   "Net",
 		Properties: make(map[string]Value),
 		Methods: map[string]NativeMethod{
-			"Fetch": fetchFn,
-			"fetch": fetchFn,
-			"Clone": cloneFn,
-			"clone": cloneFn,
+			"Fetch":           fetchFn,
+			"fetch":           fetchFn,
+			"Clone":           cloneFn,
+			"clone":           cloneFn,
+			"isPortBusy":      isPortBusyFn,
+			"IsPortBusy":      isPortBusyFn,
+			"isPortFree":      isPortFreeFn,
+			"IsPortFree":      isPortFreeFn,
+			"isPortAvailable": isPortFreeFn,
+			"IsPortAvailable": isPortFreeFn,
+			"isPortInUse":     isPortBusyFn,
+			"IsPortInUse":     isPortBusyFn,
 		},
 		Directives: map[string]NativeDirective{},
 	}

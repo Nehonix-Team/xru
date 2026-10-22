@@ -21,6 +21,7 @@ type Checker struct {
 	unreachable       []lexer.Position // Instructions situées après un appel 'never' (std.fatal, Sys.exit)
 	visitedDispatches map[string]bool
 	inStdInBlock      bool
+	loopDepth         int
 }
 
 func New() *Checker {

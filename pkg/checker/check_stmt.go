@@ -63,6 +63,16 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.WhileStatement:
 		if s == nil { return }
 		c.checkWhile(s)
+	case *ast.BreakStatement:
+		if s == nil { return }
+		if c.loopDepth <= 0 {
+			c.addError(s.Pos(), "ERR_BREAK_OUTSIDE_LOOP", "'break' statement is only allowed inside a loop ('for' or 'while')")
+		}
+	case *ast.ContinueStatement:
+		if s == nil { return }
+		if c.loopDepth <= 0 {
+			c.addError(s.Pos(), "ERR_CONTINUE_OUTSIDE_LOOP", "'continue' statement is only allowed inside a loop ('for' or 'while')")
+		}
 	case *ast.BlockStatement:
 		if s == nil { return }
 		c.scope = NewScope(c.scope, false)
@@ -663,6 +673,9 @@ func (c *Checker) checkIf(s *ast.IfStatement) {
 func (c *Checker) checkFor(s *ast.ForStatement) {
 	c.checkExpression(s.Iterable)
 
+	c.loopDepth++
+	defer func() { c.loopDepth-- }()
+
 	loopScope := NewScope(c.scope, false)
 	c.scope = loopScope
 	defer func() { c.scope = c.scope.parent }()
@@ -735,6 +748,9 @@ func (c *Checker) checkWhile(s *ast.WhileStatement) {
 	if s.Condition != nil {
 		c.checkExpression(s.Condition)
 	}
+
+	c.loopDepth++
+	defer func() { c.loopDepth-- }()
 
 	loopScope := NewScope(c.scope, false)
 	c.scope = loopScope

@@ -261,6 +261,10 @@
         {
           "match": "\\b(while)\\b",
           "name": "keyword.control.loop.xru"
+        },
+        {
+          "match": "\\b(break|continue)\\b",
+          "name": "keyword.control.loop.xru"
         }
       ]
     },
@@ -302,7 +306,7 @@
       "patterns": [
         {
           "name": "keyword.control.xru",
-          "match": "\\b(if|elif|else|match|case|default|for|while|in|return|with|catch|trap|or|then|file|dispatch|dispatch_tree|pass)\\b"
+          "match": "\\b(if|elif|else|match|case|default|for|while|break|continue|in|return|with|catch|trap|or|then|file|dispatch|dispatch_tree|pass)\\b"
         }
       ]
     },

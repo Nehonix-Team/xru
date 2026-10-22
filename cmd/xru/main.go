@@ -136,6 +136,12 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 		os.Exit(1)
 	}
 
+	// 2.5 Priorité absolue : Vérification et auto-update de version Sys.require avant la validation des types
+	if err := runtime.CheckAndEnforceAstRequire(prog); err != nil {
+		fmt.Fprintf(os.Stderr, "\033[31m[VERSION ERROR]\033[0m %v\n", err)
+		os.Exit(1)
+	}
+
 	if verbose {
 		fmt.Printf("\033[36m[DEBUG]\033[0m Validating AST & Checking Types...\n")
 	}
@@ -358,6 +364,9 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 
 	// Exécution du programme
 	if _, err := eval.Eval(prog, env); err != nil {
+		if runtime.IsSignalHandling() {
+			select {}
+		}
 		if !eval.RunErrorTraps(err) {
 			fmt.Printf("\033[31m[RUNTIME ERROR]\033[0m %v\n", err)
 		}
@@ -396,16 +405,15 @@ func handlePack(args []string, verbose bool) {
 		outputPath = filepath.Join(rootDir, outputPath)
 	}
 
-	// Seul et unique fichier d'ignore officiel : .xruignore
-	ignoreFile := ".xruignore"
-	pkg := packager.New(rootDir, ignoreFile)
+	// Initialisation du packager (auto-détecte .xruinclude en priorité sur .xruignore)
+	pkg := packager.New(rootDir, "")
 	pkg.Verbose = verbose
 
-	// Empaqueter l'ensemble du projet racine en filtrant strictement selon .xruignore
+	// Empaqueter l'ensemble du projet racine en filtrant strictement selon le fichier actif
 	entryDir := "."
 
 	relOutput, _ := filepath.Rel(rootDir, outputPath)
-	fmt.Printf("\033[36m[PACK]\033[0m Packaging project into '\033[1m%s\033[0m' (using %s)...\n", relOutput, ignoreFile)
+	fmt.Printf("\033[36m[PACK]\033[0m Packaging project into '\033[1m%s\033[0m' (using %s)...\n", relOutput, pkg.FilterFile())
 	if err := pkg.Pack(outputPath, entryDir); err != nil {
 		fmt.Printf("\033[31m[PACK ERROR]\033[0m %v\n", err)
 		os.Exit(1)

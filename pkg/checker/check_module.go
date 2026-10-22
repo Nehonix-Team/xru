@@ -262,21 +262,30 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 			symKind = SymFunc
 		} else if exp.Kind == "const" {
 			symKind = SymConst
+		} else if exp.Kind == "type" || exp.Kind == "interface" {
+			symKind = SymInterface
 		}
 		targetName := s.Member
 		if s.Alias != "" {
 			targetName = s.Alias
+		}
+		if symKind == SymInterface && exp.IfaceDef != nil {
+			if c.interfaces == nil {
+				c.interfaces = make(map[string]*ast.InterfaceStatement)
+			}
+			c.interfaces[targetName] = exp.IfaceDef
 		}
 		symPos := s.Pos()
 		if p, ok := s.MemberPositions[s.Member]; ok {
 			symPos = p
 		}
 		memberSym := &Symbol{
-			Name:   targetName,
-			Kind:   symKind,
-			Type:   exp.Type,
-			Params: exp.Params,
-			Pos:    symPos,
+			Name:     targetName,
+			Kind:     symKind,
+			Type:     exp.Type,
+			Params:   exp.Params,
+			IfaceDef: exp.IfaceDef,
+			Pos:      symPos,
 		}
 		if existing, ok := c.scope.Resolve(targetName); ok && existing.Pos.Line == 0 {
 			existing.Kind = symKind
@@ -331,17 +340,26 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 				symKind = SymFunc
 			} else if exp.Kind == "const" {
 				symKind = SymConst
+			} else if exp.Kind == "type" || exp.Kind == "interface" {
+				symKind = SymInterface
+			}
+			if symKind == SymInterface && exp.IfaceDef != nil {
+				if c.interfaces == nil {
+					c.interfaces = make(map[string]*ast.InterfaceStatement)
+				}
+				c.interfaces[memName] = exp.IfaceDef
 			}
 			symPos := s.Pos()
 			if p, ok := s.MemberPositions[memName]; ok {
 				symPos = p
 			}
 			memberSym := &Symbol{
-				Name:   memName,
-				Kind:   symKind,
-				Type:   exp.Type,
-				Params: exp.Params,
-				Pos:    symPos,
+				Name:     memName,
+				Kind:     symKind,
+				Type:     exp.Type,
+				Params:   exp.Params,
+				IfaceDef: exp.IfaceDef,
+				Pos:      symPos,
 			}
 			if existing, ok := c.scope.Resolve(memName); ok && existing.Pos.Line == 0 {
 				existing.Kind = symKind

@@ -179,3 +179,16 @@ type LambdaValue struct {
 
 func (l LambdaValue) Type() ValueType { return "function" }
 func (l LambdaValue) String() string  { return "<lambda>" }
+
+// BreakValue signals early loop termination
+type BreakValue struct{}
+
+func (b BreakValue) Type() ValueType { return "break" }
+func (b BreakValue) String() string  { return "break" }
+
+// ContinueValue signals advancing to next loop iteration
+type ContinueValue struct{}
+
+func (c ContinueValue) Type() ValueType { return "continue" }
+func (c ContinueValue) String() string  { return "continue" }
+

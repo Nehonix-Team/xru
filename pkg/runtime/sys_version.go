@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/Nehonix-Team/xru/internal/utils"
+	"github.com/Nehonix-Team/xru/pkg/ast"
 )
 
 // parseSemVer parses semantic version strings like "v2.0.67", "2.0.67", "2.1"
@@ -38,7 +39,7 @@ func parseSemVer(v string) (major, minor, patch int, err error) {
 		if err != nil {
 			return 0, 0, 0, fmt.Errorf("invalid semver minor: %s", parts[1])
 		}
-	}
+	} 
 	if len(parts) >= 3 && parts[2] != "" {
 		patch, err = strconv.Atoi(parts[2])
 		if err != nil {
@@ -202,15 +203,42 @@ func autoUpdateXRU(silent bool) error {
 		return fmt.Errorf("update sequence execution failed: %w", err)
 	}
 
+	binName := "xru"
+	if isWindows {
+		binName = "xru.exe"
+	}
+
 	execPath, err := os.Executable()
 	if err != nil {
-		if isWindows {
-			execPath = "xru.exe"
-		} else {
-			execPath = "xru"
+		execPath = binName
+	}
+
+	// Resolve active/updated binary location (in case previous binary was cleaned/relocated by installer)
+	targetExec := execPath
+	if _, statErr := os.Stat(targetExec); statErr != nil {
+		if p, err := exec.LookPath(binName); err == nil {
+			targetExec = p
+		} else if home, err := os.UserHomeDir(); err == nil {
+			candidates := []string{
+				filepath.Join(home, ".xfpm", "bin", binName),
+				filepath.Join(home, ".local", "bin", binName),
+			}
+			if isWindows {
+				if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+					candidates = append(candidates, filepath.Join(localAppData, "xfpm", "bin", binName))
+				}
+			} else {
+				candidates = append(candidates, filepath.Join("/usr/local/bin", binName))
+			}
+			for _, candidate := range candidates {
+				if _, err := os.Stat(candidate); err == nil {
+					targetExec = candidate
+					break
+				}
+			}
 		}
 	}
-	execPath, _ = filepath.EvalSymlinks(execPath)
+	targetExec, _ = filepath.EvalSymlinks(targetExec)
 
 	if !silent {
 		fmt.Printf("\n\033[32m[XRU AUTO-UPDATE]\033[0m Successfully updated XRU runtime and standard library.\n")
@@ -218,15 +246,22 @@ func autoUpdateXRU(silent bool) error {
 	}
 
 	// Restart process seamlessly
+	updateEnv := append(os.Environ(), "XRU_AUTO_UPDATE_ATTEMPT=1")
 	if !isWindows {
-		return syscall.Exec(execPath, os.Args, os.Environ())
+		return syscall.Exec(targetExec, os.Args, updateEnv)
 	}
 
-	restartCmd := exec.Command(execPath, os.Args[1:]...)
+	restartCmd := exec.Command(targetExec, os.Args[1:]...)
+	restartCmd.Env = updateEnv
 	restartCmd.Stdin = os.Stdin
 	restartCmd.Stdout = os.Stdout
 	restartCmd.Stderr = os.Stderr
-	_ = restartCmd.Run()
+	if err := restartCmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			os.Exit(exitErr.ExitCode())
+		}
+		os.Exit(1)
+	}
 	os.Exit(0)
 	return nil
 }
@@ -265,6 +300,10 @@ func sysRequireFn(args []Value) (Value, error) {
 	// Mismatch handling
 	switch onMismatch {
 	case "auto-update", "update":
+		if os.Getenv("XRU_AUTO_UPDATE_ATTEMPT") != "" {
+			fmt.Fprintf(os.Stderr, "\n\033[1;31m[XRU VERSION ERROR]\033[0m Successfully updated to latest available release (\033[33m%s\033[0m), but required version \033[1m%s\033[0m is still not satisfied.\nThe requested release may not be published on GitHub yet.\n\n", currentVer, constraint)
+			os.Exit(1)
+		}
 		err := autoUpdateXRU(mode == "silent")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\033[31m[XRU AUTO-UPDATE ERROR]\033[0m %v\n", err)
@@ -298,3 +337,168 @@ func sysRequireFn(args []Value) (Value, error) {
 func sysVersionFn(args []Value) (Value, error) {
 	return StringValue{Val: utils.BinVersion}, nil
 }
+
+// CheckAndEnforceAstRequire pre-scans the program AST for top-level Sys.require(...) declarations
+// and validates or auto-updates the XRU engine BEFORE the strict type checker runs.
+func CheckAndEnforceAstRequire(prog *ast.Program) error {
+	if prog == nil {
+		return nil
+	}
+
+	sysAliases := map[string]bool{
+		"sys": true,
+		"Sys": true,
+	}
+
+	// 1. Scan use statements to track aliases (e.g. `use sys as s6`)
+	for _, stmt := range prog.Statements {
+		if useStmt, ok := stmt.(*ast.UseStatement); ok {
+			if strings.EqualFold(useStmt.Module, "sys") {
+				if useStmt.Alias != "" {
+					sysAliases[useStmt.Alias] = true
+				}
+				sysAliases[useStmt.Module] = true
+			}
+		}
+	}
+
+	astConstants := make(map[string]string)
+	for _, stmt := range prog.Statements {
+		if vs, ok := stmt.(*ast.VarStatement); ok && vs.IsConst {
+			if sLit, ok := vs.Value.(*ast.StringLiteral); ok {
+				astConstants[vs.Name] = sLit.Value
+			}
+		}
+	}
+
+	// 2. Scan statements for Sys.require(...)
+	for _, stmt := range prog.Statements {
+		exprStmt, ok := stmt.(*ast.ExpressionStatement)
+		if !ok {
+			continue
+		}
+		callExpr, ok := exprStmt.Expression.(*ast.CallExpression)
+		if !ok {
+			continue
+		}
+
+		isRequireCall := false
+		if memberExpr, ok := callExpr.Caller.(*ast.MemberExpression); ok {
+			if strings.EqualFold(memberExpr.Property, "require") {
+				if ident, ok := memberExpr.Object.(*ast.Identifier); ok {
+					if sysAliases[ident.Value] || strings.EqualFold(ident.Value, "sys") {
+						isRequireCall = true
+					}
+				}
+			}
+		} else if scopeExpr, ok := callExpr.Caller.(*ast.ScopeAccessExpression); ok {
+			if strings.EqualFold(scopeExpr.Member, "require") {
+				if sysAliases[scopeExpr.Scope] || strings.EqualFold(scopeExpr.Scope, "sys") {
+					isRequireCall = true
+				}
+			}
+		}
+
+		if !isRequireCall {
+			continue
+		}
+
+		// Found Sys.require(constraint, options?)
+		if len(callExpr.Arguments) < 1 {
+			continue
+		}
+
+		strLit, ok := callExpr.Arguments[0].(*ast.StringLiteral)
+		if !ok {
+			continue
+		}
+		constraint := strLit.Value
+		spans := ast.ExtractInterpolations(constraint)
+		if len(spans) > 0 {
+			for _, span := range spans {
+				if cVal, ok := astConstants[span.Expr]; ok {
+					constraint = strings.Replace(constraint, "$f{"+span.Expr+"}", cVal, 1)
+				}
+			}
+		}
+
+		onMismatch := "fatal"
+		mode := "log"
+
+		if len(callExpr.Arguments) > 1 {
+			if mapLit, ok := callExpr.Arguments[1].(*ast.MapLiteral); ok {
+				for _, pair := range mapLit.Pairs {
+					keyStr := ""
+					if kIdent, ok := pair.Key.(*ast.Identifier); ok {
+						keyStr = kIdent.Value
+					} else if kStr, ok := pair.Key.(*ast.StringLiteral); ok {
+						keyStr = kStr.Value
+					}
+
+					valStr := ""
+					if vIdent, ok := pair.Value.(*ast.Identifier); ok {
+						valStr = vIdent.Value
+					} else if vStr, ok := pair.Value.(*ast.StringLiteral); ok {
+						valStr = vStr.Value
+					}
+
+					if strings.EqualFold(keyStr, "onMismatch") {
+						onMismatch = strings.ToLower(valStr)
+					}
+					if strings.EqualFold(keyStr, "mode") {
+						mode = strings.ToLower(valStr)
+					}
+				}
+			}
+		}
+
+		// Enforce version requirement immediately!
+		currentVer := utils.BinVersion
+		matched, err := checkVersionConstraint(currentVer, constraint)
+		if err != nil {
+			return fmt.Errorf("invalid version constraint '%s': %w", constraint, err)
+		}
+
+		if matched {
+			return nil
+		}
+
+		// Version mismatch handling
+		switch onMismatch {
+		case "auto-update", "update":
+			if os.Getenv("XRU_AUTO_UPDATE_ATTEMPT") != "" {
+				fmt.Fprintf(os.Stderr, "\n\033[1;31m[XRU VERSION ERROR]\033[0m Successfully updated to latest available release (\033[33m%s\033[0m), but required version \033[1m%s\033[0m is still not satisfied.\nThe requested release may not be published on GitHub yet.\n\n", currentVer, constraint)
+				os.Exit(1)
+			}
+			err := autoUpdateXRU(mode == "silent")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\033[31m[XRU AUTO-UPDATE ERROR]\033[0m %v\n", err)
+				os.Exit(1)
+			}
+			return nil
+
+		case "warn":
+			if mode != "silent" {
+				fmt.Fprintf(os.Stderr, "\033[33m[XRU VERSION WARNING]\033[0m !:XRU %s, currently running %s.\n", constraint, currentVer)
+			}
+			return nil
+
+		default: // "fatal"
+			fmt.Fprintf(os.Stderr, "\n\033[1;31m[XRU VERSION ERROR]\033[0m This script requires XRU \033[1m%s\033[0m (current version: \033[33m%s\033[0m).\n", constraint, currentVer)
+			if goRuntime.GOOS == "windows" {
+				fmt.Fprintf(os.Stderr, "To update XRU on Windows (PowerShell):\n")
+				fmt.Fprintf(os.Stderr, "  \033[36m• powershell -ExecutionPolicy Bypass -Command \"irm https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.ps1 | iex\" -Action xru\033[0m\n")
+				fmt.Fprintf(os.Stderr, "  \033[36m• or install full suite: irm https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.ps1 | iex\033[0m\n\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "To update XRU on Linux / macOS:\n")
+				fmt.Fprintf(os.Stderr, "  \033[36m• curl -fsSL https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.sh | bash -s -- xru\033[0m\n")
+				fmt.Fprintf(os.Stderr, "  \033[36m• or install full suite: curl -fsSL https://dll.nehonix.com/repo/xypriss/xfpm/scripts/install.sh | bash\033[0m\n\n")
+			}
+			os.Exit(1)
+			return fmt.Errorf("XRU version %s does not satisfy %s", currentVer, constraint)
+		}
+	}
+
+	return nil
+}
+

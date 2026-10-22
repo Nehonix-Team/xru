@@ -21,9 +21,10 @@ func IsModConfigFile(path string) bool {
 // ExportedMember représente un symbole global exporté par un module local.
 type ExportedMember struct {
 	Name     string
-	Kind     string // "var", "const", "func"
+	Kind     string // "var", "const", "func", "arg", "type"
 	Type     string
 	Params   []*ast.Parameter
+	IfaceDef *ast.InterfaceStatement
 	Position lexer.Position
 }
 
@@ -269,6 +270,17 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 					Name:     s.Name,
 					Kind:     "arg",
 					Type:     memberType,
+					Position: s.Pos(),
+				}
+			}
+		case *ast.InterfaceStatement:
+			hasSeenImportsOrCode = true
+			if s != nil && s.IsGlobal {
+				exports[s.Name] = &ExportedMember{
+					Name:     s.Name,
+					Kind:     "type",
+					Type:     s.Name,
+					IfaceDef: s,
 					Position: s.Pos(),
 				}
 			}

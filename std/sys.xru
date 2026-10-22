@@ -41,6 +41,10 @@ interface SysNative {
 
 	/// Returns the list of command-line arguments passed to the script.
 	func args() -> list
+
+	/// Checks whether command-line arguments were provided, or if any of the specified flags/options were passed (e.g. "--mode", "-m", "mode").
+	func hasArg(...flags: string) -> bool
 }
 
 unit sys includes SysNative {}
+

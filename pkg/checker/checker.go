@@ -2,6 +2,7 @@ package checker
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
 	"github.com/Nehonix-Team/xru/pkg/lexer"
@@ -21,6 +22,7 @@ type Checker struct {
 	unreachable       []lexer.Position // Instructions situées après un appel 'never' (std.fatal, Sys.exit)
 	visitedDispatches map[string]bool
 	inStdInBlock      bool
+	loopDepth         int
 }
 
 func New() *Checker {
@@ -67,10 +69,27 @@ func (c *Checker) AllDeclaredVars() []*Symbol {
 }
 
 func (c *Checker) GetInterface(name string) *ast.InterfaceStatement {
-	if c.interfaces == nil {
-		return nil
+	if c.interfaces != nil {
+		if iface, ok := c.interfaces[name]; ok {
+			return iface
+		}
+		for k, v := range c.interfaces {
+			if strings.EqualFold(k, name) {
+				return v
+			}
+		}
 	}
-	return c.interfaces[name]
+	if c.scope != nil {
+		if sym, found := c.scope.Resolve(name); found && sym.Kind == SymInterface && sym.IfaceDef != nil {
+			return sym.IfaceDef
+		}
+	}
+	for _, sym := range c.importedSyms {
+		if strings.EqualFold(sym.Name, name) && sym.Kind == SymInterface && sym.IfaceDef != nil {
+			return sym.IfaceDef
+		}
+	}
+	return nil
 }
 
 func (c *Checker) AllInterfaces() map[string]*ast.InterfaceStatement {

@@ -839,6 +839,28 @@ let myName = name
 	}
 }
 
+func TestFromUseImportedTypeUsedInAnnotation(t *testing.T) {
+	code := `
+from "dll" use orchestrator::@map{exec, type IExecProps}
+const cfg: IExecProps = @map{ a: 1 }
+exec(cfg)
+`
+	l := lexer.New("test_type_used.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	c := checker.New()
+	c.Check(prog)
+
+	unused := c.UnusedImports()
+	if len(unused) != 0 {
+		t.Fatalf("Expected 0 unused imports, got %d: %v", len(unused), unused)
+	}
+}
+
 func TestStrictTypeValidationAndOptional(t *testing.T) {
 	// 1. Bare object syntax is rejected by parser
 	bareCode := `let obj = { a: 1 }`

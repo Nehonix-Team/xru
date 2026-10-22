@@ -10,6 +10,18 @@ interface NetNative {
 
 	/// Downloads an asset from a remote URL with streaming progress or fetches string content.
 	func fetch(url: string, dest: string = "") -> any
+
+	/// Checks if a TCP network port is currently busy, in use, or bound on the specified host (default: 127.0.0.1).
+	func isPortBusy(port: any, host: string = "") -> bool
+
+	/// Checks if a TCP network port is free and available for listening on the specified host (default: 127.0.0.1).
+	func isPortFree(port: any, host: string = "") -> bool
+
+	/// Alias for isPortFree. Returns true if the TCP port is available for binding.
+	func isPortAvailable(port: any, host: string = "") -> bool
+
+	/// Alias for isPortBusy. Returns true if the TCP port is currently occupied.
+	func isPortInUse(port: any, host: string = "") -> bool
 }
 
 unit Net includes NetNative {}

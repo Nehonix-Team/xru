@@ -145,7 +145,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 					}
 				}
 				return
-			} else if objType == "map" || objType == "@map" || strings.HasPrefix(objType, "@map") || (c.interfaces != nil && c.interfaces[objType] != nil && c.interfaces[objType].IsMap) {
+			} else if iface := c.GetInterface(objType); objType == "map" || objType == "@map" || strings.HasPrefix(objType, "@map") || (iface != nil && iface.IsMap) {
 				if spec, ok := GetMapMethodSpec(member.Property); ok {
 					c.validateNativeMethodCall(e, "map", member.Property, spec)
 				} else {
@@ -208,7 +208,7 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 							} else if targetMethod.Kind == SymFunc {
 								c.validateCallArgs(e, member.Property, targetMethod)
 							}
-						} else if iface, ok := c.interfaces[sym.Type]; ok {
+						} else if iface := c.GetInterface(sym.Type); iface != nil {
 							found := false
 							for _, f := range iface.Fields {
 								if f.Name == member.Property {
@@ -617,7 +617,7 @@ func (c *Checker) validateCallArgs(call *ast.CallExpression, name string, sym *S
 			}
 
 			// 1. Paramètre typé par une interface
-			if iface, ok := c.interfaces[cleanParamType]; ok {
+			if iface := c.GetInterface(cleanParamType); iface != nil {
 				c.validateArgAgainstInterface(arg, iface, param.Name, name, i+1, isOptional)
 				continue
 			}
@@ -652,7 +652,7 @@ func (c *Checker) validatePropertyAccessOnType(e *ast.MemberExpression, typeName
 	}
 
 	// 1. Interface
-	if iface, ok := c.interfaces[typeName]; ok {
+	if iface := c.GetInterface(typeName); iface != nil {
 		for _, f := range iface.Fields {
 			if f.Name == e.Property {
 				return
@@ -758,11 +758,9 @@ func (c *Checker) validateArgAgainstInterface(arg ast.Expression, iface *ast.Int
 						c.validateArgAgainstInlineMap(mapLit, expectedFieldType, f.Name, funcName, argIdx, f.Optional)
 						continue
 					}
-					if c.interfaces != nil {
-						if subIface, ok := c.interfaces[expectedFieldType]; ok {
-							c.validateArgAgainstInterface(mapLit, subIface, f.Name, funcName, argIdx, f.Optional)
-							continue
-						}
+					if subIface := c.GetInterface(expectedFieldType); subIface != nil {
+						c.validateArgAgainstInterface(mapLit, subIface, f.Name, funcName, argIdx, f.Optional)
+						continue
 					}
 				}
 
@@ -900,11 +898,9 @@ func (c *Checker) validateArgAgainstInlineMap(arg ast.Expression, typeStr, param
 						c.validateArgAgainstInlineMap(mapLit, expectedFieldType, f.Name, funcName, argIdx, f.Optional)
 						continue
 					}
-					if c.interfaces != nil {
-						if subIface, ok := c.interfaces[expectedFieldType]; ok {
-							c.validateArgAgainstInterface(mapLit, subIface, f.Name, funcName, argIdx, f.Optional)
-							continue
-						}
+					if subIface := c.GetInterface(expectedFieldType); subIface != nil {
+						c.validateArgAgainstInterface(mapLit, subIface, f.Name, funcName, argIdx, f.Optional)
+						continue
 					}
 				}
 

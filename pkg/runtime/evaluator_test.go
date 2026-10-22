@@ -68,10 +68,10 @@ line 3
 	}
 
 	code := `
-file "` + testFilePath + `" {
-    Replace("line 1", "first line")
-    RemoveBlock("// BEGIN BLOCK", "// END BLOCK")
-    RemoveLines("cdn")
+file "` + testFilePath + `", (doc, err) -> {
+    doc.replace("line 1", "first line")
+    doc.removeBetween("// BEGIN BLOCK", "// END BLOCK")
+    doc.removeLines("cdn")
 }
 `
 	l := lexer.New("test_file_ops.xru", code)
@@ -105,6 +105,23 @@ file "` + testFilePath + `" {
 	}
 	if !strings.Contains(updated, "line 2") || !strings.Contains(updated, "line 3") {
 		t.Errorf("Expected line 2 and line 3 preserved, got: %s", updated)
+	}
+}
+
+func TestFileStatementLegacySyntaxFails(t *testing.T) {
+	code := `
+file "fileonix" {
+    replace("{{NAME}}", "name")
+}
+`
+	l := lexer.New("test_legacy_file.xru", code)
+	p := parser.New(l)
+	p.ParseProgram()
+	if len(p.Errors()) == 0 {
+		t.Fatalf("Expected parser error for legacy 'file <path> { ... }' syntax, got none")
+	}
+	if !strings.Contains(p.Errors()[0], "legacy syntax 'file <path> { ... }' is deprecated and unsupported") {
+		t.Errorf("Expected legacy deprecation error message, got: %s", p.Errors()[0])
 	}
 }
 
@@ -2266,6 +2283,87 @@ trap (hangup) as s3 {
 		t.Errorf("Expected hangup imported constant to be 'hangup', got '%v'", hangupVal)
 	}
 }
+
+func TestSysHasArg(t *testing.T) {
+	// 1. Without any CLI args
+	runtime.SetGlobalCliArgs([]string{})
+	code1 := `
+let noArgs = Sys.hasArg()
+let hasMode = Sys.hasArg("--mode")
+`
+	l1 := lexer.New("hasarg1.xru", code1)
+	p1 := parser.New(l1)
+	prog1 := p1.ParseProgram()
+	ev1 := runtime.NewEvaluator()
+	env1 := runtime.NewEnvironment(nil)
+	if _, err := ev1.Eval(prog1, env1); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if v, _ := env1.Get("noArgs"); v.String() != "false" {
+		t.Errorf("Expected noArgs to be false, got %v", v)
+	}
+	if v, _ := env1.Get("hasMode"); v.String() != "false" {
+		t.Errorf("Expected hasMode to be false, got %v", v)
+	}
+
+	// 2. With CLI args
+	runtime.SetGlobalCliArgs([]string{"--mode=default", "-f", "--name", "my-app"})
+	code2 := `
+let anyArgs = Sys.hasArg()
+let modeLong = Sys.hasArg("--mode")
+let modeName = Sys.hasArg("mode")
+let modeShort = Sys.hasArg("-m")
+let forceShort = Sys.hasArg("-f")
+let forceName = Sys.hasArg("force", "f")
+let nameLong = Sys.hasArg("--name")
+let nonexistent = Sys.hasArg("--port", "-p", "port")
+`
+	l2 := lexer.New("hasarg2.xru", code2)
+	p2 := parser.New(l2)
+	prog2 := p2.ParseProgram()
+	ev2 := runtime.NewEvaluator()
+	env2 := runtime.NewEnvironment(nil)
+	if _, err := ev2.Eval(prog2, env2); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	expectations := map[string]string{
+		"anyArgs":     "true",
+		"modeLong":    "true",
+		"modeName":    "true",
+		"modeShort":   "false",
+		"forceShort":  "true",
+		"forceName":   "true",
+		"nameLong":    "true",
+		"nonexistent": "false",
+	}
+
+	for k, expected := range expectations {
+		v, ok := env2.Get(k)
+		if !ok || v.String() != expected {
+			t.Errorf("Expected %s to be %s, got %v", k, expected, v)
+		}
+	}
+}
+
+func TestAstRequirePreCheck(t *testing.T) {
+	code := `
+use sys as s
+s.require(">= 2.0.0", @map{onMismatch: "fatal", mode: "silent"})
+`
+	l := lexer.New("test_require.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+
+	if err := runtime.CheckAndEnforceAstRequire(prog); err != nil {
+		t.Fatalf("Expected valid require to pass, got: %v", err)
+	}
+}
+
+
 
 
 

@@ -24,8 +24,16 @@ func (c *Checker) initBuiltinUnits() {
 			"fetch": {Name: "fetch", Kind: SymFunc, Type: "any"},
 			"Clone": {Name: "Clone", Kind: SymFunc, Type: "bool"},
 			"clone": {Name: "clone", Kind: SymFunc, Type: "bool"},
-			"Get":   {Name: "Get", Kind: SymFunc, Type: "string"},
-			"get":   {Name: "get", Kind: SymFunc, Type: "string"},
+			"Get":             {Name: "Get", Kind: SymFunc, Type: "string"},
+			"get":             {Name: "get", Kind: SymFunc, Type: "string"},
+			"isPortBusy":      {Name: "isPortBusy", Kind: SymFunc, Type: "bool"},
+			"IsPortBusy":      {Name: "IsPortBusy", Kind: SymFunc, Type: "bool"},
+			"isPortFree":      {Name: "isPortFree", Kind: SymFunc, Type: "bool"},
+			"IsPortFree":      {Name: "IsPortFree", Kind: SymFunc, Type: "bool"},
+			"isPortAvailable": {Name: "isPortAvailable", Kind: SymFunc, Type: "bool"},
+			"IsPortAvailable": {Name: "IsPortAvailable", Kind: SymFunc, Type: "bool"},
+			"isPortInUse":     {Name: "isPortInUse", Kind: SymFunc, Type: "bool"},
+			"IsPortInUse":     {Name: "IsPortInUse", Kind: SymFunc, Type: "bool"},
 		},
 	}
 	fsUnit := &Symbol{
@@ -109,9 +117,10 @@ func (c *Checker) initBuiltinUnits() {
 			"cwd":     {Name: "cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"Cwd":     {Name: "Cwd", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"homeDir": {Name: "homeDir", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
-			"HomeDir": {Name: "HomeDir", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"args":    {Name: "args", Kind: SymFunc, Type: "list", Params: []*ast.Parameter{}},
 			"Args":    {Name: "Args", Kind: SymFunc, Type: "list", Params: []*ast.Parameter{}},
+			"hasArg":  {Name: "hasArg", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "flags", Type: "string"}}, MinArgs: 0, IsVariadic: true},
+			"HasArg":  {Name: "HasArg", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "flags", Type: "string"}}, MinArgs: 0, IsVariadic: true},
 		},
 	}
 	cmdUnit := &Symbol{

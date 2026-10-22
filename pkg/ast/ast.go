@@ -178,6 +178,7 @@ type InterfaceStatement struct {
 	Position lexer.Position
 	Name     string
 	IsMap    bool
+	IsGlobal bool
 	Fields   []*InterfaceField
 }
 
@@ -417,6 +418,24 @@ func (s *WhileStatement) String() string {
 	}
 	return fmt.Sprintf("while %s {\n%s\n}", s.Condition.String(), strings.Join(body, "\n"))
 }
+
+// BreakStatement : break
+type BreakStatement struct {
+	Position lexer.Position
+}
+
+func (s *BreakStatement) statementNode()      {}
+func (s *BreakStatement) Pos() lexer.Position { return s.Position }
+func (s *BreakStatement) String() string      { return "break" }
+
+// ContinueStatement : continue
+type ContinueStatement struct {
+	Position lexer.Position
+}
+
+func (s *ContinueStatement) statementNode()      {}
+func (s *ContinueStatement) Pos() lexer.Position { return s.Position }
+func (s *ContinueStatement) String() string      { return "continue" }
 
 // RangeExpression : start..end
 type RangeExpression struct {

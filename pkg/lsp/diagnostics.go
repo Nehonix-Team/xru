@@ -90,6 +90,8 @@ func (s *Server) validateAndPublish(uri, text string) {
 			msg := fmt.Sprintf("Module '%s' is imported but never used", sym.Name)
 			if sym.Kind == checker.SymFunc {
 				msg = fmt.Sprintf("Imported function '%s' is never used", sym.Name)
+			} else if sym.Kind == checker.SymInterface {
+				msg = fmt.Sprintf("Imported type '%s' is never used", sym.Name)
 			} else if sym.Kind == checker.SymConst || sym.Kind == checker.SymVar {
 				msg = fmt.Sprintf("Imported symbol '%s' is never used", sym.Name)
 			}

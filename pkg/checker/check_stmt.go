@@ -63,6 +63,16 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.WhileStatement:
 		if s == nil { return }
 		c.checkWhile(s)
+	case *ast.BreakStatement:
+		if s == nil { return }
+		if c.loopDepth <= 0 {
+			c.addError(s.Pos(), "ERR_BREAK_OUTSIDE_LOOP", "'break' statement is only allowed inside a loop ('for' or 'while')")
+		}
+	case *ast.ContinueStatement:
+		if s == nil { return }
+		if c.loopDepth <= 0 {
+			c.addError(s.Pos(), "ERR_CONTINUE_OUTSIDE_LOOP", "'continue' statement is only allowed inside a loop ('for' or 'while')")
+		}
 	case *ast.BlockStatement:
 		if s == nil { return }
 		c.scope = NewScope(c.scope, false)
@@ -72,6 +82,10 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		if s == nil || s.Expression == nil { return }
 		c.checkExpression(s.Expression)
 	case *ast.FileStatement:
+		if s.Handler == nil {
+			c.addError(s.Pos(), "ERR_MISSING_HANDLER", "'file' statement requires a callback handler as second argument: file <path>, (doc, err) -> { ... }")
+			return
+		}
 		if s.PathExpr != nil {
 			c.checkExpression(s.PathExpr)
 			pType := c.inferType(s.PathExpr)
@@ -247,11 +261,9 @@ func (c *Checker) checkReassign(s *ast.ReassignStatement) {
 
 	if s.Value != nil && sym.Type != "" && sym.Type != "any" {
 		if mapLit, isMap := s.Value.(*ast.MapLiteral); isMap {
-			if c.interfaces != nil {
-				if iface, ok := c.interfaces[sym.Type]; ok {
-					c.validateArgAgainstInterface(mapLit, iface, s.Name, "assignment", 0, false)
-					return
-				}
+			if iface := c.GetInterface(sym.Type); iface != nil {
+				c.validateArgAgainstInterface(mapLit, iface, s.Name, "assignment", 0, false)
+				return
 			}
 			if strings.HasPrefix(sym.Type, "@map") && strings.Contains(sym.Type, "{") {
 				c.validateArgAgainstInlineMap(mapLit, sym.Type, s.Name, "assignment", 0, false)
@@ -385,11 +397,9 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 
 	if s.Value != nil && s.Type != "" {
 		if mapLit, isMap := s.Value.(*ast.MapLiteral); isMap {
-			if c.interfaces != nil {
-				if iface, ok := c.interfaces[s.Type]; ok {
-					c.validateArgAgainstInterface(mapLit, iface, s.Name, "assignment", 0, false)
-					return
-				}
+			if iface := c.GetInterface(s.Type); iface != nil {
+				c.validateArgAgainstInterface(mapLit, iface, s.Name, "assignment", 0, false)
+				return
 			}
 			if strings.HasPrefix(s.Type, "@map") && strings.Contains(s.Type, "{") {
 				c.validateArgAgainstInlineMap(mapLit, s.Type, s.Name, "assignment", 0, false)
@@ -422,7 +432,7 @@ func (c *Checker) checkUnit(s *ast.UnitStatement) {
 
 	if s.Includes != "" {
 		c.validateTypeAnnotation(s.Pos(), s.Includes)
-		if iface, ok := c.interfaces[s.Includes]; ok {
+		if iface := c.GetInterface(s.Includes); iface != nil {
 			for _, f := range iface.Fields {
 				if f.Params != nil || strings.HasPrefix(f.Type, "func(") {
 					retType := f.ReturnType
@@ -663,6 +673,9 @@ func (c *Checker) checkIf(s *ast.IfStatement) {
 func (c *Checker) checkFor(s *ast.ForStatement) {
 	c.checkExpression(s.Iterable)
 
+	c.loopDepth++
+	defer func() { c.loopDepth-- }()
+
 	loopScope := NewScope(c.scope, false)
 	c.scope = loopScope
 	defer func() { c.scope = c.scope.parent }()
@@ -670,7 +683,8 @@ func (c *Checker) checkFor(s *ast.ForStatement) {
 	itemType := "any"
 	idxType := "number"
 	iterType := c.inferType(s.Iterable)
-	isMap := iterType == "map" || iterType == "@map" || strings.HasPrefix(iterType, "map[") || strings.HasPrefix(iterType, "@map") || (c.interfaces != nil && c.interfaces[iterType] != nil && c.interfaces[iterType].IsMap)
+	iterIface := c.GetInterface(iterType)
+	isMap := iterType == "map" || iterType == "@map" || strings.HasPrefix(iterType, "map[") || strings.HasPrefix(iterType, "@map") || (iterIface != nil && iterIface.IsMap)
 
 	if strings.HasPrefix(iterType, "list[") && strings.HasSuffix(iterType, "]") {
 		itemType = strings.TrimSuffix(strings.TrimPrefix(iterType, "list["), "]")
@@ -681,8 +695,8 @@ func (c *Checker) checkFor(s *ast.ForStatement) {
 		idxType = "any"
 
 		var fields []*ast.InterfaceField
-		if c.interfaces != nil && c.interfaces[iterType] != nil {
-			fields = c.interfaces[iterType].Fields
+		if iterIface != nil {
+			fields = iterIface.Fields
 		} else if strings.HasPrefix(iterType, "@map") && strings.Contains(iterType, "{") {
 			fields = parseInlineMapFieldDefs(iterType)
 		}
@@ -735,6 +749,9 @@ func (c *Checker) checkWhile(s *ast.WhileStatement) {
 	if s.Condition != nil {
 		c.checkExpression(s.Condition)
 	}
+
+	c.loopDepth++
+	defer func() { c.loopDepth-- }()
 
 	loopScope := NewScope(c.scope, false)
 	c.scope = loopScope

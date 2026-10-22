@@ -516,13 +516,27 @@ func (c *Checker) validateTypeAnnotation(pos lexer.Position, typeName string) {
 		return
 	}
 
+	markUsed := func(name string) {
+		if sym, found := c.scope.Resolve(name); found {
+			sym.Used = true
+		}
+		for _, sym := range c.importedSyms {
+			if strings.EqualFold(sym.Name, name) {
+				sym.Used = true
+			}
+		}
+	}
+
 	// Check declared interface in current file or registered interfaces
 	if c.interfaces != nil {
 		if _, ok := c.interfaces[typeName]; ok {
+			markUsed(typeName)
 			return
 		}
 		for name := range c.interfaces {
 			if strings.EqualFold(name, typeName) {
+				markUsed(name)
+				markUsed(typeName)
 				return
 			}
 		}
@@ -531,6 +545,7 @@ func (c *Checker) validateTypeAnnotation(pos lexer.Position, typeName string) {
 	// Check if in scope (e.g. Unit, Interface, imported Type)
 	if sym, found := c.scope.Resolve(typeName); found {
 		if sym.Kind == SymInterface || sym.Kind == SymUnit || sym.Kind == SymVar {
+			sym.Used = true
 			return
 		}
 	}
@@ -545,6 +560,7 @@ func (c *Checker) validateTypeAnnotation(pos lexer.Position, typeName string) {
 	// Check imported symbols
 	for _, sym := range c.importedSyms {
 		if strings.EqualFold(sym.Name, typeName) {
+			sym.Used = true
 			return
 		}
 	}
@@ -668,6 +684,11 @@ func (c *Checker) isTypeCompatible(expected, actual string) bool {
 
 	if strings.EqualFold(cleanExpected, cleanActual) {
 		return true
+	}
+	if iface := c.GetInterface(cleanExpected); iface != nil && iface.IsMap {
+		if strings.HasPrefix(cleanActual, "@map") || strings.HasPrefix(cleanActual, "map") {
+			return true
+		}
 	}
 	if (strings.EqualFold(cleanExpected, "bool") || strings.EqualFold(cleanExpected, "boolean")) &&
 		(strings.EqualFold(cleanActual, "bool") || strings.EqualFold(cleanActual, "boolean")) {

@@ -1,10 +1,12 @@
 package runtime
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
@@ -18,9 +20,19 @@ type TrapHandler struct {
 }
 
 var (
-	globalExitHooksLock sync.Mutex
-	globalExitHooks     []func(code int)
+	globalExitHooksLock  sync.Mutex
+	globalExitHooks      []func(code int)
+	globalSignalHandling atomic.Bool
+	globalHasSignalTraps atomic.Bool
 )
+
+func IsSignalHandling() bool {
+	return globalSignalHandling.Load()
+}
+
+func HasSignalTraps() bool {
+	return globalHasSignalTraps.Load()
+}
 
 func RegisterGlobalExitHook(fn func(code int)) {
 	globalExitHooksLock.Lock()
@@ -66,6 +78,7 @@ func (ev *Evaluator) evalTrapStatement(s *ast.TrapStatement, env *Environment) (
 	}
 
 	if hasSignal {
+		globalHasSignalTraps.Store(true)
 		ev.signalTraps = append(ev.signalTraps, handler)
 		ev.startSignalListener()
 	}
@@ -93,6 +106,7 @@ func (ev *Evaluator) startSignalListener() {
 
 	go func() {
 		for sig := range ev.sigChan {
+			globalSignalHandling.Store(true)
 			sigName := "interrupt"
 			exitCode := 130
 			if sig == syscall.SIGTERM {
@@ -126,7 +140,9 @@ func (ev *Evaluator) startSignalListener() {
 						if trap.Alias != "" {
 							trapEnv.Set(trap.Alias, StringValue{Val: sigName}, false)
 						}
-						_, _ = ev.Eval(trap.Body, trapEnv)
+						if _, trapErr := ev.Eval(trap.Body, trapEnv); trapErr != nil {
+							fmt.Fprintf(os.Stderr, "\033[31m[TRAP ERROR]\033[0m %v\n", trapErr)
+						}
 						break
 					}
 				}

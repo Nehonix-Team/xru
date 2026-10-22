@@ -30,6 +30,9 @@ func (p *Parser) parseUseStatement() *ast.UseStatement {
 				p.nextToken() // saute '{'
 				p.nextToken()
 				for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+					if p.curTokenIs(lexer.TYPE) {
+						p.nextToken()
+					}
 					if p.curTokenIs(lexer.IDENT) {
 						stmt.Members = append(stmt.Members, p.curToken.Literal)
 					}
@@ -337,6 +340,9 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 				p.nextToken() // saute '{'
 				p.nextToken()
 				for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+					if p.curTokenIs(lexer.TYPE) {
+						p.nextToken()
+					}
 					if p.curTokenIs(lexer.IDENT) {
 						stmt.Members = append(stmt.Members, p.curToken.Literal)
 						stmt.MemberPositions[p.curToken.Literal] = p.curToken.Pos
@@ -355,6 +361,9 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 			p.nextToken() // saute '(' ou '{'
 			p.nextToken()
 			for !p.curTokenIs(closing) && !p.curTokenIs(lexer.EOF) {
+				if p.curTokenIs(lexer.TYPE) {
+					p.nextToken()
+				}
 				if p.curTokenIs(lexer.IDENT) || p.curTokenIs(lexer.STRING) {
 					cleanMem := p.curToken.Literal
 					if len(cleanMem) >= 2 && cleanMem[0] == '"' && cleanMem[len(cleanMem)-1] == '"' {
@@ -368,11 +377,16 @@ func (p *Parser) parseFromUseStatement() *ast.FromUseStatement {
 				}
 				p.nextToken()
 			}
-		} else if p.expectPeek(lexer.IDENT) {
-			stmt.Member = p.curToken.Literal
-			stmt.MemberPositions[stmt.Member] = p.curToken.Pos
 		} else {
-			return nil
+			if p.peekTokenIs(lexer.TYPE) {
+				p.nextToken()
+			}
+			if p.expectPeek(lexer.IDENT) {
+				stmt.Member = p.curToken.Literal
+				stmt.MemberPositions[stmt.Member] = p.curToken.Pos
+			} else {
+				return nil
+			}
 		}
 	}
 

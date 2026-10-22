@@ -178,6 +178,7 @@ type InterfaceStatement struct {
 	Position lexer.Position
 	Name     string
 	IsMap    bool
+	IsGlobal bool
 	Fields   []*InterfaceField
 }
 

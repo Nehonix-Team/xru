@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -94,6 +95,7 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 
 	var useStmts []ast.Statement
 	var argStmts []ast.Statement
+	var interfaceStmts []ast.Statement
 	var varStmts []ast.Statement
 	var funcStmts []ast.Statement
 	var unitStmts []ast.Statement
@@ -101,8 +103,22 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 
 	seenUses := make(map[string]bool)
 	seenArgs := make(map[string]bool)
+	seenInterfaces := make(map[string]bool)
 	knownArgs := make(map[string]bool)
 	visitedFiles := make(map[string]bool)
+
+	reIdent := regexp.MustCompile(`\b[a-zA-Z_][a-zA-Z0-9_]*\b`)
+	rewriteTypeAnnotation := func(typeStr string, resolver func(string) string) string {
+		if typeStr == "" {
+			return ""
+		}
+		return reIdent.ReplaceAllStringFunc(typeStr, func(id string) string {
+			if mapped := resolver(id); mapped != "" {
+				return mapped
+			}
+			return id
+		})
+	}
 
 	moduleAliases := make(map[string]string)
 	importedMembers := make(map[string]string)
@@ -213,8 +229,12 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 
 		// Collect all top-level symbols declared in this module
 		declNames := make(map[string]bool)
+		typeNames := make(map[string]bool)
 		for _, st := range subProg.Statements {
 			switch s := st.(type) {
+			case *ast.InterfaceStatement:
+				declNames[s.Name] = true
+				typeNames[s.Name] = true
 			case *ast.FuncStatement:
 				declNames[s.Name] = true
 			case *ast.VarStatement:
@@ -230,9 +250,27 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 			}
 		}
 
+		subTypeResolver := func(id string) string {
+			if typeNames[id] {
+				return modName + "__" + id
+			}
+			if target, ok := importedMembers[id]; ok {
+				return target
+			}
+			return id
+		}
+		subTypeRewrite := func(t string) string {
+			return rewriteTypeAnnotation(t, subTypeResolver)
+		}
+
 		// Rename all declared symbols inside subProg to avoid collisions across modules
 		for _, st := range subProg.Statements {
 			switch s := st.(type) {
+			case *ast.InterfaceStatement:
+				s.Name = modName + "__" + s.Name
+				for _, f := range s.Fields {
+					f.Type = subTypeRewrite(f.Type)
+				}
 			case *ast.FuncStatement:
 				s.Name = modName + "__" + s.Name
 			case *ast.VarStatement:
@@ -319,12 +357,17 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 					return strLit
 				}
 				return expr
-			})
+			}, subTypeRewrite)
 		}
 
 		// Extract declarations
 		for _, st := range subProg.Statements {
 			switch s := st.(type) {
+			case *ast.InterfaceStatement:
+				if !seenInterfaces[s.Name] {
+					seenInterfaces[s.Name] = true
+					interfaceStmts = append(interfaceStmts, s)
+				}
 			case *ast.UseStatement:
 				key := s.Module + "::" + s.Alias
 				if !seenUses[key] {
@@ -379,7 +422,17 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 		}
 	}
 
-	// Second pass on mainProg: rewrite scope accesses and imported identifiers
+	mainTypeResolver := func(id string) string {
+		if target, ok := importedMembers[id]; ok {
+			return target
+		}
+		return id
+	}
+	mainTypeRewrite := func(t string) string {
+		return rewriteTypeAnnotation(t, mainTypeResolver)
+	}
+
+	// Second pass on mainProg: rewrite scope accesses, imported identifiers, and type annotations
 	for i, stmt := range mainProg.Statements {
 		if reassign, ok := stmt.(*ast.ReassignStatement); ok {
 			if !knownArgs[reassign.Name] {
@@ -452,13 +505,18 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 				return strLit
 			}
 			return expr
-		})
+		}, mainTypeRewrite)
 	}
 
 	for _, stmt := range mainProg.Statements {
 		switch s := stmt.(type) {
 		case *ast.FromUseStatement, *ast.ModStatement:
 			// Stripped in bundled output
+		case *ast.InterfaceStatement:
+			if !seenInterfaces[s.Name] {
+				seenInterfaces[s.Name] = true
+				interfaceStmts = append(interfaceStmts, s)
+			}
 		case *ast.UseStatement:
 			key := s.Module + "::" + s.Alias
 			if !seenUses[key] {
@@ -514,6 +572,7 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 	var finalStmts []ast.Statement
 	finalStmts = append(finalStmts, orderedUses...)
 	finalStmts = append(finalStmts, argStmts...)
+	finalStmts = append(finalStmts, interfaceStmts...)
 	finalStmts = append(finalStmts, unitStmts...)
 	finalStmts = append(finalStmts, varStmts...)
 	finalStmts = append(finalStmts, funcStmts...)
@@ -536,148 +595,187 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 	return mainProg, nil
 }
 
-func transformExpr(expr ast.Expression, fn func(ast.Expression) ast.Expression) ast.Expression {
+func transformExpr(expr ast.Expression, fn func(ast.Expression) ast.Expression, typeFn func(string) string) ast.Expression {
 	if expr == nil {
 		return nil
 	}
 	expr = fn(expr)
 	switch e := expr.(type) {
 	case *ast.PrefixExpression:
-		e.Right = transformExpr(e.Right, fn)
+		e.Right = transformExpr(e.Right, fn, typeFn)
 	case *ast.InfixExpression:
-		e.Left = transformExpr(e.Left, fn)
-		e.Right = transformExpr(e.Right, fn)
+		e.Left = transformExpr(e.Left, fn, typeFn)
+		e.Right = transformExpr(e.Right, fn, typeFn)
 	case *ast.CallExpression:
-		e.Caller = transformExpr(e.Caller, fn)
+		e.Caller = transformExpr(e.Caller, fn, typeFn)
 		for i, a := range e.Arguments {
-			e.Arguments[i] = transformExpr(a, fn)
+			e.Arguments[i] = transformExpr(a, fn, typeFn)
 		}
 	case *ast.InstantiationExpression:
 		for i, a := range e.Arguments {
-			e.Arguments[i] = transformExpr(a, fn)
+			e.Arguments[i] = transformExpr(a, fn, typeFn)
 		}
 	case *ast.MemberExpression:
-		e.Object = transformExpr(e.Object, fn)
+		e.Object = transformExpr(e.Object, fn, typeFn)
 	case *ast.ListLiteral:
 		for i, el := range e.Elements {
-			e.Elements[i] = transformExpr(el, fn)
+			e.Elements[i] = transformExpr(el, fn, typeFn)
 		}
 	case *ast.MapLiteral:
 		for i, p := range e.Pairs {
-			e.Pairs[i].Key = transformExpr(p.Key, fn)
-			e.Pairs[i].Value = transformExpr(p.Value, fn)
+			e.Pairs[i].Key = transformExpr(p.Key, fn, typeFn)
+			e.Pairs[i].Value = transformExpr(p.Value, fn, typeFn)
 		}
 	case *ast.LambdaExpression:
-		e.Body = transformExpr(e.Body, fn)
+		e.Body = transformExpr(e.Body, fn, typeFn)
 	case *ast.BlockStatement:
 		for i, st := range e.Statements {
-			e.Statements[i] = transformStmt(st, fn)
+			e.Statements[i] = transformStmt(st, fn, typeFn)
 		}
 	case *ast.IfExpression:
-		e.Condition = transformExpr(e.Condition, fn)
-		e.Consequence = transformExpr(e.Consequence, fn)
-		e.Alternative = transformExpr(e.Alternative, fn)
+		e.Condition = transformExpr(e.Condition, fn, typeFn)
+		e.Consequence = transformExpr(e.Consequence, fn, typeFn)
+		e.Alternative = transformExpr(e.Alternative, fn, typeFn)
 	case *ast.CatchExpression:
-		e.Target = transformExpr(e.Target, fn)
+		e.Target = transformExpr(e.Target, fn, typeFn)
 		if fbExpr, ok := e.Fallback.(ast.Expression); ok {
-			e.Fallback = transformExpr(fbExpr, fn)
+			e.Fallback = transformExpr(fbExpr, fn, typeFn)
 		}
 	case *ast.WithExpression:
-		e.Target = transformExpr(e.Target, fn)
+		e.Target = transformExpr(e.Target, fn, typeFn)
 	}
 	return expr
 }
 
-func transformStmt(stmt ast.Statement, fn func(ast.Expression) ast.Expression) ast.Statement {
+func transformStmt(stmt ast.Statement, fn func(ast.Expression) ast.Expression, typeFn func(string) string) ast.Statement {
 	if stmt == nil {
 		return nil
 	}
 	switch s := stmt.(type) {
 	case *ast.ExpressionStatement:
-		s.Expression = transformExpr(s.Expression, fn)
+		s.Expression = transformExpr(s.Expression, fn, typeFn)
 	case *ast.VarStatement:
-		s.Value = transformExpr(s.Value, fn)
+		s.Value = transformExpr(s.Value, fn, typeFn)
+		if typeFn != nil && s.Type != "" {
+			s.Type = typeFn(s.Type)
+		}
 	case *ast.ReassignStatement:
-		s.Value = transformExpr(s.Value, fn)
+		s.Value = transformExpr(s.Value, fn, typeFn)
 	case *ast.ReturnStatement:
-		s.Value = transformExpr(s.Value, fn)
+		s.Value = transformExpr(s.Value, fn, typeFn)
 	case *ast.IfStatement:
-		s.Condition = transformExpr(s.Condition, fn)
+		s.Condition = transformExpr(s.Condition, fn, typeFn)
 		for i, st := range s.Consequence {
-			s.Consequence[i] = transformStmt(st, fn)
+			s.Consequence[i] = transformStmt(st, fn, typeFn)
 		}
 		for i, eb := range s.ElifBlocks {
-			s.ElifBlocks[i].Condition = transformExpr(eb.Condition, fn)
+			s.ElifBlocks[i].Condition = transformExpr(eb.Condition, fn, typeFn)
 			for j, st := range eb.Body {
-				s.ElifBlocks[i].Body[j] = transformStmt(st, fn)
+				s.ElifBlocks[i].Body[j] = transformStmt(st, fn, typeFn)
 			}
 		}
 		for i, st := range s.Alternative {
-			s.Alternative[i] = transformStmt(st, fn)
+			s.Alternative[i] = transformStmt(st, fn, typeFn)
 		}
 	case *ast.ForStatement:
-		s.Iterable = transformExpr(s.Iterable, fn)
+		s.Iterable = transformExpr(s.Iterable, fn, typeFn)
 		for i, st := range s.Body {
-			s.Body[i] = transformStmt(st, fn)
+			s.Body[i] = transformStmt(st, fn, typeFn)
 		}
 	case *ast.WhileStatement:
-		s.Condition = transformExpr(s.Condition, fn)
+		s.Condition = transformExpr(s.Condition, fn, typeFn)
 		for i, st := range s.Body {
-			s.Body[i] = transformStmt(st, fn)
+			s.Body[i] = transformStmt(st, fn, typeFn)
 		}
 	case *ast.BreakStatement, *ast.ContinueStatement:
 		return s
 	case *ast.MatchStatement:
-		s.Target = transformExpr(s.Target, fn)
+		s.Target = transformExpr(s.Target, fn, typeFn)
 		for i, c := range s.Cases {
-			s.Cases[i].Pattern = transformExpr(c.Pattern, fn)
+			s.Cases[i].Pattern = transformExpr(c.Pattern, fn, typeFn)
 			for j, st := range c.Body {
-				s.Cases[i].Body[j] = transformStmt(st, fn)
+				s.Cases[i].Body[j] = transformStmt(st, fn, typeFn)
 			}
 		}
 		for i, st := range s.DefaultBlock {
-			s.DefaultBlock[i] = transformStmt(st, fn)
+			s.DefaultBlock[i] = transformStmt(st, fn, typeFn)
 		}
 	case *ast.FileStatement:
 		if s.PathExpr != nil {
-			s.PathExpr = transformExpr(s.PathExpr, fn)
+			s.PathExpr = transformExpr(s.PathExpr, fn, typeFn)
 		}
 		if s.Handler != nil {
-			s.Handler = transformExpr(s.Handler, fn)
+			s.Handler = transformExpr(s.Handler, fn, typeFn)
 		}
 		for i, st := range s.Body {
-			s.Body[i] = transformStmt(st, fn)
+			s.Body[i] = transformStmt(st, fn, typeFn)
 		}
 	case *ast.InStatement:
-		s.Path = transformExpr(s.Path, fn)
+		s.Path = transformExpr(s.Path, fn, typeFn)
 		for i, st := range s.Body {
-			s.Body[i] = transformStmt(st, fn)
+			s.Body[i] = transformStmt(st, fn, typeFn)
 		}
 	case *ast.FuncStatement:
+		if typeFn != nil {
+			if s.ReturnType != "" {
+				s.ReturnType = typeFn(s.ReturnType)
+			}
+			for _, p := range s.Parameters {
+				if p.Type != "" {
+					p.Type = typeFn(p.Type)
+				}
+			}
+		}
 		for i, st := range s.Body {
-			s.Body[i] = transformStmt(st, fn)
+			s.Body[i] = transformStmt(st, fn, typeFn)
+		}
+	case *ast.UnitStatement:
+		if typeFn != nil {
+			for _, p := range s.Properties {
+				if p.Type != "" {
+					p.Type = typeFn(p.Type)
+				}
+			}
+			for _, m := range s.Methods {
+				if m.ReturnType != "" {
+					m.ReturnType = typeFn(m.ReturnType)
+				}
+				for _, p := range m.Parameters {
+					if p.Type != "" {
+						p.Type = typeFn(p.Type)
+					}
+				}
+			}
+		}
+	case *ast.InterfaceStatement:
+		if typeFn != nil {
+			for _, f := range s.Fields {
+				if f.Type != "" {
+					f.Type = typeFn(f.Type)
+				}
+			}
 		}
 	case *ast.WithStatement:
 		if s.Target != nil {
-			s.Target = transformExpr(s.Target, fn)
+			s.Target = transformExpr(s.Target, fn, typeFn)
 		}
 		for i, st := range s.Body {
-			s.Body[i] = transformStmt(st, fn)
+			s.Body[i] = transformStmt(st, fn, typeFn)
 		}
 	case *ast.BlockStatement:
 		for i, st := range s.Statements {
-			s.Statements[i] = transformStmt(st, fn)
+			s.Statements[i] = transformStmt(st, fn, typeFn)
 		}
 	case *ast.TrapStatement:
 		if s.Body != nil {
 			for i, st := range s.Body.Statements {
-				s.Body.Statements[i] = transformStmt(st, fn)
+				s.Body.Statements[i] = transformStmt(st, fn, typeFn)
 			}
 		}
 	case *ast.StdInStatement:
 		if s.Body != nil {
 			for i, st := range s.Body.Statements {
-				s.Body.Statements[i] = transformStmt(st, fn)
+				s.Body.Statements[i] = transformStmt(st, fn, typeFn)
 			}
 		}
 	}
@@ -756,7 +854,7 @@ func (p *Packager) inlineSubdescriptors(targetDir, pattern string) ([]ast.Statem
 					}
 				}
 				return expr
-			})
+			}, nil)
 			bodyStmts = append(bodyStmts, st)
 		}
 

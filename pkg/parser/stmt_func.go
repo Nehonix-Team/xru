@@ -169,6 +169,14 @@ func (p *Parser) parseGlobalStatement() ast.Statement {
 		}
 		return nil
 	}
+	if p.curTokenIs(lexer.INTERFACE) || p.curTokenIs(lexer.TYPE) {
+		ifaceStmt := p.parseInterfaceStatement()
+		if ifaceStmt != nil {
+			ifaceStmt.IsGlobal = true
+			return ifaceStmt
+		}
+		return nil
+	}
 	stmt := p.parseStatement()
 	return stmt
 }

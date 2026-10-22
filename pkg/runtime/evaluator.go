@@ -560,7 +560,7 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			// Les instructions de script autonomes (appels de fonctions racine, boucles, etc.) ne sont pas exécutées.
 			for _, stmt := range prog.Statements {
 				switch s := stmt.(type) {
-				case *ast.UseStatement, *ast.FromUseStatement, *ast.UnitStatement, *ast.FuncStatement:
+				case *ast.UseStatement, *ast.FromUseStatement, *ast.UnitStatement, *ast.FuncStatement, *ast.InterfaceStatement:
 					if _, err := ev.Eval(s, modEnv); err != nil {
 						return nil, err
 					}

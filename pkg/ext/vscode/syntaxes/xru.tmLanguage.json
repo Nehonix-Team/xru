@@ -44,7 +44,7 @@
     "imports": {
       "patterns": [
         {
-          "match": "\\b(from|use|as|mod|map|export|import)\\b",
+          "match": "\\b(from|use|as|mod|map|export|import|global)\\b",
           "name": "keyword.control.xru"
         }
       ]
@@ -235,7 +235,7 @@
         },
         {
           "name": "keyword.declaration.xru",
-          "match": "\\b(let|const|arg|declare|unit|func|directive|global|interface|type|includes|extends)\\b"
+          "match": "\\b(let|const|arg|declare|unit|func|directive|interface|type|includes|extends)\\b"
         }
       ]
     },

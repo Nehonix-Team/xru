@@ -106,6 +106,7 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 
 	moduleAliases := make(map[string]string)
 	importedMembers := make(map[string]string)
+	constValues := make(map[string]string)
 
 	for _, st := range mainProg.Statements {
 		if s, ok := st.(*ast.ArgStatement); ok {
@@ -218,6 +219,12 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 				declNames[s.Name] = true
 			case *ast.VarStatement:
 				declNames[s.Name] = true
+				if s.IsConst {
+					if sLit, ok := s.Value.(*ast.StringLiteral); ok {
+						constValues[s.Name] = sLit.Value
+						constValues[modName+"__"+s.Name] = sLit.Value
+					}
+				}
 			case *ast.UnitStatement:
 				declNames[s.Name] = true
 			}
@@ -283,14 +290,27 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 							if knownArgs[origExpr] {
 								continue
 							}
+							if cVal, ok := constValues[origExpr]; ok {
+								val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
+								continue
+							}
 							if declNames[origExpr] {
 								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+modName+"__"+origExpr+"}", 1)
 							} else if target, ok := importedMembers[origExpr]; ok {
+								if cVal, ok := constValues[target]; ok {
+									val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
+									continue
+								}
 								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+target+"}", 1)
 							} else if strings.Contains(origExpr, "::") {
 								parts := strings.SplitN(origExpr, "::", 2)
 								if targetMod, ok := moduleAliases[parts[0]]; ok {
-									val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+targetMod+"__"+parts[1]+"}", 1)
+									targetSym := targetMod + "__" + parts[1]
+									if cVal, ok := constValues[targetSym]; ok {
+										val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
+										continue
+									}
+									val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+targetSym+"}", 1)
 								}
 							}
 						}
@@ -351,6 +371,14 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 		}
 	}
 
+	for _, st := range mainProg.Statements {
+		if vs, ok := st.(*ast.VarStatement); ok && vs.IsConst {
+			if sLit, ok := vs.Value.(*ast.StringLiteral); ok {
+				constValues[vs.Name] = sLit.Value
+			}
+		}
+	}
+
 	// Second pass on mainProg: rewrite scope accesses and imported identifiers
 	for i, stmt := range mainProg.Statements {
 		if reassign, ok := stmt.(*ast.ReassignStatement); ok {
@@ -397,12 +425,25 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 						if knownArgs[origExpr] {
 							continue
 						}
+						if cVal, ok := constValues[origExpr]; ok {
+							val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
+							continue
+						}
 						if target, ok := importedMembers[origExpr]; ok {
+							if cVal, ok := constValues[target]; ok {
+								val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
+								continue
+							}
 							val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+target+"}", 1)
 						} else if strings.Contains(origExpr, "::") {
 							parts := strings.SplitN(origExpr, "::", 2)
 							if targetMod, ok := moduleAliases[parts[0]]; ok {
-								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+targetMod+"__"+parts[1]+"}", 1)
+								targetSym := targetMod + "__" + parts[1]
+								if cVal, ok := constValues[targetSym]; ok {
+									val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
+									continue
+								}
+								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+targetSym+"}", 1)
 							}
 						}
 					}

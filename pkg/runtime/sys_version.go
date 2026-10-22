@@ -362,6 +362,15 @@ func CheckAndEnforceAstRequire(prog *ast.Program) error {
 		}
 	}
 
+	astConstants := make(map[string]string)
+	for _, stmt := range prog.Statements {
+		if vs, ok := stmt.(*ast.VarStatement); ok && vs.IsConst {
+			if sLit, ok := vs.Value.(*ast.StringLiteral); ok {
+				astConstants[vs.Name] = sLit.Value
+			}
+		}
+	}
+
 	// 2. Scan statements for Sys.require(...)
 	for _, stmt := range prog.Statements {
 		exprStmt, ok := stmt.(*ast.ExpressionStatement)
@@ -404,6 +413,14 @@ func CheckAndEnforceAstRequire(prog *ast.Program) error {
 			continue
 		}
 		constraint := strLit.Value
+		spans := ast.ExtractInterpolations(constraint)
+		if len(spans) > 0 {
+			for _, span := range spans {
+				if cVal, ok := astConstants[span.Expr]; ok {
+					constraint = strings.Replace(constraint, "$f{"+span.Expr+"}", cVal, 1)
+				}
+			}
+		}
 
 		onMismatch := "fatal"
 		mode := "log"

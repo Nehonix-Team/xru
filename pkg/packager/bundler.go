@@ -18,6 +18,8 @@ import (
 
 // BundleAndMinify bundles main.xru with all imported modules and subdescriptors inlined
 // and minifies / mangles variable and function names.
+var reInterpToken = regexp.MustCompile(`"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|` + "`" + `([^` + "`" + `\\]|\\.)*` + "`" + `|\.[a-zA-Z_][a-zA-Z0-9_]*|&[a-zA-Z_][a-zA-Z0-9_]*|\b[a-zA-Z_][a-zA-Z0-9_]*(?:::([a-zA-Z_][a-zA-Z0-9_]*))?\b`)
+
 func (p *Packager) BundleAndMinify() (string, error) {
 	return p.BundleAndMinifyWithEntry("main.xru")
 }
@@ -329,27 +331,35 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 								continue
 							}
 							if cVal, ok := constValues[origExpr]; ok {
-								val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
+								val = strings.Replace(val, span.Raw, cVal, 1)
 								continue
 							}
-							if declNames[origExpr] {
-								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+modName+"__"+origExpr+"}", 1)
-							} else if target, ok := importedMembers[origExpr]; ok {
-								if cVal, ok := constValues[target]; ok {
-									val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
-									continue
+							newExpr := reInterpToken.ReplaceAllStringFunc(origExpr, func(token string) string {
+								if len(token) > 0 && (token[0] == '"' || token[0] == '\'' || token[0] == '`' || token[0] == '.' || token[0] == '&') {
+									return token
 								}
-								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+target+"}", 1)
-							} else if strings.Contains(origExpr, "::") {
-								parts := strings.SplitN(origExpr, "::", 2)
-								if targetMod, ok := moduleAliases[parts[0]]; ok {
-									targetSym := targetMod + "__" + parts[1]
-									if cVal, ok := constValues[targetSym]; ok {
-										val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
-										continue
+								if strings.Contains(token, "::") {
+									parts := strings.SplitN(token, "::", 2)
+									if targetMod, ok := moduleAliases[parts[0]]; ok {
+										return targetMod + "__" + parts[1]
 									}
-									val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+targetSym+"}", 1)
+									return token
 								}
+								if knownArgs[token] {
+									return token
+								}
+								if declNames[token] {
+									return modName + "__" + token
+								}
+								if target, ok := importedMembers[token]; ok {
+									return target
+								}
+								return token
+							})
+							if cVal, ok := constValues[newExpr]; ok {
+								val = strings.Replace(val, span.Raw, cVal, 1)
+							} else if newExpr != origExpr {
+								val = strings.Replace(val, span.Raw, "$f{"+newExpr+"}", 1)
 							}
 						}
 						strLit.Value = val
@@ -479,25 +489,32 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 							continue
 						}
 						if cVal, ok := constValues[origExpr]; ok {
-							val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
+							val = strings.Replace(val, span.Raw, cVal, 1)
 							continue
 						}
-						if target, ok := importedMembers[origExpr]; ok {
-							if cVal, ok := constValues[target]; ok {
-								val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
-								continue
+						newExpr := reInterpToken.ReplaceAllStringFunc(origExpr, func(token string) string {
+							if len(token) > 0 && (token[0] == '"' || token[0] == '\'' || token[0] == '`' || token[0] == '.' || token[0] == '&') {
+								return token
 							}
-							val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+target+"}", 1)
-						} else if strings.Contains(origExpr, "::") {
-							parts := strings.SplitN(origExpr, "::", 2)
-							if targetMod, ok := moduleAliases[parts[0]]; ok {
-								targetSym := targetMod + "__" + parts[1]
-								if cVal, ok := constValues[targetSym]; ok {
-									val = strings.Replace(val, "$f{"+origExpr+"}", cVal, 1)
-									continue
+							if strings.Contains(token, "::") {
+								parts := strings.SplitN(token, "::", 2)
+								if targetMod, ok := moduleAliases[parts[0]]; ok {
+									return targetMod + "__" + parts[1]
 								}
-								val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+targetSym+"}", 1)
+								return token
 							}
+							if knownArgs[token] {
+								return token
+							}
+							if target, ok := importedMembers[token]; ok {
+								return target
+							}
+							return token
+						})
+						if cVal, ok := constValues[newExpr]; ok {
+							val = strings.Replace(val, span.Raw, cVal, 1)
+						} else if newExpr != origExpr {
+							val = strings.Replace(val, span.Raw, "$f{"+newExpr+"}", 1)
 						}
 					}
 					strLit.Value = val
@@ -1523,6 +1540,30 @@ func (m *Mangler) resolveInterpolation(expr string) string {
 		}
 		return expr
 	}
+	if strings.ContainsAny(expr, " ?+-*/%()[]{}<>!&|:=") {
+		return reInterpToken.ReplaceAllStringFunc(expr, func(token string) string {
+			if len(token) > 0 && (token[0] == '"' || token[0] == '\'' || token[0] == '`') {
+				return token
+			}
+			if len(token) > 0 && token[0] == '.' {
+				prop := token[1:]
+				if mangled, ok := m.unitMethods[prop]; ok {
+					return "." + mangled
+				} else if mangled, ok := m.unitProps[prop]; ok {
+					return "." + mangled
+				}
+				return token
+			}
+			if len(token) > 0 && token[0] == '&' {
+				prop := token[1:]
+				if mangled, ok := m.unitProps[prop]; ok {
+					return "&" + mangled
+				}
+				return token
+			}
+			return m.resolveName(token)
+		})
+	}
 	if strings.Contains(expr, ".") {
 		dotIdx := strings.Index(expr, ".")
 		obj := expr[:dotIdx]
@@ -1563,7 +1604,7 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 				origExpr := span.Expr
 				resolved := m.resolveInterpolation(origExpr)
 				if resolved != origExpr {
-					val = strings.Replace(val, "$f{"+origExpr+"}", "$f{"+resolved+"}", 1)
+					val = strings.Replace(val, span.Raw, "$f{"+resolved+"}", 1)
 				}
 			}
 		}

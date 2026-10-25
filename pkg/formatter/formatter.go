@@ -120,7 +120,7 @@ func isStatementStarter(t lexer.TokenType) bool {
 		lexer.LET, lexer.CONST, lexer.UNIT, lexer.INTERFACE, lexer.TYPE,
 		lexer.FUNC, lexer.DIRECTIVE, lexer.DECLARE, lexer.IF, lexer.FOR,
 		lexer.WHILE, lexer.MATCH, lexer.RETURN, lexer.PASS, lexer.FILE,
-		lexer.IN, lexer.WITH, lexer.DISPATCH, lexer.DISPATCH_TREE, lexer.TRAP:
+		lexer.IN, lexer.WITH, lexer.DISPATCH, lexer.DISPATCH_TREE, lexer.TRAP, lexer.COUT:
 		return true
 	}
 	return false
@@ -128,7 +128,7 @@ func isStatementStarter(t lexer.TokenType) bool {
 
 func isBlockBrace(context string) bool {
 	switch context {
-	case "unit", "func", "directive", "if", "elif", "else", "for", "while", "match", "case", "default", "file", "in", "with", "interface", "trap":
+	case "unit", "func", "directive", "if", "elif", "else", "for", "while", "match", "case", "default", "file", "in", "with", "interface", "trap", "cout":
 		return true
 	}
 	return false
@@ -155,7 +155,7 @@ func (f *fmtEngine) format() string {
 			f.inForHeader = true
 			f.inHeader = true
 		} else if tok.Type == lexer.IF || tok.Type == lexer.ELIF || tok.Type == lexer.WHILE ||
-			tok.Type == lexer.MATCH || tok.Type == lexer.FILE || tok.Type == lexer.WITH || tok.Type == lexer.TRAP {
+			tok.Type == lexer.MATCH || tok.Type == lexer.FILE || tok.Type == lexer.WITH || tok.Type == lexer.TRAP || tok.Type == lexer.COUT {
 			f.inHeader = true
 		} else if tok.Type == lexer.ARROW {
 			f.inArrowExpr = true
@@ -170,7 +170,7 @@ func (f *fmtEngine) format() string {
 		}
 
 		if f.prevTokType == lexer.AT && tok.Type == lexer.MAP {
-			if f.lastStarter != "interface" && f.lastStarter != "trap" && f.lastStarter != "from" && f.lastStarter != "use" {
+			if f.lastStarter != "interface" && f.lastStarter != "trap" && f.lastStarter != "cout" && f.lastStarter != "from" && f.lastStarter != "use" {
 				f.lastStarter = "map"
 			}
 		}
@@ -522,7 +522,7 @@ func (f *fmtEngine) isInlineMapBrace() bool {
 			return true
 		}
 	}
-	if f.inHeader || f.lastStarter == "trap" || f.lastStarter == "from" || f.lastStarter == "use" {
+	if f.inHeader || f.lastStarter == "trap" || f.lastStarter == "cout" || f.lastStarter == "from" || f.lastStarter == "use" {
 		return true
 	}
 	return false

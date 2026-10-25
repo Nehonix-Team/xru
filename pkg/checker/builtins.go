@@ -212,6 +212,7 @@ func (c *Checker) initBuiltinUnits() {
 	c.availableModules["Sys"] = sysUnit
 	c.availableModules["sys"] = sysUnit
 	c.availableModules["Cmd"] = cmdUnit
+	c.availableModules["cmd"] = cmdUnit
 	c.availableModules["Crypto"] = cryptoUnit
 	c.availableModules["Local"] = localUnit
 	c.availableModules["Path"] = pathUnit
@@ -242,6 +243,16 @@ func (c *Checker) initBuiltinUnits() {
 	}
 	for _, ifaceName := range stdInterfaces {
 		c.interfaces[ifaceName] = &ast.InterfaceStatement{Name: ifaceName}
+	}
+
+	c.interfaces["CmdResult"] = &ast.InterfaceStatement{
+		Name: "CmdResult",
+		Fields: []*ast.InterfaceField{
+			{Name: "out", Type: "string"},
+			{Name: "err", Type: "string"},
+			{Name: "code", Type: "number"},
+			{Name: "ok", Type: "bool"},
+		},
 	}
 
 	c.interfaces["ROpt"] = &ast.InterfaceStatement{

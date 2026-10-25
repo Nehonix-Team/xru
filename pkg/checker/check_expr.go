@@ -340,6 +340,11 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 				c.addError(e.Pos(), "ERR_UNKNOWN_STDIN_FUNCTION",
 					fmt.Sprintf("Function '::%s' is not defined in 'std::in' block. Valid functions are: ::input, ::select, ::confirm", e.Function))
 			}
+		} else if c.inCoutBlock {
+			if e.Function != "exec" && e.Function != "Exec" {
+				c.addError(e.Pos(), "ERR_UNKNOWN_COUT_FUNCTION",
+					fmt.Sprintf("Function '::%s' is not defined in 'cout' block. Valid function is ::exec", e.Function))
+			}
 		} else {
 			if e.Function == "input" || e.Function == "select" || e.Function == "confirm" {
 				c.addError(e.Pos(), "ERR_STDIN_OUTSIDE_BLOCK",
@@ -354,6 +359,11 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			if e.Name != "input" && e.Name != "select" && e.Name != "confirm" {
 				c.addError(e.Pos(), "ERR_UNKNOWN_STDIN_FUNCTION",
 					fmt.Sprintf("Identifier '::%s' is not defined in 'std::in' block. Valid identifiers are: ::input, ::select, ::confirm", e.Name))
+			}
+		} else if c.inCoutBlock {
+			if e.Name != "exec" && e.Name != "Exec" {
+				c.addError(e.Pos(), "ERR_UNKNOWN_COUT_FUNCTION",
+					fmt.Sprintf("Identifier '::%s' is not defined in 'cout' block. Valid identifier is ::exec", e.Name))
 			}
 		}
 

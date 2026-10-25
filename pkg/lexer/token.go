@@ -60,6 +60,7 @@ const (
 	PUBLIC        TokenType = "public"
 	PRIVATE       TokenType = "private"
 	TRAP          TokenType = "trap"
+	COUT          TokenType = "cout"
 	BREAK         TokenType = "break"
 	CONTINUE      TokenType = "continue"
 
@@ -169,6 +170,7 @@ var keywords = map[string]TokenType{
 	"public":        PUBLIC,
 	"private":       PRIVATE,
 	"trap":          TRAP,
+	"cout":          COUT,
 	"break":         BREAK,
 	"continue":      CONTINUE,
 }

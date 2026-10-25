@@ -22,6 +22,8 @@ type Checker struct {
 	unreachable       []lexer.Position // Instructions situées après un appel 'never' (std.fatal, Sys.exit)
 	visitedDispatches map[string]bool
 	inStdInBlock      bool
+	inCoutBlock       bool
+	coutScope         string
 	loopDepth         int
 }
 

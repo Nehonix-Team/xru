@@ -27,6 +27,9 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 	case *ast.StdInStatement:
 		if s == nil { return }
 		c.checkStdIn(s)
+	case *ast.CoutStatement:
+		if s == nil { return }
+		c.checkCout(s)
 	case *ast.ArgStatement:
 		if s == nil { return }
 		c.checkArg(s)
@@ -1086,3 +1089,51 @@ func (c *Checker) checkStdIn(s *ast.StdInStatement) {
 	}
 	c.scope = c.scope.parent
 }
+
+func (c *Checker) checkCout(s *ast.CoutStatement) {
+	if s == nil {
+		return
+	}
+	if s.Scope != "" {
+		if sym, ok := c.scope.Resolve(s.Scope); ok {
+			sym.Used = true
+		} else if !strings.EqualFold(s.Scope, "cmd") {
+			c.addError(s.Position, "ERR_UNDEFINED_VARIABLE", fmt.Sprintf("Module or unit '%s' is not defined in current scope (did you forget 'use %s'?)", s.Scope, s.Scope))
+		}
+	}
+
+	for _, opt := range s.Options {
+		if opt.Value != nil {
+			c.checkExpression(opt.Value)
+		}
+	}
+
+	if s.Alias != "" {
+		aliasSym := &Symbol{
+			Name: s.Alias,
+			Kind: SymVar,
+			Type: "CmdResult",
+			Pos:  s.Position,
+		}
+		if err := c.scope.Define(aliasSym); err != nil {
+			c.addError(s.Position, "ERR_DUPLICATE_SYMBOL", fmt.Sprintf("Identifier '%s' is already declared", s.Alias))
+		}
+		c.declaredVars = append(c.declaredVars, aliasSym)
+	}
+
+	prevInCout := c.inCoutBlock
+	prevCoutScope := c.coutScope
+	c.inCoutBlock = true
+	c.coutScope = s.Scope
+	defer func() {
+		c.inCoutBlock = prevInCout
+		c.coutScope = prevCoutScope
+	}()
+
+	c.scope = NewScope(c.scope, false)
+	if s.Body != nil {
+		c.checkStatementList(s.Body.Statements)
+	}
+	c.scope = c.scope.parent
+}
+

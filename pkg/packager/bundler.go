@@ -249,6 +249,10 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 				}
 			case *ast.UnitStatement:
 				declNames[s.Name] = true
+			case *ast.CoutStatement:
+				if s.Alias != "" {
+					declNames[s.Alias] = true
+				}
 			}
 		}
 
@@ -279,6 +283,10 @@ func (p *Packager) BuildBundledProgramWithEntry(entryFile string) (*ast.Program,
 				s.Name = modName + "__" + s.Name
 			case *ast.UnitStatement:
 				s.Name = modName + "__" + s.Name
+			case *ast.CoutStatement:
+				if s.Alias != "" {
+					s.Alias = modName + "__" + s.Alias
+				}
 			case *ast.ReassignStatement:
 				if declNames[s.Name] {
 					s.Name = modName + "__" + s.Name
@@ -795,6 +803,17 @@ func transformStmt(stmt ast.Statement, fn func(ast.Expression) ast.Expression, t
 				s.Body.Statements[i] = transformStmt(st, fn, typeFn)
 			}
 		}
+	case *ast.CoutStatement:
+		for _, opt := range s.Options {
+			if opt.Value != nil {
+				opt.Value = fn(opt.Value)
+			}
+		}
+		if s.Body != nil {
+			for i, st := range s.Body.Statements {
+				s.Body.Statements[i] = transformStmt(st, fn, typeFn)
+			}
+		}
 	}
 	return stmt
 }
@@ -1109,6 +1128,11 @@ func (m *Mangler) Minify(prog *ast.Program) string {
 				m.mapVars[varName] = true
 			}
 		}
+		if cs, ok := stmt.(*ast.CoutStatement); ok && cs.Alias != "" {
+			if !m.reserved[cs.Alias] {
+				_ = m.getMangledName(cs.Alias)
+			}
+		}
 		if arg, ok := stmt.(*ast.ArgStatement); ok {
 			alias := m.nameMap[arg.Name]
 			if arg.Type == "map" || arg.Type == "@map" || strings.HasPrefix(arg.Type, "@map") || m.mapInterfaces[arg.Type] {
@@ -1371,6 +1395,42 @@ func (m *Mangler) minifyStatement(stmt ast.Statement) string {
 			}
 		}
 		return fmt.Sprintf("trap %s%s{%s}", targetStr, aliasStr, strings.Join(bodyParts, ";"))
+
+	case *ast.CoutStatement:
+		var optStrs []string
+		for _, opt := range s.Options {
+			if opt.Value != nil {
+				optStrs = append(optStrs, fmt.Sprintf("%s:%s", opt.Key, m.minifyExpression(opt.Value)))
+			} else {
+				optStrs = append(optStrs, opt.Key)
+			}
+		}
+		scopeStr := ""
+		if s.Scope != "" {
+			scope := s.Scope
+			if resolved := m.resolveName(scope); resolved != "" {
+				scope = resolved
+			}
+			scopeStr = scope + "::"
+		}
+		aliasStr := ""
+		if s.Alias != "" {
+			alias := s.Alias
+			if resolved := m.resolveName(alias); resolved != "" {
+				alias = resolved
+			}
+			aliasStr = " as " + alias
+		}
+		var bodyParts []string
+		if s.Body != nil {
+			for _, st := range s.Body.Statements {
+				ms := m.minifyStatement(st)
+				if ms != "" {
+					bodyParts = append(bodyParts, ms)
+				}
+			}
+		}
+		return fmt.Sprintf("cout %s@map{%s}%s{%s}", scopeStr, strings.Join(optStrs, ","), aliasStr, strings.Join(bodyParts, ";"))
 
 	case *ast.StdInStatement:
 		scope := s.Scope
@@ -1717,7 +1777,7 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 
 	case *ast.GlobalCallExpression:
 		fnName := e.Function
-		if fnName == "input" || fnName == "select" || fnName == "confirm" {
+		if fnName == "input" || fnName == "select" || fnName == "confirm" || fnName == "exec" || fnName == "Exec" {
 			var args []string
 			for _, a := range e.Arguments {
 				args = append(args, m.minifyExpression(a))
@@ -1735,7 +1795,7 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 
 	case *ast.GlobalAccessExpression:
 		fnName := e.Name
-		if fnName == "input" || fnName == "select" || fnName == "confirm" {
+		if fnName == "input" || fnName == "select" || fnName == "confirm" || fnName == "exec" || fnName == "Exec" {
 			return "::" + fnName
 		}
 		if !m.reserved[fnName] {

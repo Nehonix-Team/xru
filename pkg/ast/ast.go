@@ -643,6 +643,48 @@ func (s *StdInStatement) String() string {
 	return fmt.Sprintf("%s::in %s", s.Scope, bodyStr)
 }
 
+// CoutOption : option pair or flag inside cout @map{...}
+type CoutOption struct {
+	Key   string
+	Value Expression
+}
+
+// CoutStatement : cout [scope::]@map{...} [as alias] { ... }
+type CoutStatement struct {
+	Position lexer.Position
+	Scope    string
+	Options  []*CoutOption
+	Alias    string
+	Body     *BlockStatement
+}
+
+func (s *CoutStatement) statementNode()      {}
+func (s *CoutStatement) Pos() lexer.Position { return s.Position }
+func (s *CoutStatement) String() string {
+	var optStrs []string
+	for _, opt := range s.Options {
+		if opt.Value != nil {
+			optStrs = append(optStrs, fmt.Sprintf("%s: %s", opt.Key, opt.Value.String()))
+		} else {
+			optStrs = append(optStrs, opt.Key)
+		}
+	}
+	scopeStr := ""
+	if s.Scope != "" {
+		scopeStr = s.Scope + "::"
+	}
+	aliasStr := ""
+	if s.Alias != "" {
+		aliasStr = " as " + s.Alias
+	}
+	bodyStr := "{}"
+	if s.Body != nil {
+		bodyStr = s.Body.String()
+	}
+	return fmt.Sprintf("cout %s@map{%s}%s %s", scopeStr, strings.Join(optStrs, ", "), aliasStr, bodyStr)
+}
+
+
 // -----------------------------------------------------------------------------
 // Expressions (Littéraux, Variables, Appels, Instanciations, Collections)
 // -----------------------------------------------------------------------------

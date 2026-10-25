@@ -2363,6 +2363,87 @@ s.require(">= 2.0.0", @map{onMismatch: "fatal", mode: "silent"})
 	}
 }
 
+func TestCoutStatements(t *testing.T) {
+	code := `
+use cmd
+
+let capturedOk = false
+let capturedOut = ""
+let localOk = false
+
+cout cmd::@map{out, err} as c {
+    let r1 = ::exec("echo hello_cout")
+    localOk =: r1.ok
+}
+
+capturedOk =: c.ok
+capturedOut =: c.out
+`
+	l := lexer.New("cout_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+
+	_, err := ev.Eval(prog, env)
+	if err != nil {
+		t.Fatalf("Runtime evaluation error: %v", err)
+	}
+
+	valOk, _ := env.Get("capturedOk")
+	if b, ok := valOk.(runtime.BoolValue); !ok || !b.Val {
+		t.Errorf("Expected capturedOk to be true, got %v", valOk)
+	}
+
+	valLocOk, _ := env.Get("localOk")
+	if b, ok := valLocOk.(runtime.BoolValue); !ok || !b.Val {
+		t.Errorf("Expected localOk to be true, got %v", valLocOk)
+	}
+
+	valOut, _ := env.Get("capturedOut")
+	if s, ok := valOut.(runtime.StringValue); !ok || !strings.Contains(s.Val, "hello_cout") {
+		t.Errorf("Expected capturedOut to contain 'hello_cout', got %v", valOut)
+	}
+}
+
+func TestCoutWithDirStatements(t *testing.T) {
+	code := `
+use cmd
+use sys as Sys
+
+let myDir = Sys.cwd()
+let outDir = ""
+
+cout cmd::@map{dir: myDir, out, err} as res {
+    ::exec("pwd")
+}
+
+outDir =: res.out
+`
+	l := lexer.New("cout_dir_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	_, err := ev.Eval(prog, env)
+	if err != nil {
+		t.Fatalf("Runtime evaluation error: %v", err)
+	}
+	valOut, _ := env.Get("outDir")
+	if s, ok := valOut.(runtime.StringValue); !ok || s.Val == "" {
+		t.Errorf("Expected non-empty outDir, got %v", valOut)
+	}
+}
+
+
 
 
 

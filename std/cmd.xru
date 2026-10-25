@@ -1,5 +1,13 @@
 // Package cmd provides process execution and shell command runner primitives.
 
+/// Result structure returned by command execution interceptors or cout blocks.
+interface CmdResult @map {
+	out string
+	err string
+	code number
+	ok bool
+}
+
 /// Native shell command runner primitives.
 interface CmdNative {
 	/// Executes a system shell command and returns its standard output as a string.

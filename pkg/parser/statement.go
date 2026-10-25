@@ -16,6 +16,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseUseStatement()
 	case lexer.TRAP:
 		return p.parseTrapStatement()
+	case lexer.COUT:
+		return p.parseCoutStatement()
 	case lexer.ARG:
 		return p.parseArgStatement()
 	case lexer.LET, lexer.CONST:
@@ -427,6 +429,74 @@ func (p *Parser) parseTrapStatement() *ast.TrapStatement {
 
 	if !p.curTokenIs(lexer.LBRACE) {
 		p.addError(p.curToken.Pos, "expected '{' after trap declaration")
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
+	return stmt
+}
+
+func (p *Parser) parseCoutStatement() *ast.CoutStatement {
+	stmt := &ast.CoutStatement{Position: p.curToken.Pos}
+	p.nextToken() // saute 'cout'
+
+	// Scope optionnel: cmd:: ou cmd.
+	if p.curTokenIs(lexer.IDENT) && (p.peekTokenIs(lexer.DOUBLE_COLON) || p.peekTokenIs(lexer.DOT)) {
+		stmt.Scope = p.curToken.Literal
+		p.nextToken() // saute scope ident
+		p.nextToken() // saute '::' ou '.'
+	}
+
+	// Option grouping @map{...}
+	if p.curTokenIs(lexer.AT) {
+		p.nextToken() // saute '@'
+		if p.curTokenIs(lexer.MAP) || (p.curTokenIs(lexer.IDENT) && strings.ToLower(p.curToken.Literal) == "map") {
+			p.nextToken() // saute 'map'
+		}
+		if p.curTokenIs(lexer.LBRACE) {
+			p.nextToken() // saute '{'
+			for !p.curTokenIs(lexer.RBRACE) && !p.curTokenIs(lexer.EOF) {
+				if p.curTokenIs(lexer.COMMA) || p.curTokenIs(lexer.SEMICOLON) {
+					p.nextToken()
+					continue
+				}
+				if p.curTokenIs(lexer.IDENT) || p.curTokenIs(lexer.STRING) {
+					key := p.curToken.Literal
+					var val ast.Expression
+					if p.peekTokenIs(lexer.COLON) || p.peekTokenIs(lexer.ARROW) || p.peekTokenIs(lexer.ASSIGN) {
+						p.nextToken() // saute ':', '->' ou '='
+						p.nextToken() // premier token de la valeur
+						val = p.parseExpression()
+					}
+					stmt.Options = append(stmt.Options, &ast.CoutOption{Key: key, Value: val})
+					if p.peekTokenIs(lexer.COMMA) || p.peekTokenIs(lexer.SEMICOLON) {
+						p.nextToken()
+					}
+					p.nextToken()
+				} else {
+					p.nextToken()
+				}
+			}
+			if p.curTokenIs(lexer.RBRACE) {
+				p.nextToken() // saute '}'
+			}
+		}
+	} else {
+		p.addError(p.curToken.Pos, "expected '@map{...}' after 'cout'")
+		return nil
+	}
+
+	// Optionnel : as <alias>
+	if p.curTokenIs(lexer.AS) {
+		p.nextToken() // saute 'as'
+		if p.curTokenIs(lexer.IDENT) {
+			stmt.Alias = p.curToken.Literal
+			p.nextToken()
+		}
+	}
+
+	if !p.curTokenIs(lexer.LBRACE) {
+		p.addError(p.curToken.Pos, "expected '{' after cout declaration")
 		return nil
 	}
 

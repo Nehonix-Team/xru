@@ -14,6 +14,7 @@
     { "include": "#loops" },
     { "include": "#trap_statement" },
     { "include": "#stdin_statement" },
+    { "include": "#cout_statement" },
     { "include": "#keywords_control" },
     { "include": "#modifiers" },
     { "include": "#keywords_declaration" },
@@ -302,11 +303,33 @@
         }
       ]
     },
+    "cout_statement": {
+      "patterns": [
+        {
+          "match": "\\b(cout)\\b",
+          "name": "keyword.control.cout.xru keyword.control.xru"
+        },
+        {
+          "match": "(?<=\\bcout\\b[^\\{]*\\b)(as)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.as.xru keyword.control.xru" },
+            "2": { "name": "variable.parameter.cout.xru" }
+          }
+        },
+        {
+          "match": "(::)(exec|Exec)\\b",
+          "captures": {
+            "1": { "name": "punctuation.accessor.global.xru" },
+            "2": { "name": "support.function.builtin.cout.xru entity.name.function.xru" }
+          }
+        }
+      ]
+    },
     "keywords_control": {
       "patterns": [
         {
           "name": "keyword.control.xru",
-          "match": "\\b(if|elif|else|match|case|default|for|while|break|continue|in|return|with|catch|trap|or|then|file|dispatch|dispatch_tree|pass)\\b"
+          "match": "\\b(if|elif|else|match|case|default|for|while|break|continue|in|return|with|catch|trap|cout|or|then|file|dispatch|dispatch_tree|pass)\\b"
         }
       ]
     },
@@ -348,7 +371,7 @@
       "patterns": [
         {
           "name": "entity.name.type.xru",
-          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task|range|function|unit|document)\\b"
+          "match": "\\b(string|number|bool|duration|any|list|map|void|never|task|range|function|unit|document|CmdResult)\\b"
         }
       ]
     },

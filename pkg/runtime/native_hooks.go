@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -28,6 +30,45 @@ func NewNativeHooks() map[string]NativeMethod {
 		}
 		data := args[0].String()
 		h := sha256.Sum256([]byte(data))
+		return StringValue{Val: hex.EncodeToString(h[:])}, nil
+	}
+
+	hooks["crypto_file_sha256"] = func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return NilValue{}, fmt.Errorf("crypto_file_sha256 requires file path")
+		}
+		target := args[0].String()
+		h, err := hashFile(target, "sha256")
+		if err != nil {
+			return NilValue{}, err
+		}
+		return StringValue{Val: h}, nil
+	}
+
+	hooks["crypto_verify_file"] = func(args []Value) (Value, error) {
+		if len(args) < 2 {
+			return NilValue{}, fmt.Errorf("crypto_verify_file requires file path and expected hash")
+		}
+		target := args[0].String()
+		expected := strings.TrimSpace(strings.ToLower(args[1].String()))
+		algo := "sha256"
+		if len(args) >= 3 {
+			algo = strings.TrimSpace(args[2].String())
+		}
+		actual, err := hashFile(target, algo)
+		if err != nil {
+			return BoolValue{Val: false}, err
+		}
+		match := subtle.ConstantTimeCompare([]byte(strings.ToLower(actual)), []byte(expected)) == 1
+		return BoolValue{Val: match}, nil
+	}
+
+	hooks["crypto_md5"] = func(args []Value) (Value, error) {
+		if len(args) == 0 {
+			return StringValue{Val: ""}, nil
+		}
+		data := args[0].String()
+		h := md5.Sum([]byte(data))
 		return StringValue{Val: hex.EncodeToString(h[:])}, nil
 	}
 

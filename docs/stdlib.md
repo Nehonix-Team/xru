@@ -48,11 +48,17 @@ Provides standard filesystem interaction:
 | Method | Signature | Description |
 | :--- | :--- | :--- |
 | **`crypto.sha256(text)`** | `(text: string) -> string` | Computes hex-encoded SHA-256 hash |
+| **`crypto.sha512(text)`** | `(text: string) -> string` | Computes hex-encoded SHA-512 hash |
 | **`crypto.md5(text)`** | `(text: string) -> string` | Computes MD5 hash |
+| **`crypto.fileSha256(filePath)`** | `(filePath: string) -> string` | Computes hex-encoded SHA-256 hash of a file |
+| **`crypto.fileHash(filePath, algo?)`** | `(filePath: string, algo?: string) -> string` | Computes file hash using given algorithm (sha256, sha512, md5, sha1) |
+| **`crypto.verifyFile(filePath, hash, algo?)`** | `(filePath: string, hash: string, algo?: string) -> bool` | Verifies file integrity against expected hash (constant-time) |
+| **`crypto.verify(actual, expected)`** | `(actual: string, expected: string) -> bool` | Verifies two hashes using constant-time comparison |
 | **`crypto.uuid()`** | `() -> string` | Generates a standard UUID v4 string |
 | **`crypto.getRandomBytes(n)`** | `(n: number) -> string` | Generates cryptographically secure random bytes |
 | **`crypto.randomHex(n)`** | `(n: number) -> string` | Generates random hex-encoded string of length `n` |
 | **`crypto.randomBase64(n)`** | `(n: number) -> string` | Generates base64-encoded string of `n` bytes |
+
 
 ---
 

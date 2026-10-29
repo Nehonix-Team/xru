@@ -1,6 +1,8 @@
 package runtime_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -301,6 +303,73 @@ let secret3 = Crypto.randomHex(32)
 		t.Errorf("Expected two different random byte sequences")
 	}
 }
+
+func TestCryptoUnitFileHashingAndVerification(t *testing.T) {
+	// Create a temporary file to hash
+	tmpFile, err := os.CreateTemp("", "xru_test_hash_*.txt")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	content := "Hello XRU Cryptography!"
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatalf("Failed to write to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	// Pre-compute expected SHA-256
+	expectedSum := sha256.Sum256([]byte(content))
+	expectedSha256 := hex.EncodeToString(expectedSum[:])
+
+	// Escape path for windows backslashes
+	escapedPath := strings.ReplaceAll(tmpFile.Name(), "\\", "/")
+
+	code := fmt.Sprintf(`
+use crypto as Crypto
+
+let fileHashResult = Crypto.fileSha256("%s")
+let isMatch = Crypto.verifyFile("%s", "%s")
+let isMismatch = Crypto.verifyFile("%s", "0123456789abcdef")
+let textHash = Crypto.sha256("%s")
+let verifyDirect = Crypto.verify(fileHashResult, textHash)
+`, escapedPath, escapedPath, expectedSha256, escapedPath, content)
+
+	l := lexer.New("test_crypto_hash.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+
+	fh, ok := env.Get("fileHashResult")
+	if !ok || fh.String() != expectedSha256 {
+		t.Errorf("Expected file hash %s, got %v", expectedSha256, fh)
+	}
+
+	im, ok := env.Get("isMatch")
+	if !ok || im.String() != "true" {
+		t.Errorf("Expected isMatch to be true, got %v", im)
+	}
+
+	imm, ok := env.Get("isMismatch")
+	if !ok || imm.String() != "false" {
+		t.Errorf("Expected isMismatch to be false, got %v", imm)
+	}
+
+	vd, ok := env.Get("verifyDirect")
+	if !ok || vd.String() != "true" {
+		t.Errorf("Expected verifyDirect to be true, got %v", vd)
+	}
+}
+
 
 func TestRuntimeCollisions(t *testing.T) {
 	// 1. Two imports with same alias

@@ -52,6 +52,7 @@ func NewBuiltinUnits() map[string]*UnitInstance {
 	// 6. #UNIT Crypto (génération cryptographique sécurisée)
 	cryptoUnit := newCryptoUnit()
 	units["Crypto"] = cryptoUnit
+	units["crypto"] = cryptoUnit
 
 	// 7. #UNIT Json
 	jsonUnit := newJsonUnit()

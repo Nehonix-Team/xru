@@ -5,14 +5,55 @@ interface CryptoNative {
 	/// Computes the SHA-256 cryptographic hash of the given string formatted as lowercase hexadecimal.
 	func sha256(data: string) -> string
 
+	/// Computes the SHA-512 cryptographic hash of the given string formatted as lowercase hexadecimal.
+	func sha512(data: string) -> string
+
+	/// Computes the MD5 cryptographic hash of the given string formatted as lowercase hexadecimal.
+	func md5(data: string) -> string
+
+	/// Computes the SHA-256 cryptographic hash of the file at the specified path in streaming mode.
+	func fileSha256(filePath: string) -> string
+
+	/// Computes the cryptographic hash of a file using the specified algorithm (sha256, sha512, md5, sha1).
+	func fileHash(filePath: string, algo: string = "sha256") -> string
+
+	/// Verifies that a file matches an expected cryptographic hash using constant-time comparison.
+	func verifyFile(filePath: string, expectedHash: string, algo: string = "sha256") -> bool
+
+	/// Compares two cryptographic hash digests using constant-time comparison.
+	func verify(actual: string, expected: string) -> bool
+
 	/// Generates cryptographically secure random bytes formatted as hexadecimal.
 	func getRandomBytes(length: number = 32) -> string
+
+	/// Generates cryptographically secure random bytes formatted as base64.
+	func randomBase64(length: number = 32) -> string
 }
 
 unit crypto includes CryptoNative {
 	/// Generates a random hexadecimal string of the specified byte length.
 	func randomHex(length: number = 32) -> string {
 		return &crypto::getRandomBytes(length)
+	}
+
+	/// Computes the SHA-256 hash of a file at the given path.
+	func fileSha256(filePath: string) -> string {
+		return &crypto::fileSha256(filePath)
+	}
+
+	/// Computes the hash of a file at the given path using the specified algorithm.
+	func fileHash(filePath: string, algo: string = "sha256") -> string {
+		return &crypto::fileHash(filePath, algo)
+	}
+
+	/// Verifies the cryptographic hash of a file against an expected digest.
+	func verifyFile(filePath: string, expectedHash: string, algo: string = "sha256") -> bool {
+		return &crypto::verifyFile(filePath, expectedHash, algo)
+	}
+
+	/// Compares two cryptographic hashes safely.
+	func verify(actual: string, expected: string) -> bool {
+		return &crypto::verify(actual, expected)
 	}
 
 	/// Generates a random UUID version 4 string according to RFC 4122.
@@ -33,3 +74,4 @@ unit crypto includes CryptoNative {
 		return timeLow + "-" + timeMid + "-" + timeHi + "-" + clockSeq + "-" + node
 	}
 }
+

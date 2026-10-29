@@ -145,6 +145,24 @@ func (c *Checker) initBuiltinUnits() {
 			"randomBase64":   {Name: "randomBase64", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "length", Type: "number"}}},
 			"Sha256":         {Name: "Sha256", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "data", Type: "string"}}},
 			"sha256":         {Name: "sha256", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "data", Type: "string"}}},
+			"Sha512":         {Name: "Sha512", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "data", Type: "string"}}},
+			"sha512":         {Name: "sha512", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "data", Type: "string"}}},
+			"Md5":            {Name: "Md5", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "data", Type: "string"}}},
+			"md5":            {Name: "md5", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "data", Type: "string"}}},
+			"FileSha256":     {Name: "FileSha256", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}}},
+			"fileSha256":     {Name: "fileSha256", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}}},
+			"Sha256File":     {Name: "Sha256File", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}}},
+			"sha256File":     {Name: "sha256File", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}}},
+			"FileHash":       {Name: "FileHash", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}, {Name: "algo", Type: "string"}}, MinArgs: 1, HasOptional: true},
+			"fileHash":       {Name: "fileHash", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}, {Name: "algo", Type: "string"}}, MinArgs: 1, HasOptional: true},
+			"VerifyFile":     {Name: "VerifyFile", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}, {Name: "expectedHash", Type: "string"}, {Name: "algo", Type: "string"}}, MinArgs: 2, HasOptional: true},
+			"verifyFile":     {Name: "verifyFile", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}, {Name: "expectedHash", Type: "string"}, {Name: "algo", Type: "string"}}, MinArgs: 2, HasOptional: true},
+			"VerifyFileHash": {Name: "VerifyFileHash", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}, {Name: "expectedHash", Type: "string"}, {Name: "algo", Type: "string"}}, MinArgs: 2, HasOptional: true},
+			"verifyFileHash": {Name: "verifyFileHash", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "filePath", Type: "string"}, {Name: "expectedHash", Type: "string"}, {Name: "algo", Type: "string"}}, MinArgs: 2, HasOptional: true},
+			"Verify":         {Name: "Verify", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "actual", Type: "string"}, {Name: "expected", Type: "string"}}},
+			"verify":         {Name: "verify", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "actual", Type: "string"}, {Name: "expected", Type: "string"}}},
+			"VerifyHash":     {Name: "VerifyHash", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "actual", Type: "string"}, {Name: "expected", Type: "string"}}},
+			"verifyHash":     {Name: "verifyHash", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "actual", Type: "string"}, {Name: "expected", Type: "string"}}},
 			"Uuid":           {Name: "Uuid", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 			"uuid":           {Name: "uuid", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{}},
 		},
@@ -214,6 +232,7 @@ func (c *Checker) initBuiltinUnits() {
 	c.availableModules["Cmd"] = cmdUnit
 	c.availableModules["cmd"] = cmdUnit
 	c.availableModules["Crypto"] = cryptoUnit
+	c.availableModules["crypto"] = cryptoUnit
 	c.availableModules["Local"] = localUnit
 	c.availableModules["Path"] = pathUnit
 	c.availableModules["path"] = pathUnit

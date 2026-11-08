@@ -93,7 +93,37 @@ func (p *Parser) parseTypeAnnotation() string {
 		case lexer.STRING:
 			return `"` + p.curToken.Literal + `"`
 
+		case lexer.TYPEOF:
+			sb.WriteString("typeof")
+			if p.peekTokenIs(lexer.IDENT) {
+				p.nextToken()
+				sb.WriteString(" ")
+				sb.WriteString(p.curToken.Literal)
+				for p.peekTokenIs(lexer.DOT) {
+					p.nextToken() // '.'
+					if p.expectPeek(lexer.IDENT) {
+						sb.WriteString(".")
+						sb.WriteString(p.curToken.Literal)
+					}
+				}
+			}
+			return sb.String()
+
 		case lexer.NUMBER, lexer.BOOL, lexer.IDENT, lexer.MAP:
+			if strings.EqualFold(p.curToken.Literal, "typeof") && p.peekTokenIs(lexer.IDENT) {
+				sb.WriteString("typeof")
+				p.nextToken()
+				sb.WriteString(" ")
+				sb.WriteString(p.curToken.Literal)
+				for p.peekTokenIs(lexer.DOT) {
+					p.nextToken() // '.'
+					if p.expectPeek(lexer.IDENT) {
+						sb.WriteString(".")
+						sb.WriteString(p.curToken.Literal)
+					}
+				}
+				return sb.String()
+			}
 			sb.WriteString(p.curToken.Literal)
 
 			// Gérer indexation ou générique: TExample["c"] ou list[string]

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Nehonix-Team/xru/internal/utils"
 	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/modules"
 )
 
 // parseSemVer parses semantic version strings like "v2.0.67", "2.0.67", "2.1"
@@ -363,10 +364,86 @@ func CheckAndEnforceAstRequire(prog *ast.Program) error {
 	}
 
 	astConstants := make(map[string]string)
+
+	// Resolve local constants declared in the root program
 	for _, stmt := range prog.Statements {
 		if vs, ok := stmt.(*ast.VarStatement); ok && vs.IsConst {
 			if sLit, ok := vs.Value.(*ast.StringLiteral); ok {
 				astConstants[vs.Name] = sLit.Value
+			}
+		}
+	}
+
+	// Resolve imported constants via _mod.xru mapping
+	fileDir := "."
+	if filename := prog.Pos().Filename; filename != "" {
+		fileDir = filepath.Dir(filename)
+	}
+	modFilePath := modules.FindModConfigFile(fileDir)
+	var modCfg *modules.ModConfig
+	if modFilePath != "" {
+		if cfg, errs := modules.LoadModConfig(modFilePath); len(errs) == 0 {
+			modCfg = cfg
+		}
+	}
+
+	if modCfg != nil {
+		for _, stmt := range prog.Statements {
+			fromStmt, ok := stmt.(*ast.FromUseStatement)
+			if !ok {
+				continue
+			}
+
+			if fromStmt.Module != "" {
+				modDetails, err := modCfg.ResolveModule(fromStmt.Source, fromStmt.Module)
+				if err == nil && modDetails != nil {
+					// 1. Single member: from "source" use module::member [as alias]
+					if fromStmt.Member != "" {
+						if exp, ok := modDetails.Exports[fromStmt.Member]; ok && exp.Kind == "const" && exp.Value != "" {
+							name := fromStmt.Member
+							if fromStmt.Alias != "" {
+								name = fromStmt.Alias
+							}
+							astConstants[name] = exp.Value
+						}
+					}
+					// 2. Multiple members: from "source" use module::@map{a, b} or module::(a, b)
+					if len(fromStmt.Members) > 0 {
+						for _, mem := range fromStmt.Members {
+							if exp, ok := modDetails.Exports[mem]; ok && exp.Kind == "const" && exp.Value != "" {
+								astConstants[mem] = exp.Value
+							}
+						}
+					}
+					// 3. Whole module imported: from "source" use module [as alias]
+					if fromStmt.Member == "" && len(fromStmt.Members) == 0 {
+						prefix := fromStmt.Module
+						if fromStmt.Alias != "" {
+							prefix = fromStmt.Alias
+						}
+						for memName, exp := range modDetails.Exports {
+							if exp.Kind == "const" && exp.Value != "" {
+								astConstants[prefix+"."+memName] = exp.Value
+								astConstants[prefix+"::"+memName] = exp.Value
+							}
+						}
+					}
+				}
+			}
+
+			// 4. Multiple modules: from "source" use (modA, modB)
+			if len(fromStmt.Modules) > 0 {
+				for _, mName := range fromStmt.Modules {
+					modDetails, err := modCfg.ResolveModule(fromStmt.Source, mName)
+					if err == nil && modDetails != nil {
+						for memName, exp := range modDetails.Exports {
+							if exp.Kind == "const" && exp.Value != "" {
+								astConstants[mName+"."+memName] = exp.Value
+								astConstants[mName+"::"+memName] = exp.Value
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -408,18 +485,50 @@ func CheckAndEnforceAstRequire(prog *ast.Program) error {
 			continue
 		}
 
-		strLit, ok := callExpr.Arguments[0].(*ast.StringLiteral)
-		if !ok {
-			continue
-		}
-		constraint := strLit.Value
-		spans := ast.ExtractInterpolations(constraint)
-		if len(spans) > 0 {
-			for _, span := range spans {
-				if cVal, ok := astConstants[span.Expr]; ok {
-					constraint = strings.Replace(constraint, "$f{"+span.Expr+"}", cVal, 1)
+		var constraint string
+		if strLit, ok := callExpr.Arguments[0].(*ast.StringLiteral); ok {
+			constraint = strLit.Value
+			spans := ast.ExtractInterpolations(constraint)
+			if len(spans) > 0 {
+				for _, span := range spans {
+					if cVal, ok := astConstants[span.Expr]; ok {
+						constraint = strings.Replace(constraint, "$f{"+span.Expr+"}", cVal, 1)
+					}
 				}
 			}
+		} else if ident, ok := callExpr.Arguments[0].(*ast.Identifier); ok {
+			if cVal, ok := astConstants[ident.Value]; ok {
+				constraint = cVal
+			} else {
+				continue
+			}
+		} else if memberExpr, ok := callExpr.Arguments[0].(*ast.MemberExpression); ok {
+			if objIdent, ok := memberExpr.Object.(*ast.Identifier); ok {
+				key := objIdent.Value + "." + memberExpr.Property
+				if cVal, ok := astConstants[key]; ok {
+					constraint = cVal
+				} else {
+					continue
+				}
+			} else {
+				continue
+			}
+		} else if scopeExpr, ok := callExpr.Arguments[0].(*ast.ScopeAccessExpression); ok {
+			key := scopeExpr.Scope + "::" + scopeExpr.Member
+			if cVal, ok := astConstants[key]; ok {
+				constraint = cVal
+			} else {
+				continue
+			}
+		} else {
+			continue
+		}
+
+		// If there are still unresolved interpolations (e.g. non-constant dynamic values),
+		// skip pre-AST constraint parsing so we don't fail with a bogus semver error,
+		// and allow runtime sysRequireFn to perform the check once evaluated.
+		if strings.Contains(constraint, "$f{") {
+			continue
 		}
 
 		onMismatch := "fatal"

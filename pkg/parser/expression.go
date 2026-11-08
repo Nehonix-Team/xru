@@ -77,33 +77,68 @@ func (p *Parser) parseExpressionWithPrecedence(precedence int) ast.Expression {
 
 func (p *Parser) parseExpressionWithPrimary(expr ast.Expression, precedence int) ast.Expression {
 
-	// Gestion des membres 'Target.Property' ou 'Target.Method()'
-	for p.peekTokenIs(lexer.DOT) {
-		p.nextToken() // saute '.'
-		if p.peekTokenIs(lexer.IDENT) || lexer.IsKeyword(p.peekToken.Type) {
-			p.nextToken()
-		} else {
-			if !p.expectPeek(lexer.IDENT) {
-				return expr
+	// Gestion des membres postfix : 'Target.Property', 'Target.Method()', 'Target[Index]', 'Target(...)'
+	for {
+		if p.peekTokenIs(lexer.DOT) {
+			p.nextToken() // saute '.'
+			if p.peekTokenIs(lexer.IDENT) || lexer.IsKeyword(p.peekToken.Type) {
+				p.nextToken()
+			} else {
+				if !p.expectPeek(lexer.IDENT) {
+					return expr
+				}
 			}
-		}
-		propName := p.curToken.Literal
-		expr = &ast.MemberExpression{
-			Position: expr.Pos(),
-			Object:   expr,
-			Property: propName,
+			propName := p.curToken.Literal
+			expr = &ast.MemberExpression{
+				Position: expr.Pos(),
+				Object:   expr,
+				Property: propName,
+			}
+
+			// Si suivi d'un appel '(...)'
+			if p.peekTokenIs(lexer.LPAREN) {
+				p.nextToken()
+				args := p.parseExpressionList(lexer.RPAREN)
+				expr = &ast.CallExpression{
+					Position:  expr.Pos(),
+					Caller:    expr,
+					Arguments: args,
+				}
+			}
+			continue
 		}
 
-		// Si suivi d'un appel '(...)'
-		if p.peekTokenIs(lexer.LPAREN) {
-			p.nextToken()
-			args := p.parseExpressionList(lexer.RPAREN)
-			expr = &ast.CallExpression{
-				Position:  expr.Pos(),
-				Caller:    expr,
-				Arguments: args,
+		if p.peekTokenIs(lexer.LBRACKET) {
+			// Empêcher de confondre avec un statement sur une nouvelle ligne (ex: let x = 1 \n [1, 2])
+			if p.peekToken.Pos.Line != p.curToken.Pos.Line {
+				break
 			}
+			p.nextToken() // saute vers '['
+			p.nextToken() // se place sur le premier token de l'expression d'index
+			indexExpr := p.parseExpression()
+			if !p.expectPeek(lexer.RBRACKET) {
+				return expr
+			}
+			expr = &ast.IndexExpression{
+				Position: expr.Pos(),
+				Left:     expr,
+				Index:    indexExpr,
+			}
+
+			// Si suivi d'un appel '(...)'
+			if p.peekTokenIs(lexer.LPAREN) && p.peekToken.Pos.Line == p.curToken.Pos.Line {
+				p.nextToken()
+				args := p.parseExpressionList(lexer.RPAREN)
+				expr = &ast.CallExpression{
+					Position:  expr.Pos(),
+					Caller:    expr,
+					Arguments: args,
+				}
+			}
+			continue
 		}
+
+		break
 	}
 
 	// Gestion des opérateurs infixes (arithmétique +, -, *, /, % et comparaisons ==, !=, <, <=, >, >=)
@@ -285,6 +320,18 @@ func (p *Parser) parsePrimaryExpression() ast.Expression {
 			}
 		}
 		return ident
+	case lexer.TYPEOF:
+		pos := p.curToken.Pos
+		p.nextToken()
+		right := p.parseExpressionWithPrecedence(PREFIX)
+		if right == nil {
+			return nil
+		}
+		return &ast.PrefixExpression{
+			Position: pos,
+			Operator: "typeof",
+			Right:    right,
+		}
 	case lexer.BANG:
 		pos := p.curToken.Pos
 		p.nextToken()

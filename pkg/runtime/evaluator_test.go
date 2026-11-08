@@ -2432,6 +2432,71 @@ s.require(">= 2.0.0", @map{onMismatch: "fatal", mode: "silent"})
 	}
 }
 
+func TestAstRequireWithImportedConstant(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "xru_require_import_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	modConfigContent := `
+map {
+    dmod -> "./const/"
+}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "_mod.xru"), []byte(modConfigContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	constDir := filepath.Join(tmpDir, "const")
+	if err := os.MkdirAll(constDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	constFileContent := `
+mod xruV
+global const minVer = "2.0.0"
+`
+	if err := os.WriteFile(filepath.Join(constDir, "minVer.xru"), []byte(constFileContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	entryCode := `
+from "dmod" use xruV::minVer
+use sys as Sys
+Sys.require(">= $f{minVer}", @map{onMismatch: "fatal", mode: "silent"})
+`
+	entryPath := filepath.Join(tmpDir, "entry.xru")
+	l := lexer.New(entryPath, entryCode)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+
+	if err := runtime.CheckAndEnforceAstRequire(prog); err != nil {
+		t.Fatalf("Expected require with imported constant to pass, got: %v", err)
+	}
+}
+
+func TestAstRequireWithUnresolvedInterpolationSkipsPreCheck(t *testing.T) {
+	// If interpolation cannot be resolved statically at pre-scan, it shouldn't fail with invalid semver
+	code := `
+use sys as Sys
+Sys.require(">= $f{dynamicRuntimeVariable}", @map{onMismatch: "fatal", mode: "silent"})
+`
+	l := lexer.New("dynamic_require.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+
+	if err := runtime.CheckAndEnforceAstRequire(prog); err != nil {
+		t.Fatalf("Expected unresolved interpolation to be skipped gracefully, got error: %v", err)
+	}
+}
+
 func TestCoutStatements(t *testing.T) {
 	code := `
 use cmd
@@ -2509,6 +2574,85 @@ outDir =: res.out
 	valOut, _ := env.Get("outDir")
 	if s, ok := valOut.(runtime.StringValue); !ok || s.Val == "" {
 		t.Errorf("Expected non-empty outDir, got %v", valOut)
+	}
+}
+
+func TestIndexExpression(t *testing.T) {
+	code := `
+use std
+
+let list1 = ["apple", "banana", "cherry"]
+let firstItem = list1[0]
+let lastItem = list1[-1]
+let itemLen = list1[0].len()
+let itemUpper = list1[1].toUpper()
+let computedIndex = list1[1 + 1]
+
+let text = "hello"
+let charFirst = text[0]
+let charLast = text[-1]
+
+let myMap = @map{
+    greeting: "world"
+}
+let mapVal = myMap["greeting"]
+
+let interpSingle = "$f{list1[0]}"
+let interpChained = "$f{list1[0].len()}"
+`
+	l := lexer.New("index_test.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+	_, err := ev.Eval(prog, env)
+	if err != nil {
+		t.Fatalf("Runtime evaluation error: %v", err)
+	}
+
+	// 1. firstItem == "apple"
+	if v, _ := env.Get("firstItem"); v.String() != "apple" {
+		t.Errorf("Expected firstItem to be 'apple', got %v", v)
+	}
+	// 2. lastItem == "cherry"
+	if v, _ := env.Get("lastItem"); v.String() != "cherry" {
+		t.Errorf("Expected lastItem to be 'cherry', got %v", v)
+	}
+	// 3. itemLen == 5
+	if v, _ := env.Get("itemLen"); v.String() != "5" {
+		t.Errorf("Expected itemLen to be 5, got %v", v)
+	}
+	// 4. itemUpper == "BANANA"
+	if v, _ := env.Get("itemUpper"); v.String() != "BANANA" {
+		t.Errorf("Expected itemUpper to be 'BANANA', got %v", v)
+	}
+	// 5. computedIndex == "cherry"
+	if v, _ := env.Get("computedIndex"); v.String() != "cherry" {
+		t.Errorf("Expected computedIndex to be 'cherry', got %v", v)
+	}
+	// 6. charFirst == "h"
+	if v, _ := env.Get("charFirst"); v.String() != "h" {
+		t.Errorf("Expected charFirst to be 'h', got %v", v)
+	}
+	// 7. charLast == "o"
+	if v, _ := env.Get("charLast"); v.String() != "o" {
+		t.Errorf("Expected charLast to be 'o', got %v", v)
+	}
+	// 8. mapVal == "world"
+	if v, _ := env.Get("mapVal"); v.String() != "world" {
+		t.Errorf("Expected mapVal to be 'world', got %v", v)
+	}
+	// 9. interpSingle == "apple"
+	if v, _ := env.Get("interpSingle"); v.String() != "apple" {
+		t.Errorf("Expected interpSingle to be 'apple', got %v", v)
+	}
+	// 10. interpChained == "5"
+	if v, _ := env.Get("interpChained"); v.String() != "5" {
+		t.Errorf("Expected interpChained to be '5', got %v", v)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Nehonix-Team/xru/pkg/ast"
+	"github.com/Nehonix-Team/xru/pkg/modules"
 )
 
 type ValueType string
@@ -97,6 +98,7 @@ type UnitInstance struct {
 	Directives   map[string]NativeDirective
 	MethodDefs   []*ast.FuncStatement
 	IsPrototype  bool
+	Types        map[string]*modules.ExportedMember
 }
 
 func (u *UnitInstance) Type() ValueType { return ValUnit }

@@ -642,6 +642,9 @@ func transformExpr(expr ast.Expression, fn func(ast.Expression) ast.Expression, 
 		}
 	case *ast.MemberExpression:
 		e.Object = transformExpr(e.Object, fn, typeFn)
+	case *ast.IndexExpression:
+		e.Left = transformExpr(e.Left, fn, typeFn)
+		e.Index = transformExpr(e.Index, fn, typeFn)
 	case *ast.ListLiteral:
 		for i, el := range e.Elements {
 			e.Elements[i] = transformExpr(el, fn, typeFn)
@@ -1683,6 +1686,9 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 		return e.Value
 
 	case *ast.PrefixExpression:
+		if e.Operator == "typeof" {
+			return fmt.Sprintf("typeof %s", m.minifyExpression(e.Right))
+		}
 		return fmt.Sprintf("%s%s", e.Operator, m.minifyExpression(e.Right))
 
 	case *ast.InfixExpression:
@@ -1711,6 +1717,9 @@ func (m *Mangler) minifyExpression(expr ast.Expression) string {
 			prop = mangled
 		}
 		return fmt.Sprintf("%s.%s", obj, prop)
+
+	case *ast.IndexExpression:
+		return fmt.Sprintf("%s[%s]", m.minifyExpression(e.Left), m.minifyExpression(e.Index))
 
 	case *ast.PropAccess:
 		prop := e.Name

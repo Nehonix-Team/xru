@@ -9,6 +9,22 @@ import (
 	"github.com/Nehonix-Team/xru/pkg/lexer"
 )
 
+func (c *Checker) inferExactType(expr ast.Expression) string {
+	if expr == nil {
+		return "any"
+	}
+	switch e := expr.(type) {
+	case *ast.StringLiteral:
+		return fmt.Sprintf("%q", e.Value)
+	case *ast.NumberLiteral:
+		return e.Value
+	case *ast.BoolLiteral:
+		return "bool"
+	default:
+		return c.inferType(expr)
+	}
+}
+
 func (c *Checker) inferType(expr ast.Expression) string {
 	if expr == nil {
 		return "any"
@@ -100,6 +116,9 @@ func (c *Checker) inferType(expr ast.Expression) string {
 		}
 		if e.Operator == "-" {
 			return "number"
+		}
+		if e.Operator == "typeof" {
+			return "string"
 		}
 		return "any"
 	case *ast.InfixExpression:
@@ -367,6 +386,51 @@ func (c *Checker) inferType(expr ast.Expression) string {
 			}
 		}
 		return "any"
+	case *ast.IndexExpression:
+		leftType := c.inferType(e.Left)
+		leftType = c.resolveType(leftType)
+
+		if strings.HasPrefix(leftType, "list[") && strings.HasSuffix(leftType, "]") {
+			inner := strings.TrimSuffix(strings.TrimPrefix(leftType, "list["), "]")
+			return strings.TrimSpace(inner)
+		}
+		if leftType == "list" {
+			return "any"
+		}
+		if leftType == "string" {
+			return "string"
+		}
+		if strings.HasPrefix(leftType, "map[") && strings.HasSuffix(leftType, "]") {
+			parts := strings.Split(strings.TrimSuffix(strings.TrimPrefix(leftType, "map["), "]"), ",")
+			if len(parts) >= 2 {
+				return strings.TrimSpace(parts[1])
+			}
+			return "any"
+		}
+		if leftType == "map" || leftType == "@map" {
+			return "any"
+		}
+		if strLit, ok := e.Index.(*ast.StringLiteral); ok {
+			propName := strLit.Value
+			if c.interfaces != nil {
+				if iface, ok := c.interfaces[leftType]; ok {
+					for _, f := range iface.Fields {
+						if f.Name == propName {
+							return f.Type
+						}
+					}
+				}
+			}
+			if strings.HasPrefix(leftType, "@map") && strings.Contains(leftType, "{") {
+				fields := parseInlineMapFieldDefs(leftType)
+				for _, f := range fields {
+					if f.Name == propName {
+						return f.Type
+					}
+				}
+			}
+		}
+		return "any"
 	default:
 		return "any"
 	}
@@ -392,6 +456,47 @@ func splitUnionTypes(t string) []string {
 func (c *Checker) resolveType(typeName string) string {
 	typeName = strings.TrimSpace(typeName)
 	if typeName == "" {
+		return "any"
+	}
+
+	if strings.HasPrefix(typeName, "typeof ") {
+		target := strings.TrimSpace(strings.TrimPrefix(typeName, "typeof "))
+		if idx := strings.Index(target, "."); idx != -1 {
+			parts := strings.Split(target, ".")
+			base := parts[0]
+			if sym, ok := c.scope.Resolve(base); ok {
+				curType := sym.Type
+				for i := 1; i < len(parts); i++ {
+					curType = c.resolveType(curType)
+					prop := parts[i]
+					found := false
+					if c.interfaces != nil {
+						if iface, ok := c.interfaces[curType]; ok {
+							for _, f := range iface.Fields {
+								if f.Name == prop {
+									curType = f.Type
+									found = true
+									break
+								}
+							}
+						}
+					}
+					if !found {
+						curType = "any"
+						break
+					}
+				}
+				if curType != "" && curType != "any" {
+					return c.resolveType(curType)
+				}
+			}
+		} else {
+			if sym, ok := c.scope.Resolve(target); ok {
+				if sym.Type != "" && sym.Type != "any" {
+					return c.resolveType(sym.Type)
+				}
+			}
+		}
 		return "any"
 	}
 
@@ -441,6 +546,19 @@ func (c *Checker) validateTypeAnnotation(pos lexer.Position, typeName string) {
 
 	// Inline maps: @map{ ... } or @map
 	if strings.HasPrefix(typeName, "@map") {
+		return
+	}
+
+	// typeof type query: typeof <ident>
+	if strings.HasPrefix(typeName, "typeof ") {
+		target := strings.TrimSpace(strings.TrimPrefix(typeName, "typeof "))
+		base := target
+		if idx := strings.Index(target, "."); idx != -1 {
+			base = target[:idx]
+		}
+		if _, ok := c.scope.Resolve(base); !ok {
+			c.addError(pos, "ERR_UNDEFINED_VARIABLE", fmt.Sprintf("Variable '%s' is not defined in 'typeof' type annotation", base))
+		}
 		return
 	}
 
@@ -691,7 +809,10 @@ func (c *Checker) isTypeCompatible(expected, actual string) bool {
 		}
 	}
 	if (strings.EqualFold(cleanExpected, "bool") || strings.EqualFold(cleanExpected, "boolean")) &&
-		(strings.EqualFold(cleanActual, "bool") || strings.EqualFold(cleanActual, "boolean")) {
+		(strings.EqualFold(cleanActual, "bool") || strings.EqualFold(cleanActual, "boolean") || cleanActual == "true" || cleanActual == "false") {
+		return true
+	}
+	if (cleanExpected == "true" || cleanExpected == "false") && cleanActual == cleanExpected {
 		return true
 	}
 	if strings.EqualFold(cleanExpected, "number") && (strings.EqualFold(cleanActual, "int") || strings.EqualFold(cleanActual, "float") || strings.EqualFold(cleanActual, "number")) {

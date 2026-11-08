@@ -1599,6 +1599,24 @@ const config: ServerConfig = @map {
 	}
 }
 
+func TestTypeofAnnotation(t *testing.T) {
+	code := `
+let mode: string = "default"
+let projectMode: typeof mode = mode
+`
+	l := lexer.New("test_typeof.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	c := checker.New()
+	c.Check(prog)
+	if len(c.Errors()) > 0 {
+		t.Fatalf("Checker errors: %v", c.Errors())
+	}
+}
+
 func TestLocalInterfaceOverridesBuiltinDocument(t *testing.T) {
 	code := `
 interface Document {

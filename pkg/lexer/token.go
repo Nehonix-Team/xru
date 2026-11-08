@@ -63,6 +63,7 @@ const (
 	COUT          TokenType = "cout"
 	BREAK         TokenType = "break"
 	CONTINUE      TokenType = "continue"
+	TYPEOF        TokenType = "typeof"
 
 	// Operators & Symbols
 	ASSIGN     TokenType = "="
@@ -173,6 +174,7 @@ var keywords = map[string]TokenType{
 	"cout":          COUT,
 	"break":         BREAK,
 	"continue":      CONTINUE,
+	"typeof":        TYPEOF,
 }
 
 func LookupIdent(ident string) TokenType {

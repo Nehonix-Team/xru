@@ -69,24 +69,56 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 	case *ast.Program:
 		return ev.evalProgram(n, env)
 	case *ast.VarStatement:
-		if n.Type != "" && !ev.isValidType(n.Type) {
+		declType := n.Type
+		if strings.HasPrefix(declType, "typeof ") {
+			target := strings.TrimSpace(strings.TrimPrefix(declType, "typeof "))
+			if idx := strings.Index(target, "."); idx != -1 {
+				parts := strings.Split(target, ".")
+				if v, ok := env.Get(parts[0]); ok {
+					for i := 1; i < len(parts); i++ {
+						if mp, isMap := v.(MapValue); isMap {
+							v = mp.Pairs[parts[i]]
+						} else {
+							v = nil
+							break
+						}
+					}
+					if v != nil {
+						declType = string(v.Type())
+					} else {
+						declType = "any"
+					}
+				} else {
+					declType = "any"
+				}
+			} else {
+				if t, ok := env.GetVariableType(target); ok && t != "" {
+					declType = t
+				} else if v, ok := env.Get(target); ok && v != nil {
+					declType = string(v.Type())
+				} else {
+					declType = "any"
+				}
+			}
+		}
+		if declType != "" && !ev.isValidType(declType) {
 			return nil, fmt.Errorf("variable '%s': type '%s' is not defined", n.Name, n.Type)
 		}
 		val, err := ev.Eval(n.Value, env)
 		if err != nil {
 			return nil, err
 		}
-		if n.Type != "" && !ev.valMatchesType(val, n.Type) {
+		if declType != "" && !ev.valMatchesType(val, declType) {
 			return nil, fmt.Errorf("cannot assign value of type '%s' to variable '%s' declared as '%s'", val.Type(), n.Name, n.Type)
 		}
-		if mp, ok := val.(MapValue); ok && n.Type != "" {
+		if mp, ok := val.(MapValue); ok && declType != "" {
 			if mp.InterfaceName == "" {
-				mp.InterfaceName = n.Type
+				mp.InterfaceName = declType
 			}
 			val = mp
 		}
-		if n.Type != "" {
-			env.SetVariableType(n.Name, n.Type)
+		if declType != "" {
+			env.SetVariableType(n.Name, declType)
 		}
 		if n.IsGlobal {
 			if env.IsBlockScope() {
@@ -537,7 +569,13 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				delete(ev.loadingModules, absPath)
 			}()
 
-			modEnv := NewEnvironment(env)
+			modEnv := NewEnvironment(nil)
+			for k, v := range env.globals {
+				modEnv.globals[k] = v
+			}
+			for k := range env.globalConstants {
+				modEnv.globalConstants[k] = true
+			}
 			modEnv.SetCurrentDir(filepath.Dir(modDetails.FilePath))
 			content, err := os.ReadFile(modDetails.FilePath)
 			if err != nil {
@@ -588,14 +626,17 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				Properties: make(map[string]Value),
 				Methods:    make(map[string]NativeMethod),
 				Directives: make(map[string]NativeDirective),
+				Types:      make(map[string]*modules.ExportedMember),
 			}
 			for expName, exp := range modDetails.Exports {
-				if exp.Kind == "func" {
+				if exp.Kind == "type" {
+					unitInst.Types[expName] = exp
+				} else if exp.Kind == "func" {
 					if fnVal, ok := modEnv.Get(expName); ok {
 						if uFn, ok := fnVal.(UserFunction); ok {
 							capturedFn := uFn
 							unitInst.Methods[expName] = func(args []Value) (Value, error) {
-								return ev.callUserFunction(capturedFn, args, env)
+								return ev.callUserFunction(capturedFn, args, modEnv)
 							}
 						}
 					}
@@ -657,6 +698,12 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				}
 				return fnVal, nil
 			}
+			if _, ok := unit.Types[n.Member]; ok {
+				if n.CatchVar != "" {
+					_ = env.Set(n.CatchVar, NilValue{}, false)
+				}
+				return NilValue{}, nil
+			}
 			if n.CatchVar != "" {
 				errMsg := fmt.Sprintf("member '%s' not found on module '%s'", n.Member, n.Module)
 				_ = env.Set(n.CatchVar, StringValue{Val: errMsg}, false)
@@ -673,6 +720,9 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 				return nil, err
 			}
 			for _, memName := range n.Members {
+				if _, ok := unit.Types[memName]; ok {
+					continue
+				}
 				if prop, ok := unit.Properties[memName]; ok {
 					if err := env.Set(memName, prop, false); err != nil {
 						return nil, err
@@ -783,6 +833,8 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 			return NilValue{}, nil
 		}
 		return nil, fmt.Errorf("cannot access property '%s' on %s", n.Property, obj.Type())
+	case *ast.IndexExpression:
+		return ev.evalIndexExpression(n, env)
 	case *ast.ScopeAccessExpression:
 		if n.IsUnitSelf {
 			if env.unitRef == nil {
@@ -819,6 +871,71 @@ func (ev *Evaluator) Eval(node ast.Node, env *Environment) (Value, error) {
 	return NilValue{}, nil
 }
 
+func (ev *Evaluator) evalIndexExpression(n *ast.IndexExpression, env *Environment) (Value, error) {
+	leftVal, err := ev.Eval(n.Left, env)
+	if err != nil {
+		return nil, err
+	}
+	indexVal, err := ev.Eval(n.Index, env)
+	if err != nil {
+		return nil, err
+	}
+
+	switch col := leftVal.(type) {
+	case ListValue:
+		numVal, ok := indexVal.(NumberValue)
+		if !ok {
+			return nil, fmt.Errorf("list index must be a number, got %s", indexVal.Type())
+		}
+		idx := int(numVal.Val)
+		if idx < 0 {
+			idx = len(col.Elements) + idx
+		}
+		if idx < 0 || idx >= len(col.Elements) {
+			return NilValue{}, fmt.Errorf("list index out of bounds: index %d, length %d", int(numVal.Val), len(col.Elements))
+		}
+		return col.Elements[idx], nil
+
+	case StringValue:
+		numVal, ok := indexVal.(NumberValue)
+		if !ok {
+			return nil, fmt.Errorf("string index must be a number, got %s", indexVal.Type())
+		}
+		runes := []rune(col.Val)
+		idx := int(numVal.Val)
+		if idx < 0 {
+			idx = len(runes) + idx
+		}
+		if idx < 0 || idx >= len(runes) {
+			return NilValue{}, fmt.Errorf("string index out of bounds: index %d, length %d", int(numVal.Val), len(runes))
+		}
+		return StringValue{Val: string(runes[idx])}, nil
+
+	case MapValue:
+		key := indexVal.String()
+		if strKey, ok := indexVal.(StringValue); ok {
+			key = strKey.Val
+		}
+		if val, exists := col.Pairs[key]; exists {
+			return val, nil
+		}
+		return NilValue{}, nil
+
+	case *UnitInstance:
+		key := indexVal.String()
+		if strKey, ok := indexVal.(StringValue); ok {
+			key = strKey.Val
+		}
+		if prop, exists := col.Properties[key]; exists {
+			return prop, nil
+		}
+		return NilValue{}, fmt.Errorf("property '%s' not found on unit '%s'", key, col.UnitName)
+
+	default:
+		return nil, fmt.Errorf("type '%s' does not support index access", leftVal.Type())
+	}
+}
+
 func (ev *Evaluator) evalProgram(prog *ast.Program, env *Environment) (Value, error) {
 	if ev.interfaces == nil {
 		ev.interfaces = make(map[string]*ast.InterfaceStatement)
@@ -844,6 +961,9 @@ func (ev *Evaluator) resolveType(typeName string) string {
 	if typeName == "" {
 		return "any"
 	}
+	if strings.HasPrefix(typeName, "typeof ") {
+		return "any"
+	}
 	if idx := strings.Index(typeName, "["); idx != -1 && strings.HasSuffix(typeName, "]") {
 		baseName := strings.TrimSpace(typeName[:idx])
 		key := strings.TrimSuffix(typeName[idx+1:], "]")
@@ -864,7 +984,7 @@ func (ev *Evaluator) resolveType(typeName string) string {
 
 func (ev *Evaluator) isValidType(typeName string) bool {
 	typeName = strings.TrimSpace(typeName)
-	if typeName == "" || typeName == "any" || typeName == "void" || typeName == "never" || typeName == "nil" || typeName == "null" {
+	if typeName == "" || typeName == "any" || typeName == "void" || typeName == "never" || typeName == "nil" || typeName == "null" || strings.HasPrefix(typeName, "typeof ") {
 		return true
 	}
 	typeName = strings.TrimSuffix(typeName, "?")
@@ -1017,6 +1137,9 @@ func (ev *Evaluator) valMatchesType(val Value, expected string) bool {
 	}
 
 	expected = ev.resolveType(expected)
+	if expected == "" || expected == "any" {
+		return true
+	}
 
 	if strings.Contains(expected, " or ") {
 		parts := strings.Split(expected, " or ")

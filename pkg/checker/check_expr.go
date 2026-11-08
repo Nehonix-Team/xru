@@ -429,6 +429,21 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 			c.validatePropertyAccessOnType(e, objType)
 		}
 
+	case *ast.IndexExpression:
+		c.checkExpression(e.Left)
+		c.checkExpression(e.Index)
+		leftType := c.inferType(e.Left)
+		leftType = c.resolveType(leftType)
+		indexType := c.inferType(e.Index)
+		indexType = c.resolveType(indexType)
+
+		if strings.HasPrefix(leftType, "list") || leftType == "string" {
+			if indexType != "any" && indexType != "number" {
+				c.addError(e.Index.Pos(), "ERR_TYPE_MISMATCH",
+					fmt.Sprintf("Index must be of type 'number', got '%s'", indexType))
+			}
+		}
+
 	case *ast.PrefixExpression:
 		c.checkExpression(e.Right)
 

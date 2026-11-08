@@ -263,18 +263,19 @@ func (c *Checker) checkReassign(s *ast.ReassignStatement) {
 	c.checkExpression(s.Value)
 
 	if s.Value != nil && sym.Type != "" && sym.Type != "any" {
+		expectedType := c.resolveType(sym.Type)
 		if mapLit, isMap := s.Value.(*ast.MapLiteral); isMap {
-			if iface := c.GetInterface(sym.Type); iface != nil {
+			if iface := c.GetInterface(expectedType); iface != nil {
 				c.validateArgAgainstInterface(mapLit, iface, s.Name, "assignment", 0, false)
 				return
 			}
-			if strings.HasPrefix(sym.Type, "@map") && strings.Contains(sym.Type, "{") {
-				c.validateArgAgainstInlineMap(mapLit, sym.Type, s.Name, "assignment", 0, false)
+			if strings.HasPrefix(expectedType, "@map") && strings.Contains(expectedType, "{") {
+				c.validateArgAgainstInlineMap(mapLit, expectedType, s.Name, "assignment", 0, false)
 				return
 			}
 		}
-		actualType := c.inferType(s.Value)
-		if !c.isTypeCompatible(sym.Type, actualType) {
+		actualType := c.inferExactType(s.Value)
+		if !c.isTypeCompatible(expectedType, actualType) {
 			c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
 				fmt.Sprintf("Cannot assign expression of type '%s' to variable '%s' declared as '%s'", actualType, s.Name, sym.Type))
 		}
@@ -365,6 +366,7 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 			pos = s.TypePos
 		}
 		c.validateTypeAnnotation(pos, s.Type)
+		inferredType = c.resolveType(s.Type)
 	}
 	if inferredType == "" && s.Value != nil {
 		inferredType = c.inferType(s.Value)
@@ -399,18 +401,19 @@ func (c *Checker) checkVar(s *ast.VarStatement) {
 	}
 
 	if s.Value != nil && s.Type != "" {
+		expectedType := c.resolveType(s.Type)
 		if mapLit, isMap := s.Value.(*ast.MapLiteral); isMap {
-			if iface := c.GetInterface(s.Type); iface != nil {
+			if iface := c.GetInterface(expectedType); iface != nil {
 				c.validateArgAgainstInterface(mapLit, iface, s.Name, "assignment", 0, false)
 				return
 			}
-			if strings.HasPrefix(s.Type, "@map") && strings.Contains(s.Type, "{") {
-				c.validateArgAgainstInlineMap(mapLit, s.Type, s.Name, "assignment", 0, false)
+			if strings.HasPrefix(expectedType, "@map") && strings.Contains(expectedType, "{") {
+				c.validateArgAgainstInlineMap(mapLit, expectedType, s.Name, "assignment", 0, false)
 				return
 			}
 		}
-		actualType := c.inferType(s.Value)
-		if !c.isTypeCompatible(s.Type, actualType) {
+		actualType := c.inferExactType(s.Value)
+		if !c.isTypeCompatible(expectedType, actualType) {
 			c.addError(s.Pos(), "ERR_TYPE_MISMATCH",
 				fmt.Sprintf("Cannot assign expression of type '%s' to variable '%s' declared as '%s'", actualType, s.Name, s.Type))
 		}

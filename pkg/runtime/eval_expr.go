@@ -184,6 +184,8 @@ func (ev *Evaluator) evalPrefix(prefix *ast.PrefixExpression, env *Environment) 
 			return NumberValue{Val: -num.Val}, nil
 		}
 		return nil, fmt.Errorf("unary '-' not supported on %s", val.Type())
+	case "typeof":
+		return StringValue{Val: string(val.Type())}, nil
 	default:
 		return nil, fmt.Errorf("unsupported prefix operator '%s'", prefix.Operator)
 	}

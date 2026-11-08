@@ -787,6 +787,19 @@ func (e *MemberExpression) String() string {
 	return fmt.Sprintf("%s.%s", e.Object.String(), e.Property)
 }
 
+// IndexExpression : Left[Index]
+type IndexExpression struct {
+	Position lexer.Position
+	Left     Expression
+	Index    Expression
+}
+
+func (e *IndexExpression) expressionNode()      {}
+func (e *IndexExpression) Pos() lexer.Position { return e.Position }
+func (e *IndexExpression) String() string {
+	return fmt.Sprintf("%s[%s]", e.Left.String(), e.Index.String())
+}
+
 // ListLiteral : [elem1, elem2]
 type ListLiteral struct {
 	Position lexer.Position

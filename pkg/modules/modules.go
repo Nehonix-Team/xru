@@ -23,6 +23,7 @@ type ExportedMember struct {
 	Name     string
 	Kind     string // "var", "const", "func", "arg", "type"
 	Type     string
+	Value    string
 	Params   []*ast.Parameter
 	IfaceDef *ast.InterfaceStatement
 	Position lexer.Position
@@ -241,10 +242,17 @@ func parseModuleFile(filePath, namespace string) (*ModuleDetails, error) {
 				if memberType == "" && s.Value != nil {
 					memberType = inferBasicType(s.Value)
 				}
+				var strVal string
+				if s.IsConst && s.Value != nil {
+					if sLit, ok := s.Value.(*ast.StringLiteral); ok {
+						strVal = sLit.Value
+					}
+				}
 				exports[s.Name] = &ExportedMember{
 					Name:     s.Name,
 					Kind:     kind,
 					Type:     memberType,
+					Value:    strVal,
 					Position: s.Pos(),
 				}
 			}

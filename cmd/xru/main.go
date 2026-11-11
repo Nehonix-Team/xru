@@ -275,7 +275,10 @@ func handleRun(ruleFile string, cliArgs []string, verbose bool) {
 	posArgIdx := 0
 
 	for i := 0; i < len(cliArgs); i++ {
-		arg := cliArgs[i]
+		arg := strings.TrimSpace(cliArgs[i])
+		if arg == "" {
+			continue
+		}
 		if !strings.HasPrefix(arg, "-") {
 			// Argument positionnel : bind au prochain argument déclaré non encore assigné
 			for posArgIdx < len(orderedArgs) && boundArgs[orderedArgs[posArgIdx].Name] {

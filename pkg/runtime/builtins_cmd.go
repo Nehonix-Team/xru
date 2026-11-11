@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	goRuntime "runtime"
 	"time"
 )
 
@@ -20,12 +19,7 @@ func newCmdUnit() *UnitInstance {
 			return NilValue{}, fmt.Errorf("Cmd.Exec requires command string")
 		}
 		commandLine := args[0].String()
-		var cmd *exec.Cmd
-		if goRuntime.GOOS == "windows" {
-			cmd = exec.Command("cmd.exe", "/c", commandLine)
-		} else {
-			cmd = exec.Command("sh", "-c", commandLine)
-		}
+		cmd := createOsCmd(commandLine)
 
 		workDir := ""
 		if cmdUnit != nil && cmdUnit.WorkingDir != "" {

@@ -1167,7 +1167,7 @@ func (ev *Evaluator) valMatchesType(val Value, expected string) bool {
 		(strings.HasPrefix(expected, "'") && strings.HasSuffix(expected, "'")) {
 		expectedLit := strings.Trim(expected, "\"'")
 		if sVal, ok := val.(StringValue); ok {
-			return sVal.Val == expectedLit
+			return strings.Trim(sVal.Val, "\"'") == expectedLit
 		}
 		return false
 	}

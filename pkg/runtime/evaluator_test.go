@@ -2656,6 +2656,35 @@ let interpChained = "$f{list1[0].len()}"
 	}
 }
 
+func TestLiteralUnionTypeMatchingWithQuotes(t *testing.T) {
+	code := `
+func setMode(m: "default" or "minimal") -> string {
+    return m
+}
+let res = setMode("\"default\"")
+`
+	l := lexer.New("test_union.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser error: %v", p.Errors())
+	}
+	ev := runtime.NewEvaluator()
+	env := runtime.NewEnvironment(nil)
+
+	if _, err := ev.Eval(prog, env); err != nil {
+		t.Fatalf("Eval failed: %v", err)
+	}
+	v, ok := env.Get("res")
+	if !ok {
+		t.Fatalf("Variable res not found")
+	}
+	if v.String() != "\"default\"" {
+		t.Errorf("Unexpected value: %v", v)
+	}
+}
+
+
 
 
 

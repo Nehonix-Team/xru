@@ -465,6 +465,7 @@ func handleUnpack(args []string, verbose bool) {
 }
 
 func parseCliVal(val string) runtime.Value {
+	val = strings.Trim(val, "\"'")
 	lower := strings.ToLower(val)
 	if lower == "true" {
 		return runtime.BoolValue{Val: true}

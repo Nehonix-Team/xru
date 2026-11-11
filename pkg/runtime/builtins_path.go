@@ -44,6 +44,12 @@ func newPathUnit() *UnitInstance {
 				}
 				return BoolValue{Val: filepath.IsAbs(args[0].String())}, nil
 			},
+			"isAbs": func(args []Value) (Value, error) {
+				if len(args) < 1 {
+					return NilValue{}, fmt.Errorf("Path.isAbs requires 1 string argument, got 0")
+				}
+				return BoolValue{Val: filepath.IsAbs(args[0].String())}, nil
+			},
 		},
 		Directives: make(map[string]NativeDirective),
 	}

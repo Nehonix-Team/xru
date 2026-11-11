@@ -188,8 +188,10 @@ func (c *Checker) initBuiltinUnits() {
 			"dir":  {Name: "dir", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
 			"Base": {Name: "Base", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
 			"base": {Name: "base", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
-			"Ext":  {Name: "Ext", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
-			"ext":  {Name: "ext", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"Ext":   {Name: "Ext", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"ext":   {Name: "ext", Kind: SymFunc, Type: "string", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"IsAbs": {Name: "IsAbs", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
+			"isAbs": {Name: "isAbs", Kind: SymFunc, Type: "bool", Params: []*ast.Parameter{{Name: "path", Type: "string"}}},
 		},
 	}
 	jsonUnit := &Symbol{

@@ -101,8 +101,9 @@ func main() {
 
 	default:
 		// Si l'utilisateur passe directement un fichier .xru (ex: ./xru main.xru)
-		if strings.HasSuffix(cmd, ".xru") {
-			handleRun(cmd, cmdArgs, verbose)
+		cleanedCmd := filepath.Clean(strings.Trim(cmd, "\"'"))
+		if strings.HasSuffix(cleanedCmd, ".xru") {
+			handleRun(cleanedCmd, cmdArgs, verbose)
 		} else {
 			fmt.Printf("Unknown command '%s'. Run 'xru --help' for usage.\n", cmd)
 			os.Exit(1)
@@ -111,6 +112,7 @@ func main() {
 }
 
 func handleRun(ruleFile string, cliArgs []string, verbose bool) {
+	ruleFile = filepath.Clean(strings.Trim(ruleFile, "\"'"))
 	runtime.SetGlobalCliArgs(cliArgs)
 	content, err := os.ReadFile(ruleFile)
 	if err != nil {
@@ -440,10 +442,10 @@ func handleUnpack(args []string, verbose bool) {
 		fmt.Println("Error: 'xru unpack' requires package path. (e.g., xru unpack project.xpack [dest])")
 		os.Exit(1)
 	}
-	packFile := args[0]
+	packFile := filepath.Clean(strings.Trim(args[0], "\"'"))
 	dest := "."
 	if len(args) > 1 {
-		dest = args[1]
+		dest = filepath.Clean(strings.Trim(args[1], "\"'"))
 	}
 
 	rootDir, _ := os.Getwd()

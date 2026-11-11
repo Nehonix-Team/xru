@@ -73,6 +73,8 @@ func (p *Packager) IsWhitelist() bool {
 // - core/         (template canonique dédoublonné SANS les fichiers .xru)
 // - rules/        (tous les descripteurs *.rules.xru + main.xru)
 func (p *Packager) Pack(outputFile string, entryDir string) error {
+	outputFile = filepath.Clean(strings.Trim(outputFile, "\"'"))
+	entryDir = filepath.Clean(strings.Trim(entryDir, "\"'"))
 	var filterPatterns []string
 	if p.isWhitelist {
 		filterPatterns = p.loadPatterns(p.includeFile)
@@ -332,6 +334,8 @@ func (p *Packager) Pack(outputFile string, entryDir string) error {
 
 // Unpack extrait un package .xpack dans un dossier de destination en matérialisant core/
 func (p *Packager) Unpack(packFile string, destDir string) (*PackageManifest, error) {
+	packFile = filepath.Clean(strings.Trim(packFile, "\"'"))
+	destDir = filepath.Clean(strings.Trim(destDir, "\"'"))
 	file, err := os.Open(packFile)
 	if err != nil {
 		return nil, err

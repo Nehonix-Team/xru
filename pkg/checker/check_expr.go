@@ -560,8 +560,8 @@ func (c *Checker) checkExpression(expr ast.Expression) {
 				Type: "string",
 				Pos:  e.Pos(),
 			}
-			if _, exists := c.scope.symbols[e.ErrVar]; !exists {
-				_ = c.scope.Define(errSym)
+			if err := c.scope.Define(errSym); err != nil {
+				c.addError(e.Pos(), "ERR_REDECLARED_VAR", err.Error())
 			}
 		}
 		c.checkExpression(e.Target)

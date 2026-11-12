@@ -1953,3 +1953,28 @@ let a = ::input("name: ")
 	}
 }
 
+func TestDuplicateCatchVariable(t *testing.T) {
+	code := `
+use cmd
+let x = cmd.exec("foo") catch e1
+let y = cmd.exec("bar") catch e1
+`
+	l := lexer.New("dup_catch.xru", code)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	c := checker.New()
+	c.Check(prog)
+
+	found := false
+	for _, err := range c.Errors() {
+		if strings.Contains(err, "ERR_REDECLARED_VAR") && strings.Contains(err, "e1") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Expected ERR_REDECLARED_VAR for duplicate catch e1, got: %v", c.Errors())
+	}
+}
+
+

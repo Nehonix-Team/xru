@@ -35,7 +35,9 @@ func (c *Checker) checkUse(s *ast.UseStatement) {
 			Type: "any",
 			Pos:  s.Pos(),
 		}
-		_ = c.scope.Define(catchSym)
+		if err := c.scope.Define(catchSym); err != nil {
+			c.addError(s.Pos(), "ERR_REDECLARED_VAR", err.Error())
+		}
 		c.declaredVars = append(c.declaredVars, catchSym)
 	}
 
@@ -210,7 +212,9 @@ func (c *Checker) checkFromUse(s *ast.FromUseStatement) {
 				Type: "any",
 				Pos:  s.Pos(),
 			}
-			_ = c.scope.Define(catchSym)
+			if err := c.scope.Define(catchSym); err != nil {
+				c.addError(s.Pos(), "ERR_REDECLARED_VAR", err.Error())
+			}
 			c.declaredVars = append(c.declaredVars, catchSym)
 		}
 		modDetails, err := modCfg.ResolveModule(s.Source, s.Module)
